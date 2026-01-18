@@ -4,8 +4,8 @@ type controllerSupplier struct {
 	refreshTokenCtrl *RefreshTokenCtrl
 	baseCtrl         *BaseCtrl
 	userCtrl         *UserCtrl
-	imageCtrl        *ImageCtrl
-	articleCtrl      *ArticleCtrl
+	orgCtrl          *OrgCtrl
+	ojCtrl           *OJCtrl
 }
 
 func (c *controllerSupplier) GetRefreshTokenCtrl() *RefreshTokenCtrl {
@@ -17,11 +17,10 @@ func (c *controllerSupplier) GetBaseCtrl() *BaseCtrl {
 func (c *controllerSupplier) GetUserCtrl() *UserCtrl {
 	return c.userCtrl
 }
-
-func (c *controllerSupplier) GetImageCtrl() *ImageCtrl {
-	return c.imageCtrl
+func (c *controllerSupplier) GetOrgCtrl() *OrgCtrl {
+	return c.orgCtrl
 }
 
-func (c *controllerSupplier) GetArticleCtrl() *ArticleCtrl {
-	return c.articleCtrl
+func (c *controllerSupplier) GetOJCtrl() *OJCtrl {
+	return c.ojCtrl
 }

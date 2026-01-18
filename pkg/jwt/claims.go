@@ -2,19 +2,34 @@ package jwt
 
 import (
 	"net"
-	"personal_blog/global"
-	"personal_blog/internal/model/dto/request"
+	"personal_assistant/global"
+	"personal_assistant/internal/model/dto/request"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid"
 	"go.uber.org/zap"
 )
 
-// GetAccessToken 从请求头获取Access Token
+// GetAccessToken 从请求头或Cookie获取Access Token
 func GetAccessToken(c *gin.Context) string {
-	// 获取x-access-token头部值
-	token := c.Request.Header.Get("x-access-token")
-	return token
+	token := strings.TrimSpace(c.GetHeader("x-access-token"))
+	if token != "" {
+		return token
+	}
+
+	auth := strings.TrimSpace(c.GetHeader("Authorization"))
+	if auth != "" {
+		low := strings.ToLower(auth)
+		if strings.HasPrefix(low, "bearer ") {
+			return strings.TrimSpace(auth[len("bearer "):])
+		}
+	}
+
+	if cookieToken, err := c.Cookie("x-access-token"); err == nil {
+		return strings.TrimSpace(cookieToken)
+	}
+	return ""
 }
 
 // GetRefreshToken 仅从Cookie获取Refresh Token
@@ -68,7 +83,6 @@ func GetUUID(c *gin.Context) uuid.UUID {
 
 // GetClaims 从Gin的Context中解析并获取JWT的Claims
 func GetClaims(c *gin.Context) (*request.JwtCustomClaims, error) {
-	// 获取请求头中的Access Token
 	token := GetAccessToken(c)
 	// 创建JWT实例
 	j := NewJWT()
@@ -76,7 +90,7 @@ func GetClaims(c *gin.Context) (*request.JwtCustomClaims, error) {
 	claims, err := j.ParseAccessToken(token)
 	if err != nil {
 		// 如果解析失败，记录错误日志
-		global.Log.Error("Failed to retrieve JWT parsing information from Gin's Context. Please check if the request header contains 'x-access-token' and if the claims structure is correct.", zap.Error(err))
+		global.Log.Error("Failed to parse access token from request", zap.Error(err))
 	}
 	return claims, err
 }

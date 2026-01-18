@@ -1,6 +1,6 @@
 package response
 
-import "personal_blog/internal/model/entity"
+import "personal_assistant/internal/model/entity"
 
 // LoginResponse 登录成功返回结构体
 type LoginResponse struct {

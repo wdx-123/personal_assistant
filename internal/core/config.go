@@ -1,11 +1,12 @@
 package core
 
 import (
+	"personal_assistant/global"
+	"personal_assistant/internal/model/config"
+	"strings"
+
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
-	"personal_blog/global"
-	"personal_blog/internal/model/config"
-	"strings"
 )
 
 // InitConfig 初始化配置 - 以环境变量优先
@@ -14,6 +15,7 @@ func InitConfig(path string) {
 	viper.AllowEmptyEnv(true)
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.SetDefault("system.auto_migrate", true)
 	// 读取并监听配置
 	viper.WatchConfig() // 监视配置文件的更改
 	viper.AddConfigPath(path)
@@ -43,6 +45,15 @@ func InitConfig(path string) {
 	_ = viper.BindEnv("storage.current", "STORAGE_CURRENT")
 	_ = viper.BindEnv("storage.local.base_url", "STORAGE_LOCAL_BASE_URL")
 	_ = viper.BindEnv("storage.local.key_prefix", "STORAGE_LOCAL_KEY_PREFIX")
+	_ = viper.BindEnv("crawler.leetcode.base_url", "LEETCODE_BASE_URL")
+	_ = viper.BindEnv("crawler.leetcode.timeout_ms", "LEETCODE_TIMEOUT_MS")
+	_ = viper.BindEnv("crawler.leetcode.max_idle_conns", "LEETCODE_MAX_IDLE_CONNS")
+	_ = viper.BindEnv("crawler.leetcode.max_idle_conns_per_host", "LEETCODE_MAX_IDLE_CONNS_PER_HOST")
+	_ = viper.BindEnv("crawler.leetcode.idle_conn_timeout_sec", "LEETCODE_IDLE_CONN_TIMEOUT_SEC")
+	_ = viper.BindEnv("crawler.leetcode.retry_count", "LEETCODE_RETRY_COUNT")
+	_ = viper.BindEnv("crawler.leetcode.retry_wait_ms", "LEETCODE_RETRY_WAIT_MS")
+	_ = viper.BindEnv("crawler.leetcode.retry_max_wait_ms", "LEETCODE_RETRY_MAX_WAIT_MS")
+	_ = viper.BindEnv("crawler.leetcode.response_body_limit_bytes", "LEETCODE_RESPONSE_BODY_LIMIT_BYTES")
 	_ = viper.BindEnv("storage.qiniu.bucket", "STORAGE_QINIU_BUCKET")
 	_ = viper.BindEnv("storage.qiniu.domain", "STORAGE_QINIU_DOMAIN")
 	_ = viper.BindEnv("storage.qiniu.key_prefix", "STORAGE_QINIU_KEY_PREFIX")
@@ -75,7 +86,7 @@ func InitConfig(path string) {
 	// 绑定MySQL相关配置到环境变量（补充完整）
 	_ = viper.BindEnv("mysql.host", "DB_HOST")
 	_ = viper.BindEnv("mysql.port", "DB_PORT")
-	_ = viper.BindEnv("mysql.configs", "DB_CONFIG")
+	_ = viper.BindEnv("mysql.config", "DB_CONFIG")
 	_ = viper.BindEnv("mysql.db_name", "DB_NAME")
 	_ = viper.BindEnv("mysql.username", "DB_USERNAME")
 	_ = viper.BindEnv("mysql.password", "DB_PASSWORD")
@@ -83,7 +94,7 @@ func InitConfig(path string) {
 	_ = viper.BindEnv("mysql.max_open_conns", "DB_MAX_OPEN_CONNS")
 	_ = viper.BindEnv("mysql.log_mode", "DB_LOG_MODE")
 
-    // 旧版 qiniu.* 环境变量绑定已废弃，统一使用 storage.qiniu.*
+	// 旧版 qiniu.* 环境变量绑定已废弃，统一使用 storage.qiniu.*
 
 	// 绑定QQ登录相关配置到环境变量
 	_ = viper.BindEnv("qq.enable", "QQ_ENABLE")
@@ -101,6 +112,7 @@ func InitConfig(path string) {
 	_ = viper.BindEnv("system.port", "PORT") // 复用PORT环境变量
 	_ = viper.BindEnv("system.env", "SYSTEM_ENV")
 	_ = viper.BindEnv("system.router_prefix", "SYSTEM_ROUTER_PREFIX")
+	_ = viper.BindEnv("system.auto_migrate", "AUTO_MIGRATE")
 	_ = viper.BindEnv("system.use_multipoint", "SYSTEM_USE_MULTIPOINT")
 	_ = viper.BindEnv("system.sessions_secret", "SYSTEM_SESSIONS_SECRET")
 	// 已简化：不再绑定 system.oss_type，统一使用 storage.current 控制驱动

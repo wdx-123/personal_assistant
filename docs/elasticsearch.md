@@ -176,10 +176,7 @@ Refresh(refresh.False) // 延迟刷新 → 高性能
 
 这就是为什么 ES 删除操作很快（只是标记），但磁盘空间不会立即释放的原因！
 
-![img_1.png](img_1.png)
-![img_2.png](img_2.png)
-
-
+```go
 Elasticsearch 查询层层嵌套的核心掌握要点
 1. 基础结构层次（必须掌握）
    第一层：Request 容器
@@ -202,23 +199,23 @@ Elasticsearch 查询层层嵌套的核心掌握要点
 
 /*Create存入的的方向
 阶段1 ：Go结构体
-┌─────────────────────────┐
-│ elasticsearch.Article   │
-│ {                       │
-│   Title: "Go教程",      │
-│   Content: "内容...",   │
-│   Tags: ["Go", "编程"]  │
-│ }                       │
-└─────────────────────────┘
+   ┌─────────────────────────┐
+   │ elasticsearch.Article   │
+   │ {                       │
+   │   Title: "Go教程",      │
+   │   Content: "内容...",   │
+   │   Tags: ["Go", "编程"]  │
+   │ }                       │
+   └─────────────────────────┘
 ↓ .Request(a)
 阶段2：客户端req字段
 // ES客户端内部处理
-func (r *Index) Do(ctx context.Context) (*IndexResponse, error) {
-// 1. 将req对象序列化为JSON
-body, err := json.Marshal(r.req)
-if err != nil {
-return nil, err
-}
+   func (r *Index) Do(ctx context.Context) (*IndexResponse, error) {
+   // 1. 将req对象序列化为JSON
+   body, err := json.Marshal(r.req)
+   if err != nil {
+      return nil, err
+   }
 
     // 2. 构建HTTP请求
     httpReq := &http.Request{
@@ -232,24 +229,25 @@ return nil, err
 }
 ↓ .Do() 内部json.Marshal
 阶段3：ES服务器接收到HTTP请求后：
-{
-"method": "POST",
-"url": "/article_index/_doc",
-"body": {
-"title": "Go语言教程",
-"content": "这是文章内容...",
-"category": "编程"
-}
+   {
+      "method": "POST",
+      "url": "/article_index/_doc",
+      "body": {
+      "title": "Go语言教程",
+      "content": "这是文章内容...",
+      "category": "编程"
+   }
 }
 ↓ HTTP POST到ES
 阶段4：ES服务器将请求体中的JSON数据存储为文档的 _source 字段：
 {
-"_index": "article_index",
-"_id": "generated_id_123",
-"_source": {
-"title": "Go语言教程",
-"content": "这是文章内容...",
-"category": "编程"
-}
+   "_index": "article_index",
+   "_id": "generated_id_123",
+   "_source": {
+      "title": "Go语言教程",
+      "content": "这是文章内容...",
+      "category": "编程"
+    }
 }
 */
+```

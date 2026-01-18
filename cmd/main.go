@@ -1,7 +1,7 @@
 package main
 
 import (
-	Init "personal_blog/internal/init"
+	Init "personal_assistant/internal/init"
 )
 
 func main() {

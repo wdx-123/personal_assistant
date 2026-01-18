@@ -4,10 +4,11 @@ import (
 	"errors"
 	"fmt"
 
+	"os"
+	"personal_assistant/global"
+
 	"github.com/urfave/cli"
 	"go.uber.org/zap"
-	"os"
-	"personal_blog/global"
 ) // 是一个 Go 语言的包，专门用于构建命令行工具（Command Line Interface, CLI）。
 
 // 一套代码，既能当管理工具用，又能当主程序用
@@ -34,18 +35,6 @@ var (
 	sqlImportFlag = &cli.StringFlag{
 		Name:  "sql-import",
 		Usage: "Imports SQL data from a specified file.",
-	}
-	esFlag = &cli.BoolFlag{
-		Name:  "es",
-		Usage: "Initializes the Elasticsearch index.",
-	}
-	esExportFlag = &cli.BoolFlag{
-		Name:  "es-export",
-		Usage: "Exports data from Elasticsearch to a specified file.",
-	}
-	esImportFlag = &cli.StringFlag{
-		Name:  "es-import",
-		Usage: "Imports data into Elasticsearch from a specified file.",
 	}
 	adminFlag = &cli.BoolFlag{
 		Name:  "admin",
@@ -87,12 +76,6 @@ func Run(c *cli.Context) {
 			err := errors.New(combinedErrors)
 			global.Log.Error("Failed to import SQL data:", zap.Error(err))
 		}
-	case c.Bool(esFlag.Name):
-		if err := Elasticsearch(); err != nil {
-			global.Log.Error("Failed to create ES indices:", zap.Error(err))
-		} else {
-			global.Log.Info("Successfully created ES indices")
-		}
 	default:
 		err := cli.NewExitError("unknown command", 1)
 		global.Log.Error(err.Error(), zap.Error(err))
@@ -110,9 +93,6 @@ func NewApp() *cli.App {
 		sqlFlag,       // --sql
 		sqlExportFlag, // --sql-export
 		sqlImportFlag, // --sql-import
-		esFlag,        // --es
-		esExportFlag,  // --es-export
-		esImportFlag,  // --es-import
 		adminFlag,     // --admin
 	}
 	app.Action = Run

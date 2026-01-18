@@ -2,8 +2,8 @@ package core
 
 import (
     "net/http"
-    "personal_blog/global"
-    "personal_blog/internal/router"
+    "personal_assistant/global"
+    "personal_assistant/internal/router"
 
     "go.uber.org/zap"
 )

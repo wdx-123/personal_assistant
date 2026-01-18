@@ -5,7 +5,7 @@ import (
 	"github.com/elastic/go-elasticsearch/v8"
 	"go.uber.org/zap"
 	"os"
-	"personal_blog/global"
+	"personal_assistant/global"
 )
 
 // ConnectEs 初始化并返回一个配置好的 Elasticsearch 客户端

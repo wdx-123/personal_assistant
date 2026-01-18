@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/jordan-wright/email"
 	"net/smtp"
-	"personal_blog/global"
+	"personal_assistant/global"
 	"strings"
 )
 

@@ -5,10 +5,11 @@ import (
 	"errors"
 	"time"
 
+	"personal_assistant/global"
+	resp "personal_assistant/internal/model/dto/response"
+	"personal_assistant/pkg/response"
+
 	"github.com/gin-gonic/gin"
-	"personal_blog/global"
-	resp "personal_blog/internal/model/dto/response"
-	"personal_blog/pkg/response"
 )
 
 // TimeoutMiddleware 请求超时中间件

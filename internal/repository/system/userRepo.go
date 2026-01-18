@@ -3,10 +3,11 @@ package system
 import (
 	"context"
 	"errors"
+	"personal_assistant/internal/model/entity"
+	"personal_assistant/internal/repository/interfaces"
+
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
-	"personal_blog/internal/model/entity"
-	"personal_blog/internal/repository/interfaces"
 )
 
 // UserGormRepository 用户仓储GORM实现
@@ -25,7 +26,10 @@ func (r *UserGormRepository) GetByID(
 	id uint,
 ) (*entity.User, error) {
 	var user entity.User
-	err := r.db.WithContext(ctx).Where("id = ?", id).First(&user).Error
+	err := r.db.WithContext(ctx).
+		Preload("CurrentOrg").
+		Where("id = ?", id).
+		First(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -41,7 +45,10 @@ func (r *UserGormRepository) GetByUsername(
 	username string,
 ) (*entity.User, error) {
 	var user entity.User
-	err := r.db.WithContext(ctx).Where("username = ?", username).First(&user).Error
+	err := r.db.WithContext(ctx).
+		Preload("CurrentOrg").
+		Where("username = ?", username).
+		First(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -57,7 +64,29 @@ func (r *UserGormRepository) GetByEmail(
 	email string,
 ) (*entity.User, error) {
 	var user entity.User
-	err := r.db.WithContext(ctx).Where("email = ?", email).First(&user).Error
+	err := r.db.WithContext(ctx).
+		Preload("CurrentOrg").
+		Where("email = ?", email).
+		First(&user).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &user, nil
+}
+
+// GetByPhone 根据手机号获取用户
+func (r *UserGormRepository) GetByPhone(
+	ctx context.Context,
+	phone string,
+) (*entity.User, error) {
+	var user entity.User
+	err := r.db.WithContext(ctx).
+		Preload("CurrentOrg").
+		Where("phone = ?", phone).
+		First(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
@@ -141,6 +170,20 @@ func (r *UserGormRepository) ExistsByEmail(
 	err := r.db.WithContext(ctx).
 		Model(&entity.User{}).
 		Where("email = ?", email).
+		Count(&count).
+		Error
+	return count > 0, err
+}
+
+// ExistsByPhone 检查手机号是否存在
+func (r *UserGormRepository) ExistsByPhone(
+	ctx context.Context,
+	phone string,
+) (bool, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&entity.User{}).
+		Where("phone = ?", phone).
 		Count(&count).
 		Error
 	return count > 0, err

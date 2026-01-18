@@ -3,11 +3,11 @@ package system
 import (
 	"errors"
 	"github.com/gin-gonic/gin"
-	"personal_blog/global"
-	resp "personal_blog/internal/model/dto/response"
-	serviceSystem "personal_blog/internal/service/system"
-	"personal_blog/pkg/jwt"
-	"personal_blog/pkg/response"
+	"personal_assistant/global"
+	resp "personal_assistant/internal/model/dto/response"
+	serviceSystem "personal_assistant/internal/service/system"
+	"personal_assistant/pkg/jwt"
+	"personal_assistant/pkg/response"
 )
 
 type RefreshTokenCtrl struct {

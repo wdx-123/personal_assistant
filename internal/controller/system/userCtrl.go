@@ -2,13 +2,13 @@ package system
 
 import (
 	"fmt"
-	"personal_blog/global"
-	"personal_blog/internal/model/dto/request"
-	resp "personal_blog/internal/model/dto/response"
-	"personal_blog/internal/model/entity"
-	serviceSystem "personal_blog/internal/service/system"
-	"personal_blog/pkg/jwt"
-	"personal_blog/pkg/response"
+	"personal_assistant/global"
+	"personal_assistant/internal/model/dto/request"
+	resp "personal_assistant/internal/model/dto/response"
+	"personal_assistant/internal/model/entity"
+	serviceSystem "personal_assistant/internal/service/system"
+	"personal_assistant/pkg/jwt"
+	"personal_assistant/pkg/response"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -33,22 +33,12 @@ func (u *UserCtrl) Register(ctx *gin.Context) {
 		return
 	}
 
-	// 验证注册信息
-	err = u.userService.VerifyRegister(ctx, &req)
-	if err != nil {
-		global.Log.Error("注册验证失败",
-			zap.String("email", req.Email), zap.Error(err))
-		response.NewResponse[any, any](ctx).SetCode(global.StatusBadRequest).
-			Failed(fmt.Sprintf("注册参数，验证失败: %v", err), nil)
-		return
-	}
-
 	// 执行注册
 	user, err := u.userService.Register(ctx, &req)
 	if err != nil {
 		global.Log.Error(
 			"用户注册失败",
-			zap.String("email", req.Email),
+			zap.String("phone", req.Phone),
 			zap.Error(err))
 		response.NewResponse[any, any](ctx).
 			SetCode(global.StatusInternalServerError).
@@ -57,37 +47,15 @@ func (u *UserCtrl) Register(ctx *gin.Context) {
 	}
 
 	global.Log.Info("用户注册成功",
-		zap.String("email", req.Email),
+		zap.String("phone", req.Phone),
 		zap.Uint("userID", user.ID))
-	response.NewResponse[any, any](ctx).SetCode(global.StatusOK).
-		Success("注册成功", map[string]interface{}{
-			"user_id": user.ID,
-			"email":   user.Email,
-		})
 
-	// TODO: 注册成功后，生成 token 并返回
-	//userApi.TokenNext(c, user)
+	// 注册成功后，直接生成 Token 并返回（自动登录）
+	u.TokenNext(ctx, *user)
 }
 
-// Login 登录接口，根据不同的登录方式调用不同的登录方法
+// Login 登录接口
 func (u *UserCtrl) Login(ctx *gin.Context) {
-	switch ctx.Query("flag") {
-	case "email":
-		u.EmailLogin(ctx)
-	case "qq":
-		u.QQLogin()
-		global.Log.Error("暂未开发QQ登录")
-		response.NewResponse[any, any](ctx).
-			SetCode(global.StatusInternalServerError).
-			Failed("暂未开发QQ登录", "请使用邮箱登录")
-		return
-	default:
-		u.EmailLogin(ctx)
-	}
-}
-
-// EmailLogin 邮箱登录
-func (u *UserCtrl) EmailLogin(ctx *gin.Context) {
 	var req request.LoginReq
 	err := ctx.ShouldBindJSON(&req)
 	if err != nil {
@@ -97,35 +65,20 @@ func (u *UserCtrl) EmailLogin(ctx *gin.Context) {
 			Failed(fmt.Sprintf("绑定数据错误: %v", err), nil)
 		return
 	}
-	// 校验验证码
-	if !u.userService.VerifyCode(store, req) {
-		global.Log.Error("验证码校验失败",
-			zap.String("email", req.Email),
-			zap.String("captchaID", req.CaptchaID))
-		response.NewResponse[any, any](ctx).
-			SetCode(global.StatusBadRequest).
-			Failed("验证码错误", nil)
-		return
-	}
-	// 邮箱登录
-	user := entity.User{Email: req.Email, Password: req.Password}
-	user, err = u.userService.EmailLogin(ctx, &user)
+
+	// 执行手机号登录
+	user, err := u.userService.PhoneLogin(ctx, &req)
 	if err != nil {
-		global.Log.Error("邮箱登录失败",
-			zap.String("email", req.Email),
+		global.Log.Error("手机号登录失败",
+			zap.String("phone", req.Phone),
 			zap.Error(err))
 		response.NewResponse[any, any](ctx).
 			SetCode(global.StatusUnauthorized).
 			Failed(fmt.Sprintf("登录失败: %v", err), nil)
 		return
 	}
-	u.TokenNext(ctx, user)
-	return
 
-}
-
-// QQLogin QQ登录
-func (u *UserCtrl) QQLogin() {
+	u.TokenNext(ctx, *user)
 }
 
 func (u *UserCtrl) TokenNext(c *gin.Context, user entity.User) {
@@ -165,7 +118,7 @@ func (u *UserCtrl) Logout(c *gin.Context) {
 	jwt.ClearRefreshToken(c)
 
 	// 移除Redis中的登录状态（多点登录与单点是同一个场景）
-	if err := global.Redis.Del(uid.String()).Err(); err != nil {
+	if err := global.Redis.Del(c.Request.Context(), uid.String()).Err(); err != nil {
 		global.Log.Warn("Redis 删除登录状态失败",
 			zap.String("uuid", uid.String()),
 			zap.Error(err))

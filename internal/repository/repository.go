@@ -1,8 +1,8 @@
 package repository
 
 import (
-	"personal_blog/internal/repository/adapter"
-	"personal_blog/internal/repository/system"
+	"personal_assistant/internal/repository/adapter"
+	"personal_assistant/internal/repository/system"
 )
 
 type Group struct {

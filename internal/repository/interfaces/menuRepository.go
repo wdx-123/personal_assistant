@@ -2,7 +2,7 @@ package interfaces
 
 import (
 	"context"
-	"personal_blog/internal/model/entity"
+	"personal_assistant/internal/model/entity"
 )
 
 // MenuRepository 菜单仓储接口

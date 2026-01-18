@@ -2,7 +2,7 @@ package response
 
 import (
 	"net/http"
-	"personal_blog/global"
+	"personal_assistant/global"
 	"reflect"
 
 	"github.com/gin-gonic/gin"

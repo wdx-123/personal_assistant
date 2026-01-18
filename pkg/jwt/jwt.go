@@ -2,9 +2,9 @@ package jwt
 
 import (
 	"github.com/golang-jwt/jwt/v4"
-	"personal_blog/global"
-	"personal_blog/internal/model/dto/request"
-	"personal_blog/pkg/util"
+	"personal_assistant/global"
+	"personal_assistant/internal/model/dto/request"
+	"personal_assistant/pkg/util"
 
 	"errors"
 	"time"

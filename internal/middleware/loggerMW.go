@@ -1,16 +1,17 @@
 package middleware
 
 import (
-	"github.com/gin-gonic/gin"
-	"go.uber.org/zap"
 	"net"
 	"net/http"
 	"net/http/httputil"
 	"os"
-	"personal_blog/global"
+	"personal_assistant/global"
 	"runtime/debug"
 	"strings"
 	"time"
+
+	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 // GinLogger 是一个 Gin 中间件，用于记录请求日志。

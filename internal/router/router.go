@@ -3,10 +3,10 @@ package router
 import (
 	"net/http"
 	"os"
-	"personal_blog/global"
-	"personal_blog/internal/middleware"
-	"personal_blog/internal/router/system"
-	"personal_blog/internal/service"
+	"personal_assistant/global"
+	"personal_assistant/internal/middleware"
+	"personal_assistant/internal/router/system"
+	"personal_assistant/internal/service"
 	"strings"
 	"time"
 
@@ -43,6 +43,8 @@ func InitRouter() *gin.Engine {
 		systemRouter.InitBaseRouter(PublicGroup)
 		// 用户路由
 		systemRouter.InitUserRouter(PublicGroup)
+		// 组织路由（公共）
+		systemRouter.InitOrgRouter(PublicGroup)
 		// todo 登录、注册、健康检测.
 	}
 
@@ -58,11 +60,9 @@ func InitRouter() *gin.Engine {
 	BusinessGroup := Router.Group("")
 	BusinessGroup.Use(middleware.JWTAuth())
 	{
-		// 图片管理
-		systemRouter.InitImageRouter(BusinessGroup)
-		systemRouter.InitArticleRouter(BusinessGroup)
-		// 博客相关路由
-
+		// OJ 相关路由
+		systemRouter.InitOJRouter(BusinessGroup)
+		// todo 业务路由扩展
 	}
 	return Router
 }

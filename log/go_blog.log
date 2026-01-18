@@ -927,3 +927,189 @@
 {"level":"INFO","time":"2025-11-15T16:13:07.281+0800","caller":"system/permissionSvc.go:52","msg":"权限同步完成"}
 {"level":"INFO","time":"2025-11-15T16:13:07.282+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}
 {"level":"INFO","time":"2025-11-15T16:13:24.534+0800","caller":"middleware/loggerMW.go:35","msg":"/article/list","status":200,"method":"GET","path":"/article/list","query":"id=aXSJgpoBBxFW6V_FgxDc&title&category&tag&abstract&visible_range&page&page_size","ip":"::1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0647392}
+{"level":"ERROR","time":"2026-01-07T09:55:02.291+0800","caller":"core/gorm.go:27","msg":"Failed to connect to MySQL:","error":"dial tcp 127.0.0.1:3306: connectex: No connection could be made because the target machine actively refused it."}
+{"level":"ERROR","time":"2026-01-07T15:26:49.194+0800","caller":"core/gorm.go:27","msg":"Failed to connect to MySQL:","error":"dial tcp 127.0.0.1:3306: connectex: No connection could be made because the target machine actively refused it."}
+{"level":"ERROR","time":"2026-01-07T15:26:57.816+0800","caller":"core/gorm.go:27","msg":"Failed to connect to MySQL:","error":"dial tcp 127.0.0.1:3306: connectex: No connection could be made because the target machine actively refused it."}
+{"level":"INFO","time":"2026-01-07T15:29:57.347+0800","caller":"core/casbin.go:46","msg":"Casbin 初始化成功"}
+{"level":"INFO","time":"2026-01-07T15:29:57.348+0800","caller":"core/corn.go:17","msg":"start","keysAndValues":null}
+{"level":"INFO","time":"2026-01-07T15:29:57.423+0800","caller":"system/permissionSvc.go:52","msg":"权限同步完成"}
+{"level":"INFO","time":"2026-01-07T15:29:57.425+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}
+{"level":"ERROR","time":"2026-01-16T20:20:05.688+0800","caller":"core/gorm.go:27","msg":"Failed to connect to MySQL:","error":"dial tcp 127.0.0.1:3306: connectex: No connection could be made because the target machine actively refused it."}
+{"level":"ERROR","time":"2026-01-16T20:26:11.479+0800","caller":"core/gorm.go:29","msg":"Failed to connect to MySQL:","error":"dial tcp 127.0.0.1:3306: connectex: No connection could be made because the target machine actively refused it."}
+{"level":"ERROR","time":"2026-01-16T20:31:25.861+0800","caller":"core/redis.go:25","msg":"Failed to connect to Redis:","error":"dial tcp 127.0.0.1:6379: connectex: No connection could be made because the target machine actively refused it."}
+{"level":"ERROR","time":"2026-01-16T20:31:44.023+0800","caller":"core/redis.go:25","msg":"Failed to connect to Redis:","error":"dial tcp 127.0.0.1:6379: connectex: No connection could be made because the target machine actively refused it."}
+{"level":"ERROR","time":"2026-01-16T21:01:26.005+0800","caller":"core/redis.go:25","msg":"Failed to connect to Redis:","error":"dial tcp 180.184.87.86:6379: i/o timeout"}
+{"level":"ERROR","time":"2026-01-16T21:03:17.720+0800","caller":"core/redis.go:25","msg":"Failed to connect to Redis:","error":"NOAUTH Authentication required."}
+{"level":"ERROR","time":"2026-01-16T21:03:22.602+0800","caller":"core/redis.go:25","msg":"Failed to connect to Redis:","error":"NOAUTH Authentication required."}
+{"level":"ERROR","time":"2026-01-16T21:03:40.096+0800","caller":"core/redis.go:25","msg":"Failed to connect to Redis:","error":"NOAUTH Authentication required."}
+{"level":"ERROR","time":"2026-01-16T21:04:34.946+0800","caller":"core/redis.go:25","msg":"Failed to connect to Redis:","error":"WRONGPASS invalid username-password pair or user is disabled."}
+{"level":"INFO","time":"2026-01-16T21:04:42.436+0800","caller":"core/casbin.go:46","msg":"Casbin 初始化成功"}
+{"level":"INFO","time":"2026-01-16T21:04:42.437+0800","caller":"core/corn.go:18","msg":"start","keysAndValues":null}
+{"level":"ERROR","time":"2026-01-16T21:04:42.460+0800","caller":"system/jwtSvc.go:227","msg":"Failed to load JWT blacklist from the repository","error":"Error 1146 (42S02): Table 'meta_assist.jwt_blacklists' doesn't exist"}
+{"level":"ERROR","time":"2026-01-16T21:04:42.733+0800","caller":"init/init.go:61","msg":"权限同步失败","error":"同步用户角色失败：获取用户角色关系失败:Error 1146 (42S02): Table 'meta_assist.user_roles' doesn't exist"}
+{"level":"INFO","time":"2026-01-16T21:04:42.737+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}
+{"level":"INFO","time":"2026-01-16T21:27:42.433+0800","caller":"core/casbin.go:46","msg":"Casbin 初始化成功"}
+{"level":"INFO","time":"2026-01-16T21:27:42.434+0800","caller":"core/corn.go:18","msg":"start","keysAndValues":null}
+{"level":"ERROR","time":"2026-01-16T21:27:42.454+0800","caller":"system/jwtSvc.go:227","msg":"Failed to load JWT blacklist from the repository","error":"Error 1146 (42S02): Table 'meta_assist.jwt_blacklists' doesn't exist"}
+{"level":"ERROR","time":"2026-01-16T21:27:42.697+0800","caller":"init/init.go:69","msg":"权限同步失败","error":"同步用户角色失败：获取用户角色关系失败:Error 1146 (42S02): Table 'meta_assist.user_roles' doesn't exist"}
+{"level":"INFO","time":"2026-01-16T21:27:42.698+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}
+{"level":"INFO","time":"2026-01-16T21:28:00.763+0800","caller":"core/casbin.go:46","msg":"Casbin 初始化成功"}
+{"level":"INFO","time":"2026-01-16T21:28:00.765+0800","caller":"core/corn.go:18","msg":"start","keysAndValues":null}
+{"level":"INFO","time":"2026-01-16T21:28:01.064+0800","caller":"system/permissionSvc.go:52","msg":"权限同步完成"}
+{"level":"INFO","time":"2026-01-16T21:28:01.064+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}
+{"level":"INFO","time":"2026-01-17T00:15:06.538+0800","caller":"core/casbin.go:46","msg":"Casbin 初始化成功"}
+{"level":"INFO","time":"2026-01-17T00:15:06.540+0800","caller":"core/corn.go:18","msg":"start","keysAndValues":null}
+{"level":"INFO","time":"2026-01-17T00:15:07.027+0800","caller":"system/permissionSvc.go:52","msg":"权限同步完成"}
+{"level":"INFO","time":"2026-01-17T00:15:07.027+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}
+{"level":"INFO","time":"2026-01-17T00:17:15.345+0800","caller":"middleware/loggerMW.go:36","msg":"/base/captcha","status":200,"method":"POST","path":"/base/captcha","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0021485}
+{"level":"INFO","time":"2026-01-17T00:53:25.612+0800","caller":"core/casbin.go:46","msg":"Casbin 初始化成功"}
+{"level":"INFO","time":"2026-01-17T00:53:25.612+0800","caller":"core/corn.go:18","msg":"start","keysAndValues":null}
+{"level":"INFO","time":"2026-01-17T00:53:25.955+0800","caller":"system/permissionSvc.go:52","msg":"权限同步完成"}
+{"level":"INFO","time":"2026-01-17T00:53:25.955+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}
+{"level":"INFO","time":"2026-01-17T01:03:09.817+0800","caller":"core/casbin.go:46","msg":"Casbin 初始化成功"}
+{"level":"INFO","time":"2026-01-17T01:03:09.819+0800","caller":"core/corn.go:18","msg":"start","keysAndValues":null}
+{"level":"INFO","time":"2026-01-17T01:03:10.141+0800","caller":"system/permissionSvc.go:52","msg":"权限同步完成"}
+{"level":"INFO","time":"2026-01-17T01:03:10.144+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}
+{"level":"INFO","time":"2026-01-17T01:09:32.305+0800","caller":"middleware/loggerMW.go:36","msg":"/base/captcha","status":200,"method":"POST","path":"/base/captcha","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0083184}
+{"level":"ERROR","time":"2026-01-17T01:10:04.134+0800","caller":"system/userCtrl.go:28","msg":"绑定数据错误","error":"Key: 'RegisterReq.Password' Error:Field validation for 'Password' failed on the 'min' tag"}
+{"level":"INFO","time":"2026-01-17T01:10:04.135+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0076455}
+{"level":"ERROR","time":"2026-01-17T01:10:19.043+0800","caller":"system/userSvc.go:78","msg":"$2a$10$UHyEZ/zTipc62yXfGptmIu8Z3atVQDJZow75OZIuoSJDPqJ4pTPEK"}
+{"level":"ERROR","time":"2026-01-17T01:10:19.169+0800","caller":"system/userSvc.go:82","msg":"创建用户失败","phone":"19561986639","username":"王得贤","error":"Error 1452 (23000): Cannot add or update a child row: a foreign key constraint fails (`meta_assist`.`users`, CONSTRAINT `fk_users_current_org` FOREIGN KEY (`current_org_id`) REFERENCES `orgs` (`id`) ON DELETE SET NULL ON UPDATE CASCADE)"}
+{"level":"ERROR","time":"2026-01-17T01:10:19.170+0800","caller":"system/userCtrl.go:39","msg":"用户注册失败","phone":"19561986639","error":"创建用户失败，请稍后重试"}
+{"level":"INFO","time":"2026-01-17T01:10:19.170+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.2410581}
+{"level":"ERROR","time":"2026-01-17T01:19:22.446+0800","caller":"system/userCtrl.go:39","msg":"用户注册失败","phone":"19561986639","error":"验证码错误"}
+{"level":"INFO","time":"2026-01-17T01:19:22.446+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0}
+{"level":"INFO","time":"2026-01-17T01:19:28.829+0800","caller":"middleware/loggerMW.go:36","msg":"/base/captcha","status":200,"method":"POST","path":"/base/captcha","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0020594}
+{"level":"ERROR","time":"2026-01-17T01:20:14.473+0800","caller":"system/userSvc.go:78","msg":"$2a$10$6eGP3sZhkTnhgIqUtyuvR.KcQ31H/WLGx2SO0uRlWOkzqAoFz3a9i"}
+{"level":"ERROR","time":"2026-01-17T01:20:14.638+0800","caller":"system/userSvc.go:98","msg":"获取默认角色失败","role_code":"user","error":"record not found"}
+{"level":"ERROR","time":"2026-01-17T01:20:14.638+0800","caller":"system/userCtrl.go:39","msg":"用户注册失败","phone":"19561986639","error":"获取默认角色失败: record not found"}
+{"level":"INFO","time":"2026-01-17T01:20:14.638+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.2823046}
+{"level":"ERROR","time":"2026-01-17T01:26:23.138+0800","caller":"system/userCtrl.go:39","msg":"用户注册失败","phone":"19561986639","error":"验证码错误"}
+{"level":"INFO","time":"2026-01-17T01:26:23.138+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0012067}
+{"level":"INFO","time":"2026-01-17T01:26:28.780+0800","caller":"middleware/loggerMW.go:36","msg":"/base/captcha","status":200,"method":"POST","path":"/base/captcha","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0022857}
+{"level":"ERROR","time":"2026-01-17T01:27:10.937+0800","caller":"system/userSvc.go:57","msg":"手机号已被注册","phone":"19561986639"}
+{"level":"ERROR","time":"2026-01-17T01:27:10.937+0800","caller":"system/userCtrl.go:39","msg":"用户注册失败","phone":"19561986639","error":"该手机号已被注册"}
+{"level":"INFO","time":"2026-01-17T01:27:10.937+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.045243}
+{"level":"ERROR","time":"2026-01-17T01:29:26.925+0800","caller":"system/userCtrl.go:39","msg":"用户注册失败","phone":"19561986637","error":"验证码错误"}
+{"level":"INFO","time":"2026-01-17T01:29:26.925+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0}
+{"level":"INFO","time":"2026-01-17T01:29:33.074+0800","caller":"middleware/loggerMW.go:36","msg":"/base/captcha","status":200,"method":"POST","path":"/base/captcha","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0012774}
+{"level":"ERROR","time":"2026-01-17T01:30:53.624+0800","caller":"system/userSvc.go:78","msg":"$2a$10$r/XUrL0XUolszJ4WIIwbWOnB/uy59gfgQHCm/lcMnxJregt1iD6Ri"}
+{"level":"INFO","time":"2026-01-17T01:30:54.624+0800","caller":"system/userCtrl.go:49","msg":"用户注册成功","phone":"19561986637","userID":3}
+{"level":"INFO","time":"2026-01-17T01:30:54.624+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":1.2181031}
+{"level":"INFO","time":"2026-01-17T01:44:04.566+0800","caller":"core/casbin.go:46","msg":"Casbin 初始化成功"}
+{"level":"INFO","time":"2026-01-17T01:44:04.566+0800","caller":"core/corn.go:18","msg":"start","keysAndValues":null}
+{"level":"INFO","time":"2026-01-17T01:44:04.980+0800","caller":"system/permissionSvc.go:52","msg":"权限同步完成"}
+{"level":"INFO","time":"2026-01-17T01:44:04.980+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}
+{"level":"ERROR","time":"2026-01-17T01:46:26.491+0800","caller":"system/userCtrl.go:67","msg":"绑定数据错误","error":"Key: 'LoginReq.Captcha' Error:Field validation for 'Captcha' failed on the 'len' tag"}
+{"level":"INFO","time":"2026-01-17T01:46:26.491+0800","caller":"middleware/loggerMW.go:36","msg":"/user/login","status":200,"method":"POST","path":"/user/login","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0005193}
+{"level":"INFO","time":"2026-01-17T01:46:57.140+0800","caller":"middleware/loggerMW.go:36","msg":"/base/captcha","status":200,"method":"POST","path":"/base/captcha","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0012242}
+{"level":"INFO","time":"2026-01-17T01:47:37.444+0800","caller":"middleware/loggerMW.go:36","msg":"/user/login","status":200,"method":"POST","path":"/user/login","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.3901116}
+{"level":"INFO","time":"2026-01-17T01:51:42.618+0800","caller":"core/casbin.go:46","msg":"Casbin 初始化成功"}
+{"level":"INFO","time":"2026-01-17T01:51:42.620+0800","caller":"core/corn.go:18","msg":"start","keysAndValues":null}
+{"level":"INFO","time":"2026-01-17T01:51:43.337+0800","caller":"system/permissionSvc.go:52","msg":"权限同步完成"}
+{"level":"INFO","time":"2026-01-17T01:51:43.337+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}
+{"level":"ERROR","time":"2026-01-17T01:51:45.768+0800","caller":"system/userCtrl.go:39","msg":"用户注册失败","phone":"19561986636","error":"验证码错误"}
+{"level":"INFO","time":"2026-01-17T01:51:45.768+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0011449}
+{"level":"ERROR","time":"2026-01-17T01:52:53.805+0800","caller":"system/userCtrl.go:39","msg":"用户注册失败","phone":"19561986636","error":"验证码错误"}
+{"level":"INFO","time":"2026-01-17T01:52:53.805+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0024603}
+{"level":"ERROR","time":"2026-01-17T01:53:12.207+0800","caller":"system/userCtrl.go:39","msg":"用户注册失败","phone":"19561986636","error":"验证码错误"}
+{"level":"INFO","time":"2026-01-17T01:53:12.207+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0}
+{"level":"INFO","time":"2026-01-17T01:53:15.799+0800","caller":"middleware/loggerMW.go:36","msg":"/base/captcha","status":200,"method":"POST","path":"/base/captcha","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.003316}
+{"level":"ERROR","time":"2026-01-17T01:53:53.143+0800","caller":"system/userSvc.go:78","msg":"$2a$10$sLyxvyqOuM5SPXFo5/Fd3.pyIlONdkJAhdyPjNoOV207XxJsGAEqq"}
+{"level":"INFO","time":"2026-01-17T01:53:53.823+0800","caller":"system/userCtrl.go:49","msg":"用户注册成功","phone":"19561986636","userID":4}
+{"level":"INFO","time":"2026-01-17T01:53:53.823+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.8141005}
+{"level":"INFO","time":"2026-01-17T02:05:46.489+0800","caller":"middleware/loggerMW.go:36","msg":"/base/captcha","status":200,"method":"POST","path":"/base/captcha","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.001404}
+{"level":"ERROR","time":"2026-01-17T02:06:23.681+0800","caller":"system/userSvc.go:57","msg":"手机号已被注册","phone":"19561986637"}
+{"level":"ERROR","time":"2026-01-17T02:06:23.682+0800","caller":"system/userCtrl.go:39","msg":"用户注册失败","phone":"19561986637","error":"该手机号已被注册"}
+{"level":"INFO","time":"2026-01-17T02:06:23.682+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.3279981}
+{"level":"ERROR","time":"2026-01-17T02:06:33.808+0800","caller":"system/userCtrl.go:39","msg":"用户注册失败","phone":"19561986638","error":"验证码错误"}
+{"level":"INFO","time":"2026-01-17T02:06:33.808+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0}
+{"level":"INFO","time":"2026-01-17T02:14:38.253+0800","caller":"core/casbin.go:46","msg":"Casbin 初始化成功"}
+{"level":"INFO","time":"2026-01-17T02:14:38.253+0800","caller":"core/corn.go:18","msg":"start","keysAndValues":null}
+{"level":"INFO","time":"2026-01-17T02:14:38.854+0800","caller":"system/permissionSvc.go:52","msg":"权限同步完成"}
+{"level":"INFO","time":"2026-01-17T02:14:38.854+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}
+{"level":"ERROR","time":"2026-01-17T02:19:33.866+0800","caller":"init/init.go:33","msg":"auto migrate failed","error":"Error 1062 (23000): Duplicate entry '王得贤' for key 'users.uni_users_username'"}
+{"level":"ERROR","time":"2026-01-17T02:19:42.031+0800","caller":"init/init.go:33","msg":"auto migrate failed","error":"Error 1062 (23000): Duplicate entry '王得贤' for key 'users.uni_users_username'"}
+{"level":"INFO","time":"2026-01-17T02:20:30.750+0800","caller":"core/casbin.go:46","msg":"Casbin 初始化成功"}
+{"level":"INFO","time":"2026-01-17T02:20:30.750+0800","caller":"core/corn.go:18","msg":"start","keysAndValues":null}
+{"level":"INFO","time":"2026-01-17T02:20:32.693+0800","caller":"system/permissionSvc.go:52","msg":"权限同步完成"}
+{"level":"INFO","time":"2026-01-17T02:20:32.693+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}
+{"level":"ERROR","time":"2026-01-17T02:20:35.236+0800","caller":"system/userCtrl.go:39","msg":"用户注册失败","phone":"19561986638","error":"验证码错误"}
+{"level":"INFO","time":"2026-01-17T02:20:35.237+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0010983}
+{"level":"ERROR","time":"2026-01-17T02:20:39.970+0800","caller":"system/userCtrl.go:39","msg":"用户注册失败","phone":"19561986638","error":"验证码错误"}
+{"level":"INFO","time":"2026-01-17T02:20:39.970+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0}
+{"level":"ERROR","time":"2026-01-17T02:21:18.802+0800","caller":"system/userCtrl.go:39","msg":"用户注册失败","phone":"19561986638","error":"验证码错误"}
+{"level":"INFO","time":"2026-01-17T02:21:18.802+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0}
+{"level":"ERROR","time":"2026-01-17T02:21:30.605+0800","caller":"system/userCtrl.go:39","msg":"用户注册失败","phone":"19561986638","error":"验证码错误"}
+{"level":"INFO","time":"2026-01-17T02:21:30.605+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0}
+{"level":"ERROR","time":"2026-01-17T02:24:05.012+0800","caller":"system/userCtrl.go:39","msg":"用户注册失败","phone":"19561986638","error":"验证码错误"}
+{"level":"INFO","time":"2026-01-17T02:24:05.012+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0005206}
+{"level":"INFO","time":"2026-01-17T02:25:10.489+0800","caller":"core/casbin.go:46","msg":"Casbin 初始化成功"}
+{"level":"INFO","time":"2026-01-17T02:25:10.490+0800","caller":"core/corn.go:18","msg":"start","keysAndValues":null}
+{"level":"INFO","time":"2026-01-17T02:25:10.981+0800","caller":"system/permissionSvc.go:52","msg":"权限同步完成"}
+{"level":"INFO","time":"2026-01-17T02:25:10.981+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}
+{"level":"ERROR","time":"2026-01-17T02:25:11.680+0800","caller":"system/userSvc.go:78","msg":"$2a$10$aYKrXeR3ABqzfeLkVw5teOLV.6050E6JIWCHjC0E9h.mbz42YeQdS"}
+{"level":"INFO","time":"2026-01-17T02:25:12.124+0800","caller":"system/userCtrl.go:49","msg":"用户注册成功","phone":"19561986638","userID":5}
+{"level":"INFO","time":"2026-01-17T02:25:12.172+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.5783032}
+{"level":"ERROR","time":"2026-01-17T02:25:37.437+0800","caller":"system/userSvc.go:57","msg":"手机号已被注册","phone":"19561986638"}
+{"level":"ERROR","time":"2026-01-17T02:25:37.437+0800","caller":"system/userCtrl.go:39","msg":"用户注册失败","phone":"19561986638","error":"该手机号已被注册"}
+{"level":"INFO","time":"2026-01-17T02:25:37.437+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0467796}
+{"level":"ERROR","time":"2026-01-17T02:25:51.013+0800","caller":"system/userSvc.go:78","msg":"$2a$10$dSXTu0NvqZGyL5m9s7J/XeY1xfkux/woHucQuA.ocE6ifwxnR0.m."}
+{"level":"INFO","time":"2026-01-17T02:25:51.558+0800","caller":"system/userCtrl.go:49","msg":"用户注册成功","phone":"19561986631","userID":6}
+{"level":"INFO","time":"2026-01-17T02:25:51.618+0800","caller":"middleware/loggerMW.go:36","msg":"/user/register","status":200,"method":"POST","path":"/user/register","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.7096795}
+{"level":"INFO","time":"2026-01-17T02:28:24.755+0800","caller":"middleware/loggerMW.go:36","msg":"/refreshToken","status":200,"method":"GET","path":"/refreshToken","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0498136}
+{"level":"INFO","time":"2026-01-17T02:29:25.082+0800","caller":"middleware/loggerMW.go:36","msg":"/base/captcha","status":200,"method":"POST","path":"/base/captcha","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0020657}
+{"level":"ERROR","time":"2026-01-17T02:29:44.357+0800","caller":"jwt/claims.go:79","msg":"Failed to retrieve JWT parsing information from Gin's Context. Please check if the request header contains 'x-access-token' and if the claims structure is correct.","error":"that's not even a token"}
+{"level":"INFO","time":"2026-01-17T02:29:44.478+0800","caller":"middleware/loggerMW.go:36","msg":"/user/logout","status":200,"method":"POST","path":"/user/logout","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.1209736}
+{"level":"INFO","time":"2026-01-17T15:27:05.613+0800","caller":"core/casbin.go:46","msg":"Casbin 初始化成功"}
+{"level":"INFO","time":"2026-01-17T15:27:05.614+0800","caller":"core/corn.go:18","msg":"start","keysAndValues":null}
+{"level":"INFO","time":"2026-01-17T15:27:06.385+0800","caller":"system/permissionSvc.go:52","msg":"权限同步完成"}
+{"level":"INFO","time":"2026-01-17T15:27:06.385+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}
+{"level":"INFO","time":"2026-01-17T15:27:32.303+0800","caller":"middleware/loggerMW.go:36","msg":"/org/list","status":200,"method":"GET","path":"/org/list","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.3033843}
+{"level":"INFO","time":"2026-01-17T15:27:51.391+0800","caller":"middleware/loggerMW.go:36","msg":"/org/list","status":200,"method":"GET","path":"/org/list","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0271672}
+{"level":"INFO","time":"2026-01-17T17:53:40.832+0800","caller":"core/casbin.go:46","msg":"Casbin 初始化成功"}
+{"level":"INFO","time":"2026-01-17T17:53:40.833+0800","caller":"core/corn.go:18","msg":"start","keysAndValues":null}
+{"level":"INFO","time":"2026-01-17T17:53:41.640+0800","caller":"system/permissionSvc.go:52","msg":"权限同步完成"}
+{"level":"INFO","time":"2026-01-17T17:53:41.640+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}
+{"level":"INFO","time":"2026-01-17T17:58:23.468+0800","caller":"middleware/loggerMW.go:36","msg":"/base/captcha","status":200,"method":"POST","path":"/base/captcha","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0016922}
+{"level":"INFO","time":"2026-01-17T17:58:54.669+0800","caller":"middleware/loggerMW.go:36","msg":"/user/login","status":200,"method":"POST","path":"/user/login","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.3843205}
+{"level":"INFO","time":"2026-01-17T17:59:11.894+0800","caller":"middleware/loggerMW.go:36","msg":"/refreshToken","status":200,"method":"GET","path":"/refreshToken","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0475847}
+{"level":"INFO","time":"2026-01-17T18:00:00.648+0800","caller":"middleware/loggerMW.go:36","msg":"/oj/bind","status":200,"method":"POST","path":"/oj/bind","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0006154}
+{"level":"INFO","time":"2026-01-17T18:00:15.124+0800","caller":"middleware/loggerMW.go:36","msg":"/oj/bind","status":200,"method":"POST","path":"/oj/bind","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0}
+{"level":"INFO","time":"2026-01-17T18:00:53.922+0800","caller":"middleware/loggerMW.go:36","msg":"/oj/bind","status":200,"method":"POST","path":"/oj/bind","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0}
+{"level":"ERROR","time":"2026-01-17T18:02:18.092+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"19561986638","error":"验证码错误"}
+{"level":"INFO","time":"2026-01-17T18:02:18.092+0800","caller":"middleware/loggerMW.go:36","msg":"/user/login","status":200,"method":"POST","path":"/user/login","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0005079}
+{"level":"ERROR","time":"2026-01-17T18:02:21.105+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"19561986638","error":"验证码错误"}
+{"level":"INFO","time":"2026-01-17T18:02:21.105+0800","caller":"middleware/loggerMW.go:36","msg":"/user/login","status":200,"method":"POST","path":"/user/login","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0}
+{"level":"ERROR","time":"2026-01-17T18:02:29.881+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"19561986637","error":"验证码错误"}
+{"level":"INFO","time":"2026-01-17T18:02:29.881+0800","caller":"middleware/loggerMW.go:36","msg":"/user/login","status":200,"method":"POST","path":"/user/login","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0}
+{"level":"ERROR","time":"2026-01-17T18:02:43.987+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"19561986637","error":"验证码错误"}
+{"level":"INFO","time":"2026-01-17T18:02:43.987+0800","caller":"middleware/loggerMW.go:36","msg":"/user/login","status":200,"method":"POST","path":"/user/login","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0016457}
+{"level":"INFO","time":"2026-01-17T18:09:12.768+0800","caller":"core/casbin.go:46","msg":"Casbin 初始化成功"}
+{"level":"INFO","time":"2026-01-17T18:09:12.768+0800","caller":"core/corn.go:18","msg":"start","keysAndValues":null}
+{"level":"INFO","time":"2026-01-17T18:09:13.627+0800","caller":"system/permissionSvc.go:52","msg":"权限同步完成"}
+{"level":"INFO","time":"2026-01-17T18:09:13.627+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}
+{"level":"INFO","time":"2026-01-17T18:09:26.737+0800","caller":"middleware/loggerMW.go:36","msg":"/refreshToken","status":200,"method":"GET","path":"/refreshToken","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.1643573}
+{"level":"INFO","time":"2026-01-17T18:09:42.819+0800","caller":"middleware/loggerMW.go:36","msg":"/oj/bind","status":200,"method":"POST","path":"/oj/bind","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":1.0782362}
+{"level":"INFO","time":"2026-01-17T18:11:49.173+0800","caller":"middleware/loggerMW.go:36","msg":"/oj/bind","status":200,"method":"POST","path":"/oj/bind","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":1.2817721}
+{"level":"INFO","time":"2026-01-17T18:12:16.563+0800","caller":"middleware/loggerMW.go:36","msg":"/oj/bind","status":200,"method":"POST","path":"/oj/bind","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.9416954}
+{"level":"INFO","time":"2026-01-17T18:18:06.745+0800","caller":"middleware/loggerMW.go:36","msg":"/oj/bind","status":200,"method":"POST","path":"/oj/bind","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0015939}
+{"level":"INFO","time":"2026-01-17T18:18:12.363+0800","caller":"middleware/loggerMW.go:36","msg":"/refreshToken","status":200,"method":"GET","path":"/refreshToken","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0501229}
+{"level":"INFO","time":"2026-01-17T18:18:33.849+0800","caller":"middleware/loggerMW.go:36","msg":"/oj/bind","status":200,"method":"POST","path":"/oj/bind","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":2.5539956}
+{"level":"INFO","time":"2026-01-17T18:18:58.694+0800","caller":"middleware/loggerMW.go:36","msg":"/oj/bind","status":200,"method":"POST","path":"/oj/bind","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":1.267723}
+{"level":"INFO","time":"2026-01-17T18:19:12.486+0800","caller":"middleware/loggerMW.go:36","msg":"/oj/bind","status":200,"method":"POST","path":"/oj/bind","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":4.9599797}
+{"level":"INFO","time":"2026-01-17T18:28:27.501+0800","caller":"core/casbin.go:46","msg":"Casbin 初始化成功"}
+{"level":"INFO","time":"2026-01-17T18:28:27.503+0800","caller":"core/corn.go:18","msg":"start","keysAndValues":null}
+{"level":"INFO","time":"2026-01-17T18:28:28.812+0800","caller":"system/permissionSvc.go:52","msg":"权限同步完成"}
+{"level":"INFO","time":"2026-01-17T18:28:28.813+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}
+{"level":"INFO","time":"2026-01-17T18:28:58.791+0800","caller":"middleware/loggerMW.go:36","msg":"/refreshToken","status":200,"method":"GET","path":"/refreshToken","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":0.0634785}
+{"level":"INFO","time":"2026-01-17T18:29:13.668+0800","caller":"middleware/loggerMW.go:36","msg":"/oj/bind","status":200,"method":"POST","path":"/oj/bind","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":1.1811832}
+{"level":"INFO","time":"2026-01-17T18:29:21.932+0800","caller":"middleware/loggerMW.go:36","msg":"/oj/bind","status":200,"method":"POST","path":"/oj/bind","query":"","ip":"127.0.0.1","user-agent":"Apifox/1.0.0 (https://apifox.com)","errors":"","cost":1.182931}
+{"level":"INFO","time":"2026-01-17T18:29:52.832+0800","caller":"core/casbin.go:46","msg":"Casbin 初始化成功"}
+{"level":"INFO","time":"2026-01-17T18:29:52.834+0800","caller":"core/corn.go:18","msg":"start","keysAndValues":null}
+{"level":"INFO","time":"2026-01-17T18:29:53.615+0800","caller":"system/permissionSvc.go:52","msg":"权限同步完成"}
+{"level":"INFO","time":"2026-01-17T18:29:53.615+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}
+{"level":"INFO","time":"2026-01-17T18:30:48.161+0800","caller":"core/casbin.go:46","msg":"Casbin 初始化成功"}
+{"level":"INFO","time":"2026-01-17T18:30:48.162+0800","caller":"core/corn.go:18","msg":"start","keysAndValues":null}
+{"level":"INFO","time":"2026-01-17T18:30:48.996+0800","caller":"system/permissionSvc.go:52","msg":"权限同步完成"}
+{"level":"INFO","time":"2026-01-17T18:30:48.996+0800","caller":"core/server.go:21","msg":"server starting","address":"0.0.0.0:8080"}

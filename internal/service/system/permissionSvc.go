@@ -3,10 +3,10 @@ package system
 import (
 	"context"
 	"fmt"
-	"personal_blog/global"
-	"personal_blog/internal/model/entity"
-	"personal_blog/internal/repository"
-	"personal_blog/pkg/casbin"
+	"personal_assistant/global"
+	"personal_assistant/internal/model/entity"
+	"personal_assistant/internal/repository"
+	"personal_assistant/pkg/casbin"
 	"strconv"
 
 	"go.uber.org/zap"

@@ -1,7 +1,7 @@
 package controller
 
 import (
-	"personal_blog/internal/controller/system"
+	"personal_assistant/internal/controller/system"
 )
 
 // ApiGroup 控制器

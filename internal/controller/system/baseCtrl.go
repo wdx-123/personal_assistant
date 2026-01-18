@@ -3,11 +3,11 @@ package system
 import (
 	"fmt"
 	"go.uber.org/zap"
-	"personal_blog/global"
-	"personal_blog/internal/model/dto/request"
-	resp "personal_blog/internal/model/dto/response"
-	serviceSystem "personal_blog/internal/service/system"
-	"personal_blog/pkg/response"
+	"personal_assistant/global"
+	"personal_assistant/internal/model/dto/request"
+	resp "personal_assistant/internal/model/dto/response"
+	serviceSystem "personal_assistant/internal/service/system"
+	"personal_assistant/pkg/response"
 
 	"github.com/gin-gonic/gin"
 	"github.com/mojocn/base64Captcha"

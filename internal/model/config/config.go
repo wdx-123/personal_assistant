@@ -4,19 +4,20 @@ import "github.com/spf13/viper"
 
 // Config 应用全局配置结构体，包含所有核心模块配置
 type Config struct {
-    ES      ES      `json:"es" yaml:"es"`           // Elasticsearch配置
-    Redis   Redis   `json:"redis" yaml:"redis"`     // Redis配置
-    Mysql   Mysql   `json:"mysql" yaml:"mysql"`     // MySQL数据库配置
-    System  System  `json:"system" yaml:"system"`   // 系统服务配置
-    Zap     Zap     `json:"zap" yaml:"zap"`         // 日志配置
-    JWT     JWT     `json:"jwt" yaml:"jwt"`         // JWT认证配置
-    Upload  Upload  `json:"upload" yaml:"upload"`   // 文件上传配置
-    Captcha Captcha `json:"captcha" yaml:"captcha"` // 验证码配置
-    Email   Email   `json:"email" yaml:"email"`     // 邮件发送配置
-    Gaode   Gaode   `json:"gaode" yaml:"gaode"`     // 高德地图API配置
-    Website Website `json:"website" yaml:"website"` // 个人网站配置
-    Storage Storage `json:"storage" yaml:"storage"` // 存储驱动配置
-    Static  Static  `json:"static" yaml:"static"`   // 静态文件配置
+	ES      ES      `json:"es" yaml:"es"`           // Elasticsearch配置
+	Redis   Redis   `json:"redis" yaml:"redis"`     // Redis配置
+	Mysql   Mysql   `json:"mysql" yaml:"mysql"`     // MySQL数据库配置
+	System  System  `json:"system" yaml:"system"`   // 系统服务配置
+	Zap     Zap     `json:"zap" yaml:"zap"`         // 日志配置
+	JWT     JWT     `json:"jwt" yaml:"jwt"`         // JWT认证配置
+	Upload  Upload  `json:"upload" yaml:"upload"`   // 文件上传配置
+	Captcha Captcha `json:"captcha" yaml:"captcha"` // 验证码配置
+	Email   Email   `json:"email" yaml:"email"`     // 邮件发送配置
+	Gaode   Gaode   `json:"gaode" yaml:"gaode"`     // 高德地图API配置
+	Website Website `json:"website" yaml:"website"` // 个人网站配置
+	Storage Storage `json:"storage" yaml:"storage"` // 存储驱动配置
+	Static  Static  `json:"static" yaml:"static"`   // 静态文件配置
+	Crawler Crawler `json:"crawler" yaml:"crawler"`
 }
 
 func NewConfig() *Config {
@@ -51,6 +52,7 @@ func NewConfig() *Config {
 		Port:           viper.GetInt("system.port"),
 		Env:            viper.GetString("system.env"),
 		RouterPrefix:   viper.GetString("system.router_prefix"),
+		AutoMigrate:    viper.GetBool("system.auto_migrate"),
 		UseMultipoint:  viper.GetBool("system.use_multipoint"),
 		SessionsSecret: viper.GetString("system.sessions_secret"),
 
@@ -149,6 +151,31 @@ func NewConfig() *Config {
 		WechatImage:          viper.GetString("website.wechat_image"),
 	}
 
+	_crawler := &Crawler{
+		LeetCode: LeetCodeCrawler{
+			BaseURL:                viper.GetString("crawler.leetcode.base_url"),
+			TimeoutMs:              viper.GetInt("crawler.leetcode.timeout_ms"),
+			MaxIdleConns:           viper.GetInt("crawler.leetcode.max_idle_conns"),
+			MaxIdleConnsPerHost:    viper.GetInt("crawler.leetcode.max_idle_conns_per_host"),
+			IdleConnTimeoutSec:     viper.GetInt("crawler.leetcode.idle_conn_timeout_sec"),
+			RetryCount:             viper.GetInt("crawler.leetcode.retry_count"),
+			RetryWaitMs:            viper.GetInt("crawler.leetcode.retry_wait_ms"),
+			RetryMaxWaitMs:         viper.GetInt("crawler.leetcode.retry_max_wait_ms"),
+			ResponseBodyLimitBytes: viper.GetInt64("crawler.leetcode.response_body_limit_bytes"),
+		},
+		Luogu: LuoguCrawler{
+			BaseURL:                viper.GetString("crawler.luogu.base_url"),
+			TimeoutMs:              viper.GetInt("crawler.luogu.timeout_ms"),
+			MaxIdleConns:           viper.GetInt("crawler.luogu.max_idle_conns"),
+			MaxIdleConnsPerHost:    viper.GetInt("crawler.luogu.max_idle_conns_per_host"),
+			IdleConnTimeoutSec:     viper.GetInt("crawler.luogu.idle_conn_timeout_sec"),
+			RetryCount:             viper.GetInt("crawler.luogu.retry_count"),
+			RetryWaitMs:            viper.GetInt("crawler.luogu.retry_wait_ms"),
+			RetryMaxWaitMs:         viper.GetInt("crawler.luogu.retry_max_wait_ms"),
+			ResponseBodyLimitBytes: viper.GetInt64("crawler.luogu.response_body_limit_bytes"),
+		},
+	}
+
 	return &Config{
 		ES:      *_es,
 		Redis:   *_redis,
@@ -163,5 +190,6 @@ func NewConfig() *Config {
 		Static:  *_static,
 		Gaode:   *_gaode,
 		Website: *_website,
+		Crawler: *_crawler,
 	}
 }

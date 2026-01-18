@@ -1,12 +1,13 @@
 package core
 
 import (
+	"log"
+	"os"
+	"personal_assistant/global"
+
 	"github.com/natefinch/lumberjack"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
-	"log"
-	"os"
-	"personal_blog/global"
 )
 
 func init() {

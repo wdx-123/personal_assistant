@@ -3,10 +3,10 @@ package middleware
 import (
 	"context"
 	"errors"
-	"personal_blog/global"
-	"personal_blog/internal/model/dto/request"
-	"personal_blog/internal/service"
-	"personal_blog/pkg/response"
+	"personal_assistant/global"
+	"personal_assistant/internal/model/dto/request"
+	"personal_assistant/internal/service"
+	"personal_assistant/pkg/response"
 	"time"
 
 	"github.com/gin-gonic/gin"

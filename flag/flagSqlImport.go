@@ -2,7 +2,7 @@ package flag
 
 import (
 	"os"
-	"personal_blog/global"
+	"personal_assistant/global"
 	"strings"
 )
 

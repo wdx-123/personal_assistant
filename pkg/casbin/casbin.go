@@ -3,7 +3,7 @@ package casbin
 import (
 	"fmt"
 	"github.com/casbin/casbin/v2"
-	"personal_blog/global"
+	"personal_assistant/global"
 	"strconv"
 )
 

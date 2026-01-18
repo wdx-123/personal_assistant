@@ -1,15 +1,18 @@
 package system
 
-import "personal_blog/internal/repository/interfaces"
+import "personal_assistant/internal/repository/interfaces"
 
 type RepositorySupplier struct {
-    userRepository interfaces.UserRepository
-    jwtRepository  interfaces.JWTRepository
-    roleRepository interfaces.RoleRepository
-    menuRepository interfaces.MenuRepository
-    apiRepository  interfaces.APIRepository
-    imageRepository interfaces.ImageRepository
-    articleRepository interfaces.ArticleRepository
+	userRepository interfaces.UserRepository
+	jwtRepository  interfaces.JWTRepository
+	roleRepository interfaces.RoleRepository
+	menuRepository interfaces.MenuRepository
+	apiRepository  interfaces.APIRepository
+	orgRepository  interfaces.OrgRepository
+
+	leetcodeUserDetailRepository interfaces.LeetcodeUserDetailRepository
+	luoguUserDetailRepository    interfaces.LuoguUserDetailRepository
+	outboxRepository             interfaces.OutboxRepository
 }
 
 func (r *RepositorySupplier) GetUserRepository() interfaces.UserRepository {
@@ -29,13 +32,21 @@ func (r *RepositorySupplier) GetMenuRepository() interfaces.MenuRepository {
 }
 
 func (r *RepositorySupplier) GetAPIRepository() interfaces.APIRepository {
-    return r.apiRepository
+	return r.apiRepository
 }
 
-func (r *RepositorySupplier) GetImageRepository() interfaces.ImageRepository {
-    return r.imageRepository
+func (r *RepositorySupplier) GetOrgRepository() interfaces.OrgRepository {
+	return r.orgRepository
 }
 
-func (r *RepositorySupplier) GetArticleRepository() interfaces.ArticleRepository {
-    return r.articleRepository
+func (r *RepositorySupplier) GetLeetcodeUserDetailRepository() interfaces.LeetcodeUserDetailRepository {
+	return r.leetcodeUserDetailRepository
+}
+
+func (r *RepositorySupplier) GetLuoguUserDetailRepository() interfaces.LuoguUserDetailRepository {
+	return r.luoguUserDetailRepository
+}
+
+func (r *RepositorySupplier) GetOutboxRepository() interfaces.OutboxRepository {
+	return r.outboxRepository
 }

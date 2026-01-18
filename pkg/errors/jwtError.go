@@ -3,8 +3,8 @@ package errors
 import (
 	"errors"
 	"gorm.io/gorm"
-	"personal_blog/global"
-	"personal_blog/pkg/jwt"
+	"personal_assistant/global"
+	"personal_assistant/pkg/jwt"
 )
 
 // JWTError 定义JWT错误类型

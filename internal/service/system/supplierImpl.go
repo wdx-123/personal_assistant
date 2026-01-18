@@ -6,8 +6,8 @@ type serviceSupplier struct {
 	permissionService *PermissionService
 	baseService       *BaseService
 	userService       *UserService
-	imageService      *ImageService
-	articleSvc        *ArticleSvc
+	orgService        *OrgService
+	ojService         *OJService
 }
 
 func (s *serviceSupplier) GetJWTSvc() *JWTService {
@@ -22,11 +22,10 @@ func (s *serviceSupplier) GetBaseSvc() *BaseService {
 func (s *serviceSupplier) GetUserSvc() *UserService {
 	return s.userService
 }
-
-func (s *serviceSupplier) GetImageSvc() *ImageService {
-	return s.imageService
+func (s *serviceSupplier) GetOrgSvc() *OrgService {
+	return s.orgService
 }
 
-func (s *serviceSupplier) GetArticleSvc() *ArticleSvc {
-	return s.articleSvc
+func (s *serviceSupplier) GetOJSvc() *OJService {
+	return s.ojService
 }

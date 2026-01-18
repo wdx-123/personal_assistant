@@ -1,11 +1,12 @@
 package core
 
 import (
+	"os"
+	"personal_assistant/global"
+	"personal_assistant/task"
+
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
-	"os"
-	"personal_blog/global"
-	"personal_blog/task"
 )
 
 // ZapLogger 结构体实现了 cron.Logger 接口的 Info 和 Error 方法，这些方法用于接收 cron 包生成的日志并使用 zap 进行记录

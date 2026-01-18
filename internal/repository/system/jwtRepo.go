@@ -3,8 +3,8 @@ package system
 import (
 	"context"
 	"errors"
-	"personal_blog/internal/model/entity"
-	"personal_blog/internal/repository/interfaces"
+	"personal_assistant/internal/model/entity"
+	"personal_assistant/internal/repository/interfaces"
 	"time"
 
 	"gorm.io/gorm"

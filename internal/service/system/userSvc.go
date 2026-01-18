@@ -4,20 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/gin-contrib/sessions"
+	"personal_assistant/global"
+	"personal_assistant/internal/model/consts"
+	"personal_assistant/internal/repository/interfaces"
+
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid"
 	"github.com/mojocn/base64Captcha"
 	"go.uber.org/zap"
-	"personal_blog/global"
-	"personal_blog/internal/model/consts"
-	"personal_blog/internal/repository/interfaces"
 
-	"personal_blog/internal/model/dto/request"
-	"personal_blog/internal/model/entity"
-	"personal_blog/internal/repository"
-	"personal_blog/pkg/util"
-	"time"
+	"personal_assistant/internal/model/dto/request"
+	"personal_assistant/internal/model/entity"
+	"personal_assistant/internal/repository"
+	"personal_assistant/pkg/util"
 )
 
 type UserService struct {
@@ -36,119 +35,58 @@ func NewUserService(
 		permissionService: permissionService,
 	}
 }
-func (u *UserService) VerifyRegister(
-	ctx *gin.Context,
-	req *request.RegisterReq,
-) error {
-	global.Log.Info("开始验证用户注册信息",
-		zap.String("email", req.Email))
-
-	session := sessions.Default(ctx)
-
-	// 两次邮箱一致性判断
-	savedEmail := session.Get("email")
-	if savedEmail == nil {
-		global.Log.Error("会话中未找到邮箱信息",
-			zap.String("requestEmail", req.Email))
-		return errors.New("会话已过期，请重新发送验证码")
-	}
-
-	if savedEmail.(string) != req.Email {
-		global.Log.Error("邮箱不一致",
-			zap.String("sessionEmail", savedEmail.(string)),
-			zap.String("requestEmail", req.Email))
-		return errors.New("邮箱验证失败，请确认邮箱地址")
-	}
-
-	// 获取会话中存储的邮箱验证码
-	savedCode := session.Get("verification_code")
-	if savedCode == nil {
-		global.Log.Error("会话中未找到验证码",
-			zap.String("email", req.Email))
-		return errors.New("验证码已过期，请重新发送")
-	}
-
-	if savedCode.(string) != req.VerificationCode {
-		global.Log.Error("验证码不匹配",
-			zap.String("email", req.Email),
-			zap.String("inputCode", req.VerificationCode))
-		return errors.New("验证码错误，请检查后重试")
-	}
-
-	// 判断邮箱验证码是否过期
-	savedTime := session.Get("expire_time")
-	if savedTime == nil {
-		global.Log.Error("会话中未找到过期时间",
-			zap.String("email", req.Email))
-		return errors.New("验证码已过期，请重新发送")
-	}
-
-	if savedTime.(int64) < time.Now().Unix() {
-		global.Log.Error("验证码已过期",
-			zap.String("email", req.Email),
-			zap.Int64("expireTime", savedTime.(int64)),
-			zap.Int64("currentTime", time.Now().Unix()))
-		return errors.New("验证码已过期，请重新发送")
-	}
-
-	global.Log.Info("用户注册信息验证成功", zap.String("email", req.Email))
-	return nil
-}
 
 // Register 注册
 func (u *UserService) Register(
 	ctx *gin.Context,
 	req *request.RegisterReq,
 ) (*entity.User, error) {
-	// 检查邮箱是否已存在
-	exists, err := u.userRepo.ExistsByEmail(ctx, req.Email)
+	//// 1. 验证图片验证码
+	//if !base64Captcha.DefaultMemStore.Verify(req.CaptchaID, req.Captcha, true) {
+	//	return ni  ml, errors.New("验证码错误")
+	//}
+
+	// 2. 检查手机号是否已存在
+	exists, err := u.userRepo.ExistsByPhone(ctx, req.Phone)
 	if err != nil {
-		global.Log.Error("检查邮箱是否存在时发生错误",
-			zap.String("email", req.Email), zap.Error(err))
+		global.Log.Error("检查手机号是否存在时发生错误",
+			zap.String("phone", req.Phone), zap.Error(err))
 		return nil, errors.New("系统错误，请稍后重试")
 	}
 	if exists {
-		global.Log.Error("邮箱已被注册",
-			zap.String("email", req.Email))
-		return nil, errors.New("该邮箱已被注册")
+		global.Log.Error("手机号已被注册",
+			zap.String("phone", req.Phone))
+		return nil, errors.New("该手机号已被注册")
 	}
 
-	// 检查用户名是否已存在
-	exists, err = u.userRepo.ExistsByUsername(ctx, req.Username)
-	if err != nil {
-		global.Log.Error("检查用户名是否存在时发生错误",
-			zap.String("username", req.Username),
-			zap.Error(err))
-		return nil, errors.New("系统错误，请稍后重试")
-	}
-	if exists {
-		global.Log.Error("用户名已被注册",
-			zap.String("username", req.Username))
-		return nil, errors.New("该用户名已被注册")
-	}
-
-	// 创建用户实例（不直接设置RoleID，通过权限服务分配）
+	// 3. 创建用户实例（不直接设置RoleID，通过权限服务分配）
 	user := &entity.User{
 		Username: req.Username,
 		Password: util.BcryptHash(req.Password),
-		Email:    req.Email,
+		Phone:    req.Phone,
 		UUID:     uuid.Must(uuid.NewV4()),
-		Avatar:   "/image/avatar.jpg",
+		Avatar:   "", // 默认头像为空
 		Register: consts.Email,
 		// 不直接设置 RoleID，将通过权限服务分配角色
 	}
+
+	// 4. 处理组织选择
+	if req.OrgID > 0 {
+		user.CurrentOrgID = &req.OrgID
+	}
+
 	global.Log.Error(user.Password)
 
 	err = u.userRepo.Create(ctx, user)
 	if err != nil {
 		global.Log.Error("创建用户失败",
-			zap.String("email", req.Email),
+			zap.String("phone", req.Phone),
 			zap.String("username", req.Username),
 			zap.Error(err))
 		return nil, errors.New("创建用户失败，请稍后重试")
 	}
 
-	// 为新用户分配默认角色（从配置获取）
+	// 5. 为新用户分配默认角色（从配置获取）
 	defaultRoleCode := global.Config.System.DefaultRoleCode
 	if defaultRoleCode == "" {
 		defaultRoleCode = "user" // 兜底默认值
@@ -172,23 +110,51 @@ func (u *UserService) Register(
 			zap.Error(err))
 		return nil, fmt.Errorf("分配默认角色失败: %w", err)
 	}
-	return user, nil
+
+	// 6. 重新查询用户，确保返回包含关联数据（如CurrentOrg）的完整对象
+	// 这对于后续直接生成 Token 并返回完整信息至关重要
+	fullUser, err := u.userRepo.GetByID(ctx, user.ID)
+	if err != nil {
+		global.Log.Error("注册后获取用户信息失败", zap.Error(err))
+		// 如果获取失败，降级返回原始 user 对象（虽然缺少关联信息，但不影响核心流程）
+		return user, nil
+	}
+	return fullUser, nil
 }
 
-// EmailLogin 邮箱登录
-func (u *UserService) EmailLogin(
+// PhoneLogin 手机号登录
+func (u *UserService) PhoneLogin(
 	ctx context.Context,
-	userReq *entity.User,
-) (entity.User, error) {
-	user, err := u.userRepo.GetByEmail(ctx, userReq.Email) // 返回值，本身就可能是个空值
-
-	if err == nil {
-		if ok := util.BcryptCheck(userReq.Password, user.Password); !ok {
-			return entity.User{}, errors.New("邮箱或者验证码错误")
-		}
-		return *user, nil
+	req *request.LoginReq,
+) (*entity.User, error) {
+	// 1. 验证图片验证码
+	if !base64Captcha.DefaultMemStore.Verify(req.CaptchaID, req.Captcha, true) {
+		return nil, errors.New("验证码错误")
 	}
-	return entity.User{}, err
+
+	// 2. 根据手机号获取用户
+	user, err := u.userRepo.GetByPhone(ctx, req.Phone)
+	if err != nil {
+		global.Log.Error("根据手机号查询用户失败",
+			zap.String("phone", req.Phone),
+			zap.Error(err))
+		return nil, errors.New("账号或密码错误") // 模糊提示
+	}
+	if user == nil {
+		return nil, errors.New("账号或密码错误")
+	}
+
+	// 3. 验证密码
+	if !util.BcryptCheck(req.Password, user.Password) {
+		return nil, errors.New("账号或密码错误")
+	}
+
+	// 4. 检查是否冻结
+	if user.Freeze {
+		return nil, errors.New("账号已被冻结")
+	}
+
+	return user, nil
 }
 
 // VerifyCode 校验验证码是否正确

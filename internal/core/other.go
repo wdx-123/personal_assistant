@@ -4,8 +4,8 @@ import (
 	"github.com/songzhibin97/gkit/cache/local_cache"
 	"go.uber.org/zap"
 	"os"
-	"personal_blog/global"
-	"personal_blog/pkg/util"
+	"personal_assistant/global"
+	"personal_assistant/pkg/util"
 )
 
 func OtherInit() {

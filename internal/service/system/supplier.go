@@ -1,14 +1,14 @@
 package system
 
-import "personal_blog/internal/repository"
+import "personal_assistant/internal/repository"
 
 type Supplier interface {
 	GetJWTSvc() *JWTService
 	GetPermissionSvc() *PermissionService
 	GetBaseSvc() *BaseService
 	GetUserSvc() *UserService
-	GetImageSvc() *ImageService
-	GetArticleSvc() *ArticleSvc
+	GetOrgSvc() *OrgService
+	GetOJSvc() *OJService
 }
 
 // SetUp 工厂函数，统一管理
@@ -17,13 +17,11 @@ func SetUp(repositoryGroup *repository.Group) Supplier {
 	ss.jwtService = NewJWTService(repositoryGroup)
 	ss.permissionService = NewPermissionService(repositoryGroup)
 	ss.baseService = NewBaseService() // 用不到repo层
+	ss.orgService = NewOrgService(repositoryGroup)
+	ss.ojService = NewOJService(repositoryGroup)
 
 	// UserService 需要依赖 PermissionService，所以在 permissionService 初始化后创建
 	// 创建用户服务（注入权限服务）
 	ss.userService = NewUserService(repositoryGroup, ss.permissionService)
-	// 图片服务依赖仓储与存储驱动
-	ss.imageService = NewImageService(repositoryGroup)
-	// 文章服务
-	ss.articleSvc = NewArticleSvc(repositoryGroup)
 	return ss
 }

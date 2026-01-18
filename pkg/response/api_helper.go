@@ -1,8 +1,8 @@
 package response
 
 import (
-	"personal_blog/global"
-	erro "personal_blog/pkg/errors"
+	"personal_assistant/global"
+	erro "personal_assistant/pkg/errors"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

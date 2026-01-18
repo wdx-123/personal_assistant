@@ -3,8 +3,8 @@ package system
 import (
 	"context"
 	"gorm.io/gorm"
-	"personal_blog/internal/model/entity"
-	"personal_blog/internal/repository/interfaces"
+	"personal_assistant/internal/model/entity"
+	"personal_assistant/internal/repository/interfaces"
 )
 
 type menuRepository struct {

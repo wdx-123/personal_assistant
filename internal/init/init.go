@@ -2,39 +2,42 @@ package init
 
 import (
 	"context"
-	"personal_blog/flag"
-	"personal_blog/global"
-	"personal_blog/internal/controller"
-	apiSystem "personal_blog/internal/controller/system"
-	"personal_blog/internal/core"
-	"personal_blog/internal/repository"
-	"personal_blog/internal/repository/adapter"
-	"personal_blog/pkg/storage"
-	_ "personal_blog/pkg/storage/local"
-	_ "personal_blog/pkg/storage/qiniu"
+	"os"
+	"personal_assistant/flag"
+	"personal_assistant/global"
+	"personal_assistant/internal/controller"
+	apiSystem "personal_assistant/internal/controller/system"
+	"personal_assistant/internal/core"
+	"personal_assistant/internal/infrastructure"
+	"personal_assistant/internal/repository"
+	"personal_assistant/internal/repository/adapter"
 	"time"
 
 	"go.uber.org/zap"
 
-	"personal_blog/internal/service"
-	"personal_blog/internal/service/system"
+	"personal_assistant/internal/service"
+	"personal_assistant/internal/service/system"
 )
 
 func Init() {
 	// 初始化配置
 	core.InitConfig("configs")
-	// 初始化存储驱动（根据全局配置选择 current 驱动）
-	storage.InitFromConfig()
 	// 初始化日志
 	global.Log = core.InitLogger()
+	infrastructure.Init()
 	// 为jwt黑名单开启本地存储
 	core.OtherInit()
 	// 连接数据库，初始化gorm
 	global.DB = core.InitGorm()
+	// 开启自动迁移
+	if global.Config.System.AutoMigrate {
+		if err := flag.SQL(); err != nil {
+			global.Log.Error("auto migrate failed", zap.Error(err))
+			os.Exit(1)
+		}
+	}
 	// 连接redis
 	global.Redis = core.ConnectRedis()
-	// 连接es
-	global.ESClient = core.ConnectEs()
 	// 初始化Casbin
 	core.InitCasbin()
 	// 初始化flag

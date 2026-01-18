@@ -2,7 +2,7 @@ package system
 
 import (
 	"github.com/gin-gonic/gin"
-	"personal_blog/internal/controller"
+	"personal_assistant/internal/controller"
 )
 
 type BaseRouter struct{}

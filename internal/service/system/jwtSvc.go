@@ -3,14 +3,14 @@ package system
 import (
 	"context"
 	"errors"
-	"personal_blog/global"
-	"personal_blog/internal/model/dto/request"
-	"personal_blog/internal/model/dto/response"
-	"personal_blog/internal/model/entity"
-	"personal_blog/internal/repository"
-	erro "personal_blog/pkg/errors"
-	"personal_blog/pkg/jwt"
-	"personal_blog/pkg/util"
+	"personal_assistant/global"
+	"personal_assistant/internal/model/dto/request"
+	"personal_assistant/internal/model/dto/response"
+	"personal_assistant/internal/model/entity"
+	"personal_assistant/internal/repository"
+	erro "personal_assistant/pkg/errors"
+	"personal_assistant/pkg/jwt"
+	"personal_assistant/pkg/util"
 
 	"github.com/go-redis/redis"
 
@@ -36,13 +36,13 @@ func (j *JWTService) SetRedisJWT(jwt string, uuid uuid.UUID) error {
 		return err
 	}
 	// 设置JWT在Redis中的过期时间
-	return global.Redis.Set(uuid.String(), jwt, dr).Err()
+	return global.Redis.Set(context.Background(), uuid.String(), jwt, dr).Err()
 }
 
 // GetRedisJWT 从Redis中获取JWT
-func (j *JWTService) GetRedisJWT(uuid uuid.UUID) (string, error) {
+func (j *JWTService) GetRedisJWT(ctx context.Context, uuid uuid.UUID) (string, error) {
 	// 从Redis获取指定uuid对应的JWT
-	return global.Redis.Get(uuid.String()).Result()
+	return global.Redis.Get(ctx, uuid.String()).Result()
 }
 
 // JoinInBlacklist 将JWT添加到黑名单

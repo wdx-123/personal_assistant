@@ -1,15 +1,15 @@
 package system
 
 import (
-	"personal_blog/internal/service"
+	"personal_assistant/internal/service"
 )
 
 type Supplier interface {
 	GetRefreshTokenCtrl() *RefreshTokenCtrl
 	GetBaseCtrl() *BaseCtrl
 	GetUserCtrl() *UserCtrl
-	GetImageCtrl() *ImageCtrl
-	GetArticleCtrl() *ArticleCtrl
+	GetOrgCtrl() *OrgCtrl
+	GetOJCtrl() *OJCtrl
 }
 
 // SetUp 工厂函数-单例
@@ -25,12 +25,11 @@ func SetUp(service *service.Group) Supplier {
 		userService: service.SystemServiceSupplier.GetUserSvc(),
 		jwtService:  service.SystemServiceSupplier.GetJWTSvc(),
 	}
-	cs.imageCtrl = &ImageCtrl{
-		imageService: service.SystemServiceSupplier.GetImageSvc(),
-		jwtService:   service.SystemServiceSupplier.GetJWTSvc(),
+	cs.orgCtrl = &OrgCtrl{
+		orgService: service.SystemServiceSupplier.GetOrgSvc(),
 	}
-	cs.articleCtrl = &ArticleCtrl{
-		articleSvc: service.SystemServiceSupplier.GetArticleSvc(),
+	cs.ojCtrl = &OJCtrl{
+		ojService: service.SystemServiceSupplier.GetOJSvc(),
 	}
 	return cs
 }

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"personal_blog/global"
+	"personal_assistant/global"
 	"time"
 )
 

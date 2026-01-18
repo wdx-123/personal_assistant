@@ -2,8 +2,8 @@ package system
 
 import (
 	"context"
-	"personal_blog/internal/model/entity"
-	"personal_blog/internal/repository/interfaces"
+	"personal_assistant/internal/model/entity"
+	"personal_assistant/internal/repository/interfaces"
 
 	"gorm.io/gorm"
 )

@@ -2,7 +2,7 @@ package core
 
 import (
 	"go.uber.org/zap"
-	"personal_blog/global"
+	"personal_assistant/global"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"

@@ -1,7 +1,7 @@
 package service
 
 import (
-	"personal_blog/internal/service/system"
+	"personal_assistant/internal/service/system"
 )
 
 type Group struct {
