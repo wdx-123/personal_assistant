@@ -24,5 +24,6 @@ func SQL() error {
 		&entity.Menu{},           // 菜单表
 		&entity.UserRole{},       // 用户角色关联表
 		&entity.API{},            // api表
+		&entity.OutboxEvent{},    // Outbox事件表
 	)
 }

@@ -31,6 +31,40 @@ func (r *leetcodeUserDetailRepository) GetByUserID(ctx context.Context, userID u
 	return &detail, nil
 }
 
+func (r *leetcodeUserDetailRepository) GetByUserIDs(
+	ctx context.Context,
+	userIDs []uint,
+) ([]*entity.LeetcodeUserDetail, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	var details []*entity.LeetcodeUserDetail
+	err := r.db.WithContext(ctx).
+		Where("user_id IN ?", userIDs).
+		Find(&details).Error
+	if err != nil {
+		return nil, err
+	}
+	return details, nil
+}
+
+func (r *leetcodeUserDetailRepository) ListByOrgID(
+	ctx context.Context,
+	orgID uint,
+) ([]*entity.LeetcodeUserDetail, error) {
+	var details []*entity.LeetcodeUserDetail
+	err := r.db.WithContext(ctx).
+		Table("leetcode_user_details").
+		Joins("JOIN users ON users.id = leetcode_user_details.user_id").
+		Where("users.current_org_id = ?", orgID).
+		Select("leetcode_user_details.*").
+		Find(&details).Error
+	if err != nil {
+		return nil, err
+	}
+	return details, nil
+}
+
 func (r *leetcodeUserDetailRepository) UpsertByUserID(
 	ctx context.Context,
 	detail *entity.LeetcodeUserDetail,
@@ -57,6 +91,7 @@ func (r *leetcodeUserDetailRepository) UpsertByUserID(
 	existing.EasyNumber = detail.EasyNumber
 	existing.MediumNumber = detail.MediumNumber
 	existing.HardNumber = detail.HardNumber
+	existing.TotalNumber = detail.TotalNumber
 
 	if err := r.db.WithContext(ctx).Save(existing).Error; err != nil {
 		return nil, err
@@ -64,3 +99,9 @@ func (r *leetcodeUserDetailRepository) UpsertByUserID(
 	return existing, nil
 }
 
+func (r *leetcodeUserDetailRepository) DeleteByUserID(ctx context.Context, userID uint) error {
+	// 由于配置了 OnDelete:CASCADE，删除 UserDetail 会自动删除关联的 UserQuestion
+	return r.db.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Delete(&entity.LeetcodeUserDetail{}).Error
+}

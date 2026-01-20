@@ -36,8 +36,12 @@ type RemoteHTTPError struct {
 	Path       string
 	StatusCode int
 	Body       string
+	Message    string // 解析后的错误信息
 }
 
 func (e *RemoteHTTPError) Error() string {
-	return fmt.Sprintf("luogu remote error: status=%d url=%s", e.StatusCode, e.URL)
+	if e.Message != "" {
+		return fmt.Sprintf("luogu remote error: %s (status=%d)", e.Message, e.StatusCode)
+	}
+	return fmt.Sprintf("luogu remote error: status=%d url=%s body=%s", e.StatusCode, e.URL, e.Body)
 }

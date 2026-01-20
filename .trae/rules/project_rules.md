@@ -11,3 +11,6 @@
 4. **Context**：DB操作/长链路调用必须传 `context.Context`。
 5. **实现顺序**：DTO → Repository → Service → Controller → Router（`internal/router`）。
 6. 路由入口 `router.go` 仅建 Group/挂中间件；具体业务路由按领域拆到 `internal/router/system`，每个模块提供 `InitXRouter(*gin.RouterGroup)`；入口通过 `GroupApp.System` 统一调用注册。
+7. 具体功能初始化优先放在 `internal/core`（显式声明依赖且复用 `global.*` 单例），`internal/init/init.go` 仅按依赖顺序统一编排调用与启动后台任务，禁止重复创建或多处启动同一组件。
+8. 新增加代码时，请加上必要的注释。
+9.**禁止硬编码**：所有可变参数（超时、重试、路径等）必须定义在 `internal/model/config` 并由 `configs.yaml` 驱动，业务代码仅通过 `global.Config` 调用，代码内仅保留必要的零值兜底。

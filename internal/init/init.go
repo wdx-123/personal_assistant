@@ -2,6 +2,7 @@ package init
 
 import (
 	"context"
+	"github.com/joho/godotenv"
 	"os"
 	"personal_assistant/flag"
 	"personal_assistant/global"
@@ -20,6 +21,9 @@ import (
 )
 
 func Init() {
+	// 尝试加载 .env 文件，
+	// 如果不存在也不报错（生产环境可能直接用环境变量）
+	_ = godotenv.Load()
 	// 初始化配置
 	core.InitConfig("configs")
 	// 初始化日志
@@ -42,13 +46,21 @@ func Init() {
 	core.InitCasbin()
 	// 初始化flag
 	flag.InitFlag()
-	// 启动定时任务
-	core.InitCron()
-
 	// 初始化Repository层
 	mysqlAdapter := &adapter.MySQLAdapter{}
 	mysqlAdapter.SetConnection(global.DB) // 使用现有的数据库连接
 	repository.InitRepositoryGroupWithAdapter(mysqlAdapter)
+	// 题库预热，luogu题库所有题目进行存储
+	core.StartLuoguQuestionBankWarmup(
+		context.Background(),
+		repository.GroupApp.SystemRepositorySupplier.GetLuoguQuestionBankRepository(),
+	)
+
+	core.StartOutboxRelay(
+		context.Background(),
+		repository.GroupApp.SystemRepositorySupplier.GetOutboxRepository(),
+		global.Redis,
+		global.Log)
 
 	// 加载jwt黑名单（使用Repository层）
 	// 为初始化操作设置30秒超时，避免启动时卡死
@@ -60,6 +72,11 @@ func Init() {
 	service.GroupApp = &service.Group{
 		SystemServiceSupplier: system.SetUp(repository.GroupApp),
 	}
+	if err := core.InitSubscribers(
+		context.Background(),
+		service.GroupApp.SystemServiceSupplier.GetOJSvc()); err != nil {
+		global.Log.Error("init subscribers failed", zap.Error(err))
+	}
 
 	// 控制函数
 	controller.ApiGroupApp = &controller.ApiGroup{
@@ -70,6 +87,8 @@ func Init() {
 	if err := permissionService.SyncAllPermissionsToCasbin(ctx); err != nil {
 		global.Log.Error("权限同步失败", zap.Error(err))
 	}
+	// 启动定时任务
+	core.InitCron()
 
 	// 开启函数
 	core.RunServer()

@@ -96,6 +96,24 @@ func (r *UserGormRepository) GetByPhone(
 	return &user, nil
 }
 
+// GetByIDs 批量获取用户
+func (r *UserGormRepository) GetByIDs(
+	ctx context.Context,
+	ids []uint,
+) ([]*entity.User, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var users []*entity.User
+	err := r.db.WithContext(ctx).
+		Where("id IN ?", ids).
+		Find(&users).Error
+	if err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
 // Create 创建用户
 func (r *UserGormRepository) Create(
 	ctx context.Context,

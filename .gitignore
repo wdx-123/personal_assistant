@@ -1,12 +1,14 @@
-# ©иж╢ппнд╪Ч
+# О©╫О©╫ж╢О©╫О©╫О©╫д╪О©╫
 *.exe
 cmd.exe
 blog-service.exe
 
-# хуж╬нд╪Ч
+# О©╫О©╫ж╬О©╫д╪О©╫
 *.log
 log/
 
-# аый╠нд╪Ч
+# О©╫О©╫й╠О©╫д╪О©╫
 *.tmp
 *.temp
+.env
+configs/configs.yaml

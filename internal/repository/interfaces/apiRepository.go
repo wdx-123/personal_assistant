@@ -7,22 +7,32 @@ import (
 
 // APIRepository API仓储接口
 type APIRepository interface {
-	// 基础CRUD操作
+	// GetByID 根据ID获取API
 	GetByID(ctx context.Context, id uint) (*entity.API, error)
+	// GetByPathAndMethod 根据路径和方法获取API
 	GetByPathAndMethod(ctx context.Context, path, method string) (*entity.API, error)
+	// Create 创建API
 	Create(ctx context.Context, api *entity.API) error
+	// Update 更新API
 	Update(ctx context.Context, api *entity.API) error
+	// Delete 删除API
 	Delete(ctx context.Context, id uint) error
 
-	// 业务相关查询
+	// GetAPIList 获取API列表（分页）
 	GetAPIList(ctx context.Context, page, pageSize int) ([]*entity.API, int64, error)
+	// GetAllAPIs 获取所有API
 	GetAllAPIs(ctx context.Context) ([]*entity.API, error)
+	// GetAPIsByGroup 根据分组获取API
 	GetAPIsByGroup(ctx context.Context, groupID uint) ([]*entity.API, error)
+	// GetActiveAPIs 获取所有启用的API
 	GetActiveAPIs(ctx context.Context) ([]*entity.API, error)
+	// ExistsByPathAndMethod 检查路径和方法组合是否存在
 	ExistsByPathAndMethod(ctx context.Context, path, method string) (bool, error)
 
-	// 权限查询
+	// GetAPIsByUserID 获取用户的API权限列表
 	GetAPIsByUserID(ctx context.Context, userID uint) ([]*entity.API, error)
+	// GetAPIsByRoleID 获取角色的API权限列表
 	GetAPIsByRoleID(ctx context.Context, roleID uint) ([]*entity.API, error)
+	// CheckUserAPIPermission 检查用户是否有特定API权限
 	CheckUserAPIPermission(ctx context.Context, userID uint, path, method string) (bool, error)
 }

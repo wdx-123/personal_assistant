@@ -16,6 +16,8 @@ type Supplier interface {
 	GetOrgRepository() interfaces.OrgRepository
 	GetLeetcodeUserDetailRepository() interfaces.LeetcodeUserDetailRepository
 	GetLuoguUserDetailRepository() interfaces.LuoguUserDetailRepository
+	GetLuoguQuestionBankRepository() interfaces.LuoguQuestionBankRepository
+	GetLuoguUserQuestionRepository() interfaces.LuoguUserQuestionRepository
 	GetOutboxRepository() interfaces.OutboxRepository
 }
 
@@ -29,6 +31,8 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 	var orgRepo interfaces.OrgRepository
 	var leetcodeUserDetailRepo interfaces.LeetcodeUserDetailRepository
 	var luoguUserDetailRepo interfaces.LuoguUserDetailRepository
+	var luoguQuestionBankRepo interfaces.LuoguQuestionBankRepository
+	var luoguUserQuestionRepo interfaces.LuoguUserQuestionRepository
 	var outboxRepo interfaces.OutboxRepository
 
 	switch factoryConfig.DatabaseType {
@@ -42,6 +46,8 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			orgRepo = NewOrgRepository(db)
 			leetcodeUserDetailRepo = NewLeetcodeUserDetailRepository(db)
 			luoguUserDetailRepo = NewLuoguUserDetailRepository(db)
+			luoguQuestionBankRepo = NewLuoguQuestionBankRepository(db)
+			luoguUserQuestionRepo = NewLuoguUserQuestionRepository(db)
 			outboxRepo = NewOutboxRepository(db)
 		}
 	case adapter.MongoDB:
@@ -61,6 +67,8 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			orgRepo = NewOrgRepository(db)
 			leetcodeUserDetailRepo = NewLeetcodeUserDetailRepository(db)
 			luoguUserDetailRepo = NewLuoguUserDetailRepository(db)
+			luoguQuestionBankRepo = NewLuoguQuestionBankRepository(db)
+			luoguUserQuestionRepo = NewLuoguUserQuestionRepository(db)
 			outboxRepo = NewOutboxRepository(db)
 		}
 	}
@@ -73,6 +81,8 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 		orgRepository:                orgRepo,
 		leetcodeUserDetailRepository: leetcodeUserDetailRepo,
 		luoguUserDetailRepository:    luoguUserDetailRepo,
+		luoguQuestionBankRepository:  luoguQuestionBankRepo,
+		luoguUserQuestionRepository:  luoguUserQuestionRepo,
 		outboxRepository:             outboxRepo,
 	}
 }

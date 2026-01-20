@@ -23,7 +23,11 @@ func InitConfig(path string) {
 	viper.SetConfigName("configs")
 
 	if err := viper.ReadInConfig(); err != nil {
-		global.Log.Fatal("配置文件加载失败") // 早期处理错误
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			global.Log.Warn("配置文件未找到，将仅使用环境变量", zap.Error(err))
+		} else {
+			global.Log.Fatal("配置文件加载失败", zap.Error(err))
+		}
 	}
 
 	// 绑定验证码相关配置到环境变量
@@ -66,12 +70,6 @@ func InitConfig(path string) {
 	_ = viper.BindEnv("static.max_size", "STATIC_MAX_SIZE")
 	_ = viper.BindEnv("static.max_uploads", "STATIC_MAX_UPLOADS")
 
-	// 绑定Elasticsearch相关配置到环境变量（补充完整）
-	_ = viper.BindEnv("es.url", "ES_URL")
-	_ = viper.BindEnv("es.username", "ES_USERNAME")
-	_ = viper.BindEnv("es.password", "ES_PASSWORD")
-	_ = viper.BindEnv("es.is_console_print", "ES_IS_CONSOLE_PRINT")
-
 	// 绑定高德地图相关配置到环境变量
 	_ = viper.BindEnv("gaode.enable", "GAODE_ENABLE")
 	_ = viper.BindEnv("gaode.key", "GAODE_KEY")
@@ -106,6 +104,17 @@ func InitConfig(path string) {
 	_ = viper.BindEnv("redis.address", "REDIS_ADDRESS")
 	_ = viper.BindEnv("redis.password", "REDIS_PASSWORD")
 	_ = viper.BindEnv("redis.db", "REDIS_DB")
+
+	_ = viper.BindEnv("task.outbox_cleanup_retention_days", "TASK_OUTBOX_CLEANUP_RETENTION_DAYS")
+	_ = viper.BindEnv("task.luogu_question_bank_warmup_enabled", "TASK_LUOGU_QUESTION_BANK_WARMUP_ENABLED")
+	_ = viper.BindEnv("task.luogu_question_bank_warmup_batch_size", "TASK_LUOGU_QUESTION_BANK_WARMUP_BATCH_SIZE")
+	_ = viper.BindEnv("task.luogu_question_bank_warmup_lock_ttl_seconds", "TASK_LUOGU_QUESTION_BANK_WARMUP_LOCK_TTL_SECONDS")
+	_ = viper.BindEnv("task.ranking_sync_interval_seconds", "TASK_RANKING_SYNC_INTERVAL_SECONDS")
+	_ = viper.BindEnv("messaging.redis_stream_read_count", "MESSAGING_REDIS_STREAM_READ_COUNT")
+	_ = viper.BindEnv("messaging.redis_stream_block_ms", "MESSAGING_REDIS_STREAM_BLOCK_MS")
+	_ = viper.BindEnv("messaging.luogu_bind_topic", "MESSAGING_LUOGU_BIND_TOPIC")
+	_ = viper.BindEnv("messaging.luogu_bind_group", "MESSAGING_LUOGU_BIND_GROUP")
+	_ = viper.BindEnv("messaging.luogu_bind_consumer", "MESSAGING_LUOGU_BIND_CONSUMER")
 
 	// 绑定系统服务相关配置到环境变量（补充完整）
 	_ = viper.BindEnv("system.host", "SYSTEM_HOST")

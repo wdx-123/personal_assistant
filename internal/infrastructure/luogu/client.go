@@ -2,6 +2,7 @@ package luogu
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -182,6 +183,16 @@ func (c *Client) post(ctx context.Context, path string, body any, out any) error
 			StatusCode: resp.StatusCode(),
 			Body:       resp.String(),
 		}
+
+		// 尝试解析结构化错误
+		var errResp struct {
+			OK    bool   `json:"ok"`
+			Error string `json:"error"`
+		}
+		if jsonErr := json.Unmarshal(resp.Body(), &errResp); jsonErr == nil && errResp.Error != "" {
+			httpErr.Message = errResp.Error
+		}
+
 		c.logError("luogu remote http error", httpErr, endpoint, resp.StatusCode())
 		return httpErr
 	}

@@ -5,69 +5,77 @@ import (
 	"fmt"
 	"personal_assistant/global"
 	"personal_assistant/internal/repository"
+	"personal_assistant/internal/service"
 	"time"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
 )
 
-// OutboxRelayTask 轮询Outbox表并推送到Redis Stream
-func OutboxRelayTask() {
+func OutboxCleanupTask() {
 	ctx := context.Background()
 	repo := repository.GroupApp.SystemRepositorySupplier.GetOutboxRepository()
 
-	// 1. 获取待发布事件
-	events, err := repo.GetPendingEvents(ctx, 100) // 每次最多取100条
-	if err != nil {
-		global.Log.Error("OutboxRelay: 获取待发布事件失败", zap.Error(err))
+	days := global.Config.Task.OutboxCleanupRetentionDays
+	if days <= 0 {
+		days = 7 // 默认 7 天
+	}
+	before := time.Now().Add(time.Duration(-days) * 24 * time.Hour)
+
+	if err := repo.DeletePublishedBefore(ctx, before); err != nil {
+		global.Log.Error("OutboxCleanup: 清理失败", zap.Error(err))
+	}
+}
+
+func LuoguSyncTask() {
+	ctx := context.Background()
+	// 注意: 确保 service.GroupApp 已经初始化
+	if service.GroupApp == nil || service.GroupApp.SystemServiceSupplier == nil {
+		global.Log.Error("LuoguSyncTask: service group not initialized")
 		return
 	}
+	svc := service.GroupApp.SystemServiceSupplier.GetOJSvc()
+	if err := svc.SyncAllLuoguUsers(ctx); err != nil {
+		global.Log.Error("LuoguSyncTask failed", zap.Error(err))
+	} else {
+		global.Log.Info("LuoguSyncTask completed successfully")
+	}
+}
 
-	if len(events) == 0 {
+func RankingSyncTask() {
+	ctx := context.Background()
+	if service.GroupApp == nil || service.GroupApp.SystemServiceSupplier == nil {
+		global.Log.Error("RankingSyncTask: service group not initialized")
 		return
 	}
-
-	for _, event := range events {
-		// 2. 推送到 Redis Stream
-		err := global.Redis.XAdd(ctx, &redis.XAddArgs{
-			Stream: event.EventType, // 使用事件类型作为 Stream Key
-			Values: map[string]interface{}{
-				"event_id":       event.EventID,
-				"event_type":     event.EventType,
-				"aggregate_id":   event.AggregateID,
-				"aggregate_type": event.AggregateType,
-				"payload":        event.Payload,
-				"created_at":     event.CreatedAt.Format(time.RFC3339),
-			},
-		}).Err()
-
-		if err != nil {
-			global.Log.Error("OutboxRelay: 推送Redis失败",
-				zap.String("event_id", event.EventID),
-				zap.Error(err))
-
-			// 标记失败
-			if markErr := repo.MarkAsFailed(ctx, event.EventID, err.Error()); markErr != nil {
-				global.Log.Error("OutboxRelay: 标记失败状态出错", zap.Error(markErr))
-			}
-			continue
-		}
-
-		// 3. 标记成功
-		if err := repo.MarkAsPublished(ctx, event.EventID); err != nil {
-			global.Log.Error("OutboxRelay: 标记发布状态出错", zap.Error(err))
-		}
+	svc := service.GroupApp.SystemServiceSupplier.GetOJSvc()
+	if err := svc.RebuildRankingCaches(ctx); err != nil {
+		global.Log.Error("RankingSyncTask failed", zap.Error(err))
+	} else {
+		global.Log.Info("RankingSyncTask completed successfully")
 	}
 }
 
 func RegisterScheduledTasks(c *cron.Cron) error {
-	// 注册 Outbox Relay 任务，每秒执行一次
-	// 注意：robfig/cron/v3 默认只支持分钟级，需要开启秒级支持或使用 @every 1s
-	// 假设 core/corn.go 中使用了 WithSeconds() 选项，或者我们使用 @every 1s 语法（v3支持）
-	_, err := c.AddFunc("@every 1s", OutboxRelayTask)
+	_, err := c.AddFunc("@daily", OutboxCleanupTask)
 	if err != nil {
-		return fmt.Errorf("注册OutboxRelay任务失败: %w", err)
+		return fmt.Errorf("注册OutboxCleanup任务失败: %w", err)
+	}
+
+	// 洛谷同步任务 - 每小时执行一次
+	_, err = c.AddFunc("@hourly", LuoguSyncTask)
+	if err != nil {
+		return fmt.Errorf("注册LuoguSyncTask任务失败: %w", err)
+	}
+
+	interval := global.Config.Task.RankingSyncIntervalSeconds
+	if interval <= 0 {
+		interval = 300
+	}
+	spec := fmt.Sprintf("@every %ds", interval)
+	_, err = c.AddFunc(spec, RankingSyncTask)
+	if err != nil {
+		return fmt.Errorf("注册RankingSyncTask任务失败: %w", err)
 	}
 
 	return nil

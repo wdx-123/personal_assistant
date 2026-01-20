@@ -12,6 +12,8 @@ type RepositorySupplier struct {
 
 	leetcodeUserDetailRepository interfaces.LeetcodeUserDetailRepository
 	luoguUserDetailRepository    interfaces.LuoguUserDetailRepository
+	luoguQuestionBankRepository  interfaces.LuoguQuestionBankRepository
+	luoguUserQuestionRepository  interfaces.LuoguUserQuestionRepository
 	outboxRepository             interfaces.OutboxRepository
 }
 
@@ -45,6 +47,14 @@ func (r *RepositorySupplier) GetLeetcodeUserDetailRepository() interfaces.Leetco
 
 func (r *RepositorySupplier) GetLuoguUserDetailRepository() interfaces.LuoguUserDetailRepository {
 	return r.luoguUserDetailRepository
+}
+
+func (r *RepositorySupplier) GetLuoguQuestionBankRepository() interfaces.LuoguQuestionBankRepository {
+	return r.luoguQuestionBankRepository
+}
+
+func (r *RepositorySupplier) GetLuoguUserQuestionRepository() interfaces.LuoguUserQuestionRepository {
+	return r.luoguUserQuestionRepository
 }
 
 func (r *RepositorySupplier) GetOutboxRepository() interfaces.OutboxRepository {

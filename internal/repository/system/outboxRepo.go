@@ -25,11 +25,10 @@ func (r *outboxRepository) CreateInTx(tx *gorm.DB, event *entity.OutboxEvent) er
 	return tx.Create(event).Error
 }
 
-func (r *outboxRepository) GetPendingEvents(ctx context.Context, limit int) ([]*entity.OutboxEvent, error) {
+func (r *outboxRepository) GetPendingEvents(ctx context.Context, limit int, maxRetries int) ([]*entity.OutboxEvent, error) {
 	var events []*entity.OutboxEvent
-	// 查询 status=pending 且 retry_count < 3 的事件，按创建时间排序
 	err := r.db.WithContext(ctx).
-		Where("status = ? AND retry_count < ?", entity.OutboxEventStatusPending, 3).
+		Where("status = ? AND retry_count < ?", entity.OutboxEventStatusPending, maxRetries).
 		Order("created_at ASC").
 		Limit(limit).
 		Find(&events).Error
@@ -47,13 +46,29 @@ func (r *outboxRepository) MarkAsPublished(ctx context.Context, eventID string) 
 		}).Error
 }
 
-func (r *outboxRepository) MarkAsFailed(ctx context.Context, eventID string, errorMsg string) error {
+func (r *outboxRepository) MarkAsFailed(
+	ctx context.Context,
+	eventID string,
+	errorMsg string,
+	maxRetries int,
+) error {
 	return r.db.WithContext(ctx).
 		Model(&entity.OutboxEvent{}).
 		Where("event_id = ?", eventID).
 		Updates(map[string]interface{}{
-			"status":        entity.OutboxEventStatusFailed,
+			"status": gorm.Expr(
+				"CASE WHEN retry_count + 1 >= ? THEN ? ELSE ? END",
+				maxRetries,
+				entity.OutboxEventStatusFailed,
+				entity.OutboxEventStatusPending,
+			),
 			"error_message": errorMsg,
 			"retry_count":   gorm.Expr("retry_count + 1"),
 		}).Error
+}
+
+func (r *outboxRepository) DeletePublishedBefore(ctx context.Context, before time.Time) error {
+	return r.db.WithContext(ctx).
+		Where("status = ? AND published_at IS NOT NULL AND published_at < ?", entity.OutboxEventStatusPublished, before).
+		Delete(&entity.OutboxEvent{}).Error
 }
