@@ -34,7 +34,7 @@ zap:
 jwt:
   access_token_secret: a8f5f167f44f4964e6c998dee827110c3b2e5a8b5d2f8e4c9a1b3d7f6e0c2a4b  # 访问令牌密钥，用于签名和验证访问令牌
   refresh_token_secret: b9e6e278e55e5a75f7d099eff938221d4c3f6b9c6e3f9f5d0a2c4e8g7f1d3b5c  # 刷新令牌密钥，用于签名和验证刷新令牌
-  access_token_expiry_time: 15m   # 访问令牌过期时间，2小时后需要刷新
+  access_token_expiry_time: 20s   # 访问令牌过期时间，2小时后需要刷新
   refresh_token_expiry_time: 15d  # 刷新令牌过期时间，7天后需要重新登录
   issuer: go_blog system               # JWT 发行者标识，用于标识令牌的发行方
 
@@ -69,10 +69,10 @@ gaode:
 website:
   logo: ""                                    # 网站小图标/Logo，用于浏览器标签页显示
   full_logo: ""                               # 网站完整Logo，用于页面头部显示
-  title: 十二的个人博客                  # 网站标题，显示在浏览器标题栏
-  slogan: 博客标题                             # 网站中文标语/口号
+  title: 个人助手                  # 网站标题，显示在浏览器标题栏
+  slogan: 标题                             # 网站中文标语/口号
   slogan_en: Blog Title                       # 网站英文标语/口号
-  description: 博客描述                        # 网站描述，用于SEO和页面介绍
+  description: 描述                        # 网站描述，用于SEO和页面介绍
   version: 1.0.0                             # 网站版本号
   created_at: "2025-1-15"                    # 网站创建日期
   icp_filing: icp备案号                       # ICP备案号，中国大陆网站必需
@@ -140,7 +140,12 @@ task:
   luogu_question_bank_warmup_enabled: true
   luogu_question_bank_warmup_batch_size: 500
   luogu_question_bank_warmup_lock_ttl_seconds: 300
+  leetcode_question_bank_warmup_enabled: true
+  leetcode_question_bank_warmup_batch_size: 500
+  leetcode_question_bank_warmup_lock_ttl_seconds: 300
   luogu_sync_user_interval_seconds: 10
+  leetcode_sync_user_interval_seconds: 10 # 力扣用户同步间隔秒数
+  leetcode_sync_interval_seconds: 3600 # 力扣全量同步间隔秒数
   ranking_sync_interval_seconds: 3600
 messaging:
   redis_stream_read_count: 1
@@ -148,3 +153,6 @@ messaging:
   luogu_bind_topic: "luogu.bind"
   luogu_bind_group: "luogu_bind_group"
   luogu_bind_consumer: "luogu_bind_consumer"
+  leetcode_bind_topic: "leetcode.bind"
+  leetcode_bind_group: "leetcode_bind_group"
+  leetcode_bind_consumer: "leetcode_bind_consumer"

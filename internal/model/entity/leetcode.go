@@ -1,5 +1,7 @@
 package entity
 
+import "time"
+
 // 多对多模型，并且通过级联！
 // 在删除leetcodeUserDetail/LeetcodeQuestionBank时，会级联删除leetcodeUserQuestion
 
@@ -13,6 +15,8 @@ type LeetcodeUserDetail struct {
 	MediumNumber int `json:"medium_number" gorm:"not null;default:0"`
 	HardNumber   int `json:"hard_number" gorm:"not null;default:0"`
 	TotalNumber  int `json:"total_number" gorm:"not null;default:0"`
+
+	LastBindAt *time.Time `json:"last_bind_at" gorm:"comment:'上次绑定时间'"`
 
 	UserID uint `json:"user_id" gorm:"not null;index;comment:'所属用户ID(外键)'"`
 	User   User `json:"-" gorm:"foreignKey:UserID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`

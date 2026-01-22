@@ -16,7 +16,9 @@ type Supplier interface {
 	GetOrgRepository() interfaces.OrgRepository
 	GetLeetcodeUserDetailRepository() interfaces.LeetcodeUserDetailRepository
 	GetLuoguUserDetailRepository() interfaces.LuoguUserDetailRepository
+	GetLeetcodeQuestionBankRepository() interfaces.LeetcodeQuestionBankRepository
 	GetLuoguQuestionBankRepository() interfaces.LuoguQuestionBankRepository
+	GetLeetcodeUserQuestionRepository() interfaces.LeetcodeUserQuestionRepository
 	GetLuoguUserQuestionRepository() interfaces.LuoguUserQuestionRepository
 	GetOutboxRepository() interfaces.OutboxRepository
 }
@@ -31,7 +33,9 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 	var orgRepo interfaces.OrgRepository
 	var leetcodeUserDetailRepo interfaces.LeetcodeUserDetailRepository
 	var luoguUserDetailRepo interfaces.LuoguUserDetailRepository
+	var leetcodeQuestionBankRepo interfaces.LeetcodeQuestionBankRepository
 	var luoguQuestionBankRepo interfaces.LuoguQuestionBankRepository
+	var leetcodeUserQuestionRepo interfaces.LeetcodeUserQuestionRepository
 	var luoguUserQuestionRepo interfaces.LuoguUserQuestionRepository
 	var outboxRepo interfaces.OutboxRepository
 
@@ -46,7 +50,9 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			orgRepo = NewOrgRepository(db)
 			leetcodeUserDetailRepo = NewLeetcodeUserDetailRepository(db)
 			luoguUserDetailRepo = NewLuoguUserDetailRepository(db)
+			leetcodeQuestionBankRepo = NewLeetcodeQuestionBankRepository(db)
 			luoguQuestionBankRepo = NewLuoguQuestionBankRepository(db)
+			leetcodeUserQuestionRepo = NewLeetcodeUserQuestionRepository(db)
 			luoguUserQuestionRepo = NewLuoguUserQuestionRepository(db)
 			outboxRepo = NewOutboxRepository(db)
 		}
@@ -67,7 +73,9 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			orgRepo = NewOrgRepository(db)
 			leetcodeUserDetailRepo = NewLeetcodeUserDetailRepository(db)
 			luoguUserDetailRepo = NewLuoguUserDetailRepository(db)
+			leetcodeQuestionBankRepo = NewLeetcodeQuestionBankRepository(db)
 			luoguQuestionBankRepo = NewLuoguQuestionBankRepository(db)
+			leetcodeUserQuestionRepo = NewLeetcodeUserQuestionRepository(db)
 			luoguUserQuestionRepo = NewLuoguUserQuestionRepository(db)
 			outboxRepo = NewOutboxRepository(db)
 		}
@@ -81,7 +89,9 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 		orgRepository:                orgRepo,
 		leetcodeUserDetailRepository: leetcodeUserDetailRepo,
 		luoguUserDetailRepository:    luoguUserDetailRepo,
+		leetcodeQuestionBankRepository: leetcodeQuestionBankRepo,
 		luoguQuestionBankRepository:  luoguQuestionBankRepo,
+		leetcodeUserQuestionRepository: leetcodeUserQuestionRepo,
 		luoguUserQuestionRepository:  luoguUserQuestionRepo,
 		outboxRepository:             outboxRepo,
 	}

@@ -1,5 +1,7 @@
 package entity
 
+import "time"
+
 // 多对多模型，并且通过级联！
 // 并且在删除LuoguUserDetail/LuoguQuestionBank时，会级联删除LuoguUserQuestion
 
@@ -9,6 +11,8 @@ type LuoguUserDetail struct {
 	RealName       string `json:"real_name" gorm:"type:varchar(64)"`
 	UserAvatar     string `json:"user_avatar" gorm:"type:varchar(255)"`
 	PassedNumber   int    `json:"passed_number" gorm:"not null;default:0"`
+
+	LastBindAt *time.Time `json:"last_bind_at" gorm:"comment:'上次绑定时间'"`
 
 	UserID uint `json:"user_id" gorm:"not null;index;comment:'所属用户ID(外键)'"`
 	User   User `json:"-" gorm:"foreignKey:UserID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`

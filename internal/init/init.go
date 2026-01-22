@@ -2,7 +2,6 @@ package init
 
 import (
 	"context"
-	"github.com/joho/godotenv"
 	"os"
 	"personal_assistant/flag"
 	"personal_assistant/global"
@@ -13,6 +12,8 @@ import (
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/adapter"
 	"time"
+
+	"github.com/joho/godotenv"
 
 	"go.uber.org/zap"
 
@@ -55,7 +56,13 @@ func Init() {
 		context.Background(),
 		repository.GroupApp.SystemRepositorySupplier.GetLuoguQuestionBankRepository(),
 	)
+	// 题库预热，LeetCode题库所有题目进行存储
+	core.StartLeetcodeQuestionBankWarmup(
+		context.Background(),
+		repository.GroupApp.SystemRepositorySupplier.GetLeetcodeQuestionBankRepository(),
+	)
 
+	// 开启Outbox Relay,进行时间传递
 	core.StartOutboxRelay(
 		context.Background(),
 		repository.GroupApp.SystemRepositorySupplier.GetOutboxRepository(),

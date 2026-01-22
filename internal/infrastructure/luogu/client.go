@@ -134,7 +134,10 @@ func NewClient(baseURL string, opts ...Option) (*Client, error) {
 
 // GetPractice 获取用户练习记录
 // 对应接口: POST /luogu/practice
-func (c *Client) GetPractice(ctx context.Context, uid int, sleepSec float64) (*GetPracticeResponse, error) {
+func (c *Client) GetPractice(
+	ctx context.Context,
+	uid int, sleepSec float64,
+) (*GetPracticeResponse, error) {
 	req := getPracticeRequest{
 		UID:      uid,
 		SleepSec: sleepSec,

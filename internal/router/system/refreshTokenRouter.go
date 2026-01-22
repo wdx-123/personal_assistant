@@ -12,7 +12,7 @@ func (r *RefreshTokenRouter) InitRefreshTokenRouter(router *gin.RouterGroup) {
 	refreshTokenApi := controller.ApiGroupApp.SystemApiGroup.GetRefreshTokenCtrl()
 	{
 		// 刷新Api
-		refreshTokenRouter.GET("", refreshTokenApi.RefreshToken)
+		refreshTokenRouter.POST("", refreshTokenApi.RefreshToken)
 	}
 
 }

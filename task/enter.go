@@ -42,6 +42,20 @@ func LuoguSyncTask() {
 	}
 }
 
+func LeetcodeSyncTask() { // 力扣用户定时同步任务
+	ctx := context.Background()                                                   // 创建后台上下文
+	if service.GroupApp == nil || service.GroupApp.SystemServiceSupplier == nil { // 校验服务是否初始化
+		global.Log.Error("LeetcodeSyncTask: service group not initialized") // 记录初始化失败
+		return                                                              // 直接返回
+	}
+	svc := service.GroupApp.SystemServiceSupplier.GetOJSvc() // 获取 OJ 服务
+	if err := svc.SyncAllLeetcodeUsers(ctx); err != nil {    // 执行全量同步
+		global.Log.Error("LeetcodeSyncTask failed", zap.Error(err)) // 记录错误日志
+	} else {
+		global.Log.Info("LeetcodeSyncTask completed successfully") // 记录成功日志
+	}
+}
+
 func RankingSyncTask() {
 	ctx := context.Background()
 	if service.GroupApp == nil || service.GroupApp.SystemServiceSupplier == nil {
@@ -66,6 +80,16 @@ func RegisterScheduledTasks(c *cron.Cron) error {
 	_, err = c.AddFunc("@hourly", LuoguSyncTask)
 	if err != nil {
 		return fmt.Errorf("注册LuoguSyncTask任务失败: %w", err)
+	}
+
+	leetcodeInterval := global.Config.Task.LeetcodeSyncIntervalSeconds // 读取力扣同步间隔
+	if leetcodeInterval <= 0 {                                         // 兜底默认值
+		leetcodeInterval = 3600 // 默认 1 小时
+	}
+	leetcodeSpec := fmt.Sprintf("@every %ds", leetcodeInterval) // 转换为 cron 表达式
+	_, err = c.AddFunc(leetcodeSpec, LeetcodeSyncTask)          // 注册定时任务
+	if err != nil {                                             // 处理注册失败
+		return fmt.Errorf("注册LeetcodeSyncTask任务失败: %w", err) // 返回错误
 	}
 
 	interval := global.Config.Task.RankingSyncIntervalSeconds

@@ -178,8 +178,10 @@ func NewConfig() *Config {
 		LuoguQuestionBankWarmupEnabled:        viper.GetBool("task.luogu_question_bank_warmup_enabled"),
 		LuoguQuestionBankWarmupBatchSize:      viper.GetInt("task.luogu_question_bank_warmup_batch_size"),
 		LuoguQuestionBankWarmupLockTTLSeconds: viper.GetInt("task.luogu_question_bank_warmup_lock_ttl_seconds"),
-		LuoguSyncUserIntervalSeconds:          viper.GetInt("task.luogu_sync_user_interval_seconds"),
-		RankingSyncIntervalSeconds:            viper.GetInt("task.ranking_sync_interval_seconds"),
+		LuoguSyncUserIntervalSeconds:          viper.GetInt("task.luogu_sync_user_interval_seconds"),    // 读取洛谷用户间隔
+		LeetcodeSyncUserIntervalSeconds:       viper.GetInt("task.leetcode_sync_user_interval_seconds"), // 读取力扣用户间隔
+		LeetcodeSyncIntervalSeconds:           viper.GetInt("task.leetcode_sync_interval_seconds"),      // 读取力扣全量间隔
+		RankingSyncIntervalSeconds:            viper.GetInt("task.ranking_sync_interval_seconds"),       // 读取排行榜间隔
 	}
 
 	_messaging := &Messaging{
@@ -188,6 +190,9 @@ func NewConfig() *Config {
 		LuoguBindTopic:       viper.GetString("messaging.luogu_bind_topic"),
 		LuoguBindGroup:       viper.GetString("messaging.luogu_bind_group"),
 		LuoguBindConsumer:    viper.GetString("messaging.luogu_bind_consumer"),
+		LeetcodeBindTopic:    viper.GetString("messaging.leetcode_bind_topic"),
+		LeetcodeBindGroup:    viper.GetString("messaging.leetcode_bind_group"),
+		LeetcodeBindConsumer: viper.GetString("messaging.leetcode_bind_consumer"),
 	}
 
 	return &Config{

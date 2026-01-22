@@ -187,9 +187,11 @@ func ClearRefreshToken(c *gin.Context) {
 func setCookie(c *gin.Context, name, value string, maxAge int, host string) {
 	// 判断 host 是否是 IP 地址；IP 访问下不要设置 domain
 	if net.ParseIP(host) != nil {
-		c.SetCookie(name, value, maxAge, "/", "", c.Request.TLS != nil, true)
+		c.SetCookie(name, value, maxAge, "/", "", c.Request.TLS != nil, false)
 		return
 	}
 	// 域名访问：设置 domain 为主机名
-	c.SetCookie(name, value, maxAge, "/", host, c.Request.TLS != nil, true)
+	// 设置 SameSite 为 Lax（默认），如需 Strict 需显式调用 c.SetSameSite(http.SameSiteStrictMode)
+	// 这里保持默认 Lax 以平衡安全性与体验
+	c.SetCookie(name, value, maxAge, "/", host, c.Request.TLS != nil, false)
 }

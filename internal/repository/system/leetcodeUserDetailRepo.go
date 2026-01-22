@@ -65,6 +65,14 @@ func (r *leetcodeUserDetailRepository) ListByOrgID(
 	return details, nil
 }
 
+func (r *leetcodeUserDetailRepository) GetAll(
+	ctx context.Context,
+) ([]*entity.LeetcodeUserDetail, error) { // 获取全部力扣用户详情
+	var details []*entity.LeetcodeUserDetail          // 声明结果集
+	err := r.db.WithContext(ctx).Find(&details).Error // 执行全量查询
+	return details, err                               // 返回结果与错误
+}
+
 func (r *leetcodeUserDetailRepository) UpsertByUserID(
 	ctx context.Context,
 	detail *entity.LeetcodeUserDetail,

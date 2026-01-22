@@ -34,5 +34,6 @@ type JwtCustomRefreshClaims struct {
 }
 
 type RefreshTokenRequest struct {
-	RefreshToken string `json:"refreshToken" binding:"required"` // 刷新令牌
+	RefreshToken  string `json:"refreshToken"`
+	XRefreshToken string `json:"x-refresh-token"`
 }

@@ -24,6 +24,7 @@ func CORSMiddleware() gin.HandlerFunc {
 		AllowOriginFunc: func(origin string) bool {
 			// 只允许白名单中的Origin，且返回非*，以满足携带Cookie的跨域要求
 			_ = allowed[strings.TrimSpace(origin)]
+			// 现在是允许所有通过
 			return true
 		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
