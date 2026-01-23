@@ -66,6 +66,9 @@ func (r *RefreshTokenCtrl) RefreshToken(c *gin.Context) {
 	}
 
 	// 创建令牌
+	if refreshReq != nil {
+		refreshReq.RefreshToken = refreshToken
+	}
 	response.NewResponse[resp.RefreshTokenResponse, resp.RefreshTokenResponse](c).
 		SetTrans(&resp.RefreshTokenResponse{}).
 		Success("刷新成功", refreshReq)

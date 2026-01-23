@@ -201,6 +201,7 @@ func (j *JWTService) IssueLoginTokens(
 		User:                 user,
 		AccessToken:          accessToken,
 		AccessTokenExpiresAt: accessClaims.ExpiresAt.Unix() * 1000,
+		RefreshToken:         refreshToken,
 	}
 	return res, refreshToken, refreshClaims.ExpiresAt.Unix() * 1000, nil
 }

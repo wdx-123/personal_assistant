@@ -11399,3 +11399,53 @@
 {"level":"ERROR","time":"2026-01-22T08:39:37.516+0800","caller":"response/api_helper.go:49","msg":"[Api]RefreshToken failed","message":"绑定数据失败","code":4000,"error":"invalid character '\\'' looking for beginning of object key string"}
 {"level":"ERROR","time":"2026-01-22T14:12:31.660+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable host."}
 {"level":"ERROR","time":"2026-01-22T14:12:31.695+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable host."}
+{"level":"ERROR","time":"2026-01-22T20:43:31.555+0800","caller":"outbox/processor.go:46","msg":"OutboxRelay: 获取待发布事件失败","error":"invalid connection"}
+{"level":"ERROR","time":"2026-01-22T20:43:31.629+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-01-22T20:43:31.643+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-01-22T20:43:31.783+0800","caller":"outbox/processor.go:46","msg":"OutboxRelay: 获取待发布事件失败","error":"dial tcp 180.184.87.86:3306: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-01-22T20:43:32.707+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-01-22T20:43:32.749+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-01-22T20:43:32.786+0800","caller":"outbox/processor.go:46","msg":"OutboxRelay: 获取待发布事件失败","error":"dial tcp 180.184.87.86:3306: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-01-22T20:43:33.782+0800","caller":"outbox/processor.go:46","msg":"OutboxRelay: 获取待发布事件失败","error":"dial tcp 180.184.87.86:3306: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-01-22T20:43:33.811+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-01-22T20:43:33.864+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-01-23T09:13:19.701+0800","caller":"response/api_helper.go:49","msg":"[Api]RefreshToken failed","message":"绑定数据失败","code":4000,"error":"RefreshToken token is required"}
+{"level":"ERROR","time":"2026-01-23T09:49:06.284+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"19561986639","error":"验证码错误"}
+{"level":"ERROR","time":"2026-01-23T09:50:23.689+0800","caller":"system/userSvc.go:78","msg":"$2a$10$RO.rYwijByTZGP6lPfDjrO/1SCOHVHLhWOoxknFmlbA7fFbRayLxi"}
+{"level":"ERROR","time":"2026-01-23T09:52:57.709+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"19561986639","error":"验证码错误"}
+{"level":"ERROR","time":"2026-01-23T09:55:15.963+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"19561986639","error":"账号或密码错误"}
+{"level":"ERROR","time":"2026-01-23T09:55:29.966+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"13223737513","error":"验证码错误"}
+{"level":"ERROR","time":"2026-01-23T09:55:48.639+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"13223737513","error":"验证码错误"}
+{"level":"ERROR","time":"2026-01-23T09:56:32.006+0800","caller":"system/userSvc.go:57","msg":"手机号已被注册","phone":"13800138000"}
+{"level":"ERROR","time":"2026-01-23T09:56:32.007+0800","caller":"system/userCtrl.go:39","msg":"用户注册失败","phone":"13800138000","error":"该手机号已被注册"}
+{"level":"ERROR","time":"2026-01-23T09:56:41.922+0800","caller":"system/userSvc.go:78","msg":"$2a$10$TiIkMuJtVTc0tjnF4fTi/uJeAL94sUAW2MTjE2SxNyNO2j/hZsSJ."}
+{"level":"ERROR","time":"2026-01-23T10:03:33.215+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"13800138009","error":"验证码错误"}
+{"level":"ERROR","time":"2026-01-23T10:03:53.838+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"13800138009","error":"验证码错误"}
+{"level":"ERROR","time":"2026-01-23T10:34:46.817+0800","caller":"response/api_helper.go:49","msg":"[Api]RefreshToken failed","message":"绑定数据失败","code":4000,"error":"RefreshToken token is required"}
+{"level":"ERROR","time":"2026-01-23T10:36:29.860+0800","caller":"response/api_helper.go:49","msg":"[Api]RefreshToken failed","message":"绑定数据失败","code":4000,"error":"RefreshToken token is required"}
+{"level":"ERROR","time":"2026-01-23T10:50:30.647+0800","caller":"system/ojCtrl.go:47","msg":"绑定OJ账号失败","user_id":5,"platform":"leetcode","error":"bind operation is in cooldown"}
+{"level":"ERROR","time":"2026-01-23T10:50:44.344+0800","caller":"system/ojCtrl.go:47","msg":"绑定OJ账号失败","user_id":5,"platform":"luogu","error":"bind operation is in cooldown"}
+{"level":"ERROR","time":"2026-01-23T10:50:49.308+0800","caller":"system/ojCtrl.go:47","msg":"绑定OJ账号失败","user_id":5,"platform":"luogu","error":"bind operation is in cooldown"}
+{"level":"ERROR","time":"2026-01-23T10:50:53.581+0800","caller":"system/ojCtrl.go:47","msg":"绑定OJ账号失败","user_id":5,"platform":"luogu","error":"bind operation is in cooldown"}
+{"level":"ERROR","time":"2026-01-23T10:50:53.838+0800","caller":"system/ojCtrl.go:47","msg":"绑定OJ账号失败","user_id":5,"platform":"luogu","error":"bind operation is in cooldown"}
+{"level":"ERROR","time":"2026-01-23T10:50:53.991+0800","caller":"system/ojCtrl.go:47","msg":"绑定OJ账号失败","user_id":5,"platform":"luogu","error":"bind operation is in cooldown"}
+{"level":"ERROR","time":"2026-01-23T10:50:54.134+0800","caller":"system/ojCtrl.go:47","msg":"绑定OJ账号失败","user_id":5,"platform":"luogu","error":"bind operation is in cooldown"}
+{"level":"ERROR","time":"2026-01-23T10:50:54.483+0800","caller":"system/ojCtrl.go:47","msg":"绑定OJ账号失败","user_id":5,"platform":"luogu","error":"bind operation is in cooldown"}
+{"level":"ERROR","time":"2026-01-23T10:50:55.087+0800","caller":"system/ojCtrl.go:47","msg":"绑定OJ账号失败","user_id":5,"platform":"luogu","error":"bind operation is in cooldown"}
+{"level":"ERROR","time":"2026-01-23T10:50:57.396+0800","caller":"system/ojCtrl.go:47","msg":"绑定OJ账号失败","user_id":5,"platform":"leetcode","error":"bind operation is in cooldown"}
+{"level":"ERROR","time":"2026-01-23T10:50:57.686+0800","caller":"system/ojCtrl.go:47","msg":"绑定OJ账号失败","user_id":5,"platform":"leetcode","error":"bind operation is in cooldown"}
+{"level":"ERROR","time":"2026-01-23T10:52:24.742+0800","caller":"system/ojCtrl.go:47","msg":"绑定OJ账号失败","user_id":5,"platform":"luogu","error":"bind operation is in cooldown"}
+{"level":"ERROR","time":"2026-01-23T10:52:27.591+0800","caller":"system/ojCtrl.go:47","msg":"绑定OJ账号失败","user_id":5,"platform":"leetcode","error":"bind operation is in cooldown"}
+{"level":"ERROR","time":"2026-01-23T11:28:09.487+0800","caller":"jwt/claims.go:93","msg":"Failed to parse access token from request","error":"token is expired"}
+{"level":"ERROR","time":"2026-01-23T11:29:56.794+0800","caller":"system/ojCtrl.go:47","msg":"绑定OJ账号失败","user_id":5,"platform":"luogu","error":"bind operation is in cooldown"}
+{"level":"ERROR","time":"2026-01-23T11:31:43.102+0800","caller":"system/ojCtrl.go:47","msg":"绑定OJ账号失败","user_id":5,"platform":"luogu","error":"bind operation is in cooldown"}
+{"level":"ERROR","time":"2026-01-23T11:31:46.329+0800","caller":"system/ojCtrl.go:47","msg":"绑定OJ账号失败","user_id":5,"platform":"leetcode","error":"bind operation is in cooldown"}
+{"level":"ERROR","time":"2026-01-23T11:31:47.651+0800","caller":"system/ojCtrl.go:47","msg":"绑定OJ账号失败","user_id":5,"platform":"leetcode","error":"bind operation is in cooldown"}
+{"level":"ERROR","time":"2026-01-23T11:36:59.811+0800","caller":"system/ojCtrl.go:47","msg":"绑定OJ账号失败","user_id":5,"platform":"luogu","error":"bind operation is in cooldown"}
+{"level":"ERROR","time":"2026-01-23T11:42:23.520+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"13223737513","error":"验证码错误"}
+{"level":"ERROR","time":"2026-01-23T11:42:25.142+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"13223737513","error":"验证码错误"}
+{"level":"ERROR","time":"2026-01-23T11:42:44.802+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"13223737513","error":"账号或密码错误"}
+{"level":"ERROR","time":"2026-01-23T11:44:58.528+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"13223737513","error":"验证码错误"}
+{"level":"ERROR","time":"2026-01-23T11:47:32.495+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"13223737513","error":"验证码错误"}
+{"level":"ERROR","time":"2026-01-23T11:49:31.793+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"13223737513","error":"账号或密码错误"}
+{"level":"ERROR","time":"2026-01-23T11:49:48.418+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"13223737513","error":"验证码错误"}
