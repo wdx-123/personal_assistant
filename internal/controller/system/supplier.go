@@ -10,6 +10,8 @@ type Supplier interface {
 	GetUserCtrl() *UserCtrl
 	GetOrgCtrl() *OrgCtrl
 	GetOJCtrl() *OJCtrl
+	GetApiCtrl() *ApiCtrl
+	GetMenuCtrl() *MenuCtrl
 }
 
 // SetUp 工厂函数-单例
@@ -30,6 +32,12 @@ func SetUp(service *service.Group) Supplier {
 	}
 	cs.ojCtrl = &OJCtrl{
 		ojService: service.SystemServiceSupplier.GetOJSvc(),
+	}
+	cs.apiCtrl = &ApiCtrl{
+		apiService: service.SystemServiceSupplier.GetApiSvc(),
+	}
+	cs.menuCtrl = &MenuCtrl{
+		menuService: service.SystemServiceSupplier.GetMenuSvc(),
 	}
 	return cs
 }

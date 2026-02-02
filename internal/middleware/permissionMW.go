@@ -54,12 +54,16 @@ func (p *PermissionMiddleware) CheckPermission() gin.HandlerFunc {
 
 		// 链式验证流程
 		switch {
+		// 白名单路由直接通过
 		case !auth.checkWhiteList():
 			return
+			// 获取用户信息
 		case !auth.extractUserInfo():
 			return
+			// 检查是否为超级管理员
 		case !auth.checkSuperUser():
 			return
+			// 检查API权限
 		case !auth.checkAPIPermission():
 			return
 		default:

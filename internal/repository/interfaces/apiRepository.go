@@ -2,6 +2,7 @@ package interfaces
 
 import (
 	"context"
+	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/entity"
 )
 
@@ -18,8 +19,8 @@ type APIRepository interface {
 	// Delete 删除API
 	Delete(ctx context.Context, id uint) error
 
-	// GetAPIList 获取API列表（分页）
-	GetAPIList(ctx context.Context, page, pageSize int) ([]*entity.API, int64, error)
+	// GetAPIList 获取API列表（分页，支持过滤）
+	GetAPIList(ctx context.Context, filter *request.ApiListFilter) ([]*entity.API, int64, error)
 	// GetAllAPIs 获取所有API
 	GetAllAPIs(ctx context.Context) ([]*entity.API, error)
 	// GetAPIsByGroup 根据分组获取API
@@ -29,10 +30,10 @@ type APIRepository interface {
 	// ExistsByPathAndMethod 检查路径和方法组合是否存在
 	ExistsByPathAndMethod(ctx context.Context, path, method string) (bool, error)
 
-	// GetAPIsByUserID 获取用户的API权限列表
-	GetAPIsByUserID(ctx context.Context, userID uint) ([]*entity.API, error)
+	// GetAPIsByUserID 获取用户在组织内的API权限列表
+	GetAPIsByUserID(ctx context.Context, userID, orgID uint) ([]*entity.API, error)
 	// GetAPIsByRoleID 获取角色的API权限列表
 	GetAPIsByRoleID(ctx context.Context, roleID uint) ([]*entity.API, error)
-	// CheckUserAPIPermission 检查用户是否有特定API权限
-	CheckUserAPIPermission(ctx context.Context, userID uint, path, method string) (bool, error)
+	// CheckUserAPIPermission 检查用户在组织内是否有特定API权限
+	CheckUserAPIPermission(ctx context.Context, userID, orgID uint, path, method string) (bool, error)
 }

@@ -7,7 +7,6 @@ import (
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository"
 	"personal_assistant/pkg/casbin"
-	"strconv"
 
 	"go.uber.org/zap"
 )
@@ -63,7 +62,7 @@ func (p *PermissionService) SyncAllPermissionsToCasbin(ctx context.Context) erro
 func (p *PermissionService) SyncUserRolesToCasbin(ctx context.Context) error {
 	roleRepo := p.repositoryGroup.SystemRepositorySupplier.GetRoleRepository()
 	// 获取所有角色关系
-	relations, err := roleRepo.GetAllUserRoleRelations(ctx)
+	relations, err := roleRepo.GetAllUserOrgRoleRelations(ctx)
 	if err != nil {
 		return fmt.Errorf("获取用户角色关系失败:%w", err)
 	}
@@ -71,11 +70,13 @@ func (p *PermissionService) SyncUserRolesToCasbin(ctx context.Context) error {
 	for _, relation := range relations {
 		userID := fmt.Sprintf("%v", relation["user_id"])
 		roleCode := fmt.Sprintf("%v", relation["role_code"])
+		orgID := fmt.Sprintf("%v", relation["org_id"])
+		subject := fmt.Sprintf("%s@%s", userID, orgID)
 
-		_, err = p.casbinSvc.Enforcer.AddRoleForUser(userID, roleCode)
+		_, err = p.casbinSvc.Enforcer.AddRoleForUser(subject, roleCode)
 		if err != nil {
 			global.Log.Error("添加用户失败",
-				zap.String("userID", userID),
+				zap.String("userID", subject),
 				zap.String("roleID", roleCode),
 				zap.Error(err))
 		}
@@ -142,18 +143,18 @@ func (p *PermissionService) SyncMenuAPIsToCasbin(ctx context.Context) error {
 // === 权限验证功能 ===
 
 // CheckUserAPIPermission 检查用户是否有访问指定API的权限
-func (p *PermissionService) CheckUserAPIPermission(userID uint, apiPath, method string) (bool, error) {
-	userIDStr := strconv.FormatUint(uint64(userID), 10)
+func (p *PermissionService) CheckUserAPIPermission(
+	userID uint,
+	apiPath, method string,
+) (bool, error) {
+	subject, _, err := p.getUserSubject(context.Background(), userID)
+	if err != nil {
+		return false, fmt.Errorf("获取用户上下文失败: %w", err)
+	}
 	resource := fmt.Sprintf("%s:%s", apiPath, method)
 
-	// 重新加载策略确保数据最新
-	err := p.casbinSvc.Enforcer.LoadPolicy()
-	if err != nil {
-		return false, fmt.Errorf("加载策略失败: %w", err)
-	}
-
 	// 检查用户是否有直接权限
-	ok, err := p.casbinSvc.Enforcer.Enforce(userIDStr, resource, "access")
+	ok, err := p.casbinSvc.Enforcer.Enforce(subject, resource, "access")
 	if err != nil {
 		return false, fmt.Errorf("权限检查失败: %w", err)
 	}
@@ -163,16 +164,13 @@ func (p *PermissionService) CheckUserAPIPermission(userID uint, apiPath, method 
 
 // CheckUserMenuPermission 检查用户是否有访问指定菜单的权限
 func (p *PermissionService) CheckUserMenuPermission(ctx context.Context, userID uint, menuCode string) (bool, error) {
-	userIDStr := strconv.FormatUint(uint64(userID), 10)
-
-	// 重新加载策略确保数据最新
-	err := p.casbinSvc.Enforcer.LoadPolicy()
+	subject, _, err := p.getUserSubject(ctx, userID)
 	if err != nil {
-		return false, fmt.Errorf("加载策略失败: %w", err)
+		return false, fmt.Errorf("获取用户上下文失败: %w", err)
 	}
 
 	// 检查用户是否有菜单权限
-	ok, err := p.casbinSvc.Enforcer.Enforce(userIDStr, menuCode, "read")
+	ok, err := p.casbinSvc.Enforcer.Enforce(subject, menuCode, "read")
 	if err != nil {
 		return false, fmt.Errorf("菜单权限检查失败: %w", err)
 	}
@@ -180,69 +178,33 @@ func (p *PermissionService) CheckUserMenuPermission(ctx context.Context, userID 
 	return ok, nil
 }
 
-// AssignRoleToUser 为用户分配角色
-func (p *PermissionService) AssignRoleToUser(
+func (p *PermissionService) AssignRoleToUserInOrg(
 	ctx context.Context,
 	userID,
+	orgID,
 	roleID uint,
 ) error {
 	roleRepo := p.repositoryGroup.SystemRepositorySupplier.GetRoleRepository()
 
-	// 获取角色信息
 	role, err := roleRepo.GetByID(ctx, roleID)
 	if err != nil {
 		return fmt.Errorf("获取角色信息失败: %w", err)
 	}
 
-	// 1. 先执行数据库操作
-	if err = roleRepo.AssignRoleToUser(ctx, userID, roleID); err != nil {
+	if err = roleRepo.AssignRoleToUserInOrg(ctx, userID, orgID, roleID); err != nil {
 		return fmt.Errorf("数据库分配角色失败: %w", err)
 	}
 
-	// 2. 执行Casbin操作
-	userIDStr := strconv.FormatUint(uint64(userID), 10)
-	_, err = p.casbinSvc.Enforcer.AddRoleForUser(userIDStr, role.Code)
+	subject := fmt.Sprintf("%d@%d", userID, orgID)
+	_, err = p.casbinSvc.Enforcer.AddRoleForUser(subject, role.Code)
 	if err != nil {
-		// 3. 补偿：回滚数据库操作
-		if rollbackErr := roleRepo.RemoveRoleFromUser(ctx, userID, roleID); rollbackErr != nil {
+		if rollbackErr := roleRepo.RemoveRoleFromUserInOrg(ctx, userID, orgID, roleID); rollbackErr != nil {
 			global.Log.Error("数据一致性严重问题：无法回滚数据库操作",
 				zap.Uint("userID", userID),
 				zap.Uint("roleID", roleID),
 				zap.Error(rollbackErr))
 		}
 		return fmt.Errorf("casbin添加用户角色失败:%w", err)
-	}
-
-	return nil
-}
-
-// RemoveRoleFromUser 移除用户角色
-func (p *PermissionService) RemoveRoleFromUser(ctx context.Context, userID, roleID uint) error {
-	roleRepo := p.repositoryGroup.SystemRepositorySupplier.GetRoleRepository()
-
-	// 获取角色信息
-	role, err := roleRepo.GetByID(ctx, roleID)
-	if err != nil {
-		return fmt.Errorf("获取角色信息失败: %w", err)
-	}
-
-	// 1. 先执行数据库操作
-	if err = roleRepo.RemoveRoleFromUser(ctx, userID, roleID); err != nil {
-		return fmt.Errorf("数据库移除角色失败: %w", err)
-	}
-
-	// 2. 执行Casbin操作
-	userIDStr := strconv.FormatUint(uint64(userID), 10)
-	_, err = p.casbinSvc.Enforcer.DeleteRoleForUser(userIDStr, role.Code)
-	if err != nil {
-		// 3. 补偿：回滚数据库操作
-		if rollbackErr := roleRepo.AssignRoleToUser(ctx, userID, roleID); rollbackErr != nil {
-			global.Log.Error("数据一致性严重问题：无法回滚数据库操作",
-				zap.Uint("userID", userID),
-				zap.Uint("roleID", roleID),
-				zap.Error(rollbackErr))
-		}
-		return fmt.Errorf("Casbin移除用户角色失败: %w", err)
 	}
 
 	return nil
@@ -322,13 +284,47 @@ func (p *PermissionService) RemoveMenuFromRole(ctx context.Context, roleID, menu
 	return nil
 }
 
+func (p *PermissionService) RemoveRoleFromUserInOrg(ctx context.Context, userID, orgID, roleID uint) error {
+	roleRepo := p.repositoryGroup.SystemRepositorySupplier.GetRoleRepository()
+
+	role, err := roleRepo.GetByID(ctx, roleID)
+	if err != nil {
+		return fmt.Errorf("获取角色信息失败: %w", err)
+	}
+
+	if err = roleRepo.RemoveRoleFromUserInOrg(ctx, userID, orgID, roleID); err != nil {
+		return fmt.Errorf("数据库移除角色失败: %w", err)
+	}
+
+	subject := fmt.Sprintf("%d@%d", userID, orgID)
+	_, err = p.casbinSvc.Enforcer.DeleteRoleForUser(subject, role.Code)
+	if err != nil {
+		if rollbackErr := roleRepo.AssignRoleToUserInOrg(ctx, userID, orgID, roleID); rollbackErr != nil {
+			global.Log.Error("数据一致性严重问题：无法回滚数据库操作",
+				zap.Uint("userID", userID),
+				zap.Uint("roleID", roleID),
+				zap.Error(rollbackErr))
+		}
+		return fmt.Errorf("Casbin移除用户角色失败: %w", err)
+	}
+
+	return nil
+}
+
 // === 查询功能 ===
 
 // GetUserRoles 获取用户的所有角色
 func (p *PermissionService) GetUserRoles(ctx context.Context, userID uint) ([]entity.Role, error) {
 	roleRepo := p.repositoryGroup.SystemRepositorySupplier.GetRoleRepository()
-
-	roles, err := roleRepo.GetUserRoles(ctx, userID)
+	_, orgID, err := p.getUserSubject(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("获取用户上下文失败: %w", err)
+	}
+	var roles []*entity.Role
+	if orgID == nil || *orgID == 0 {
+		return nil, fmt.Errorf("未设置当前组织")
+	}
+	roles, err = roleRepo.GetUserRolesByOrg(ctx, userID, *orgID)
 	if err != nil {
 		return nil, fmt.Errorf("获取用户角色失败: %w", err)
 	}
@@ -345,8 +341,14 @@ func (p *PermissionService) GetUserRoles(ctx context.Context, userID uint) ([]en
 // GetUserMenus 获取用户可访问的菜单列表
 func (p *PermissionService) GetUserMenus(ctx context.Context, userID uint) ([]entity.Menu, error) {
 	menuRepo := p.repositoryGroup.SystemRepositorySupplier.GetMenuRepository()
-
-	menus, err := menuRepo.GetMenusByUserID(ctx, userID)
+	_, orgID, err := p.getUserSubject(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("获取用户上下文失败: %w", err)
+	}
+	if orgID == nil || *orgID == 0 {
+		return nil, fmt.Errorf("未设置当前组织")
+	}
+	menus, err := menuRepo.GetMenusByUserID(ctx, userID, *orgID)
 	if err != nil {
 		return nil, fmt.Errorf("获取用户菜单失败: %w", err)
 	}
@@ -380,18 +382,40 @@ func (p *PermissionService) GetRoleMenus(ctx context.Context, roleID uint) ([]en
 
 // GetUserPermissions 获取用户的所有权限（用于调试）
 func (p *PermissionService) GetUserPermissions(ctx context.Context, userID uint) ([][]string, error) {
-	userIDStr := strconv.FormatUint(uint64(userID), 10)
+	subject, _, err := p.getUserSubject(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("获取用户上下文失败: %w", err)
+	}
 
 	// 重新加载策略确保数据最新
-	err := p.casbinSvc.Enforcer.LoadPolicy()
+	err = p.casbinSvc.Enforcer.LoadPolicy()
 	if err != nil {
 		return nil, fmt.Errorf("加载策略失败: %w", err)
 	}
 
 	// 获取用户的所有权限
-	permissions := p.casbinSvc.Enforcer.GetPermissionsForUser(userIDStr)
+	permissions := p.casbinSvc.Enforcer.GetPermissionsForUser(subject)
 
 	return permissions, nil
+}
+
+func (p *PermissionService) getUserSubject(
+	ctx context.Context,
+	userID uint,
+) (string, *uint, error) {
+	userRepo := p.repositoryGroup.SystemRepositorySupplier.GetUserRepository()
+	user, err := userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return "", nil, err
+	}
+	if user == nil {
+		return "", nil, fmt.Errorf("用户不存在")
+	}
+	if user.CurrentOrgID != nil && *user.CurrentOrgID > 0 {
+		subject := fmt.Sprintf("%d@%d", userID, *user.CurrentOrgID)
+		return subject, user.CurrentOrgID, nil
+	}
+	return "", nil, fmt.Errorf("未设置当前组织")
 }
 
 // ====系统管理功能====

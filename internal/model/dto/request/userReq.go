@@ -7,7 +7,7 @@ type RegisterReq struct {
 	Phone     string `json:"phone" binding:"required,len=11"`
 	Captcha   string `json:"captcha" binding:"required,len=6"`
 	CaptchaID string `json:"captcha_id" binding:"required"`
-	OrgID     uint   `json:"org_id"` // 可选：加入的组织ID
+	OrgID     uint   `json:"org_id" binding:"required"`
 }
 
 // LoginReq 登录

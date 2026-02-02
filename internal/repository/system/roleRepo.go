@@ -125,49 +125,43 @@ func (r *roleRepository) GetMenuRoles(ctx context.Context, menuID uint) ([]*enti
 	return roles, err
 }
 
-func (r *roleRepository) GetUsersByRole(ctx context.Context, roleID uint) ([]*entity.User, error) {
-	var users []*entity.User
-	err := r.db.WithContext(ctx).
-		Table("users").
-		Joins("JOIN user_roles ON users.id = user_roles.user_id").
-		Where("user_roles.role_id = ? AND users.deleted_at IS NULL", roleID).
-		Find(&users).Error
-	return users, err
+// AssignRoleToUserInOrg 添加角色到用户组织中
+func (r *roleRepository) AssignRoleToUserInOrg(
+	ctx context.Context,
+	userID,
+	orgID,
+	roleID uint,
+) error {
+	return r.db.WithContext(ctx).
+		Exec("INSERT IGNORE INTO user_org_roles (user_id, org_id, role_id) VALUES (?, ?, ?)",
+			userID, orgID, roleID).
+		Error
 }
 
-func (r *roleRepository) GetUserRoles(ctx context.Context, userID uint) ([]*entity.Role, error) {
+// RemoveRoleFromUserInOrg 移除角色从用户组织中
+func (r *roleRepository) RemoveRoleFromUserInOrg(
+	ctx context.Context,
+	userID,
+	orgID,
+	roleID uint,
+) error {
+	return r.db.WithContext(ctx).
+		Exec("DELETE FROM user_org_roles WHERE user_id = ? AND org_id = ? AND role_id = ?",
+			userID, orgID, roleID).
+		Error
+}
+
+// GetUserRolesByOrg 获取用户组织中的角色
+func (r *roleRepository) GetUserRolesByOrg(ctx context.Context, userID, orgID uint) ([]*entity.Role, error) {
 	var roles []*entity.Role
 	err := r.db.WithContext(ctx).
 		Table("roles").
-		Joins("JOIN user_roles ON roles.id = user_roles.role_id").
-		Where("user_roles.user_id = ? AND roles.deleted_at IS NULL", userID).
+		Joins("JOIN user_org_roles ON roles.id = user_org_roles.role_id").
+		Where("user_org_roles.user_id = ? AND user_org_roles.org_id = ? AND roles.deleted_at IS NULL",
+			userID, orgID).
 		Find(&roles).Error
 	return roles, err
 }
-
-// 用户角色关系管理
-
-func (r *roleRepository) AssignRoleToUser(
-	ctx context.Context,
-	userID,
-	roleID uint,
-) error {
-	userRole := &entity.UserRole{
-		UserID: userID,
-		RoleID: roleID,
-	}
-	return r.db.WithContext(ctx).Create(userRole).Error
-}
-
-func (r *roleRepository) RemoveRoleFromUser(
-	ctx context.Context,
-	userID,
-	roleID uint,
-) error {
-	return r.db.WithContext(ctx).Where("user_id = ? AND role_id = ?", userID, roleID).Delete(&entity.UserRole{}).Error
-}
-
-// 权限同步相关
 
 func (r *roleRepository) GetAllRoleMenuRelations(ctx context.Context) ([]map[string]interface{}, error) {
 	var relations []map[string]interface{}
@@ -180,13 +174,16 @@ func (r *roleRepository) GetAllRoleMenuRelations(ctx context.Context) ([]map[str
 		Find(&relations).Error
 	return relations, err
 }
-func (r *roleRepository) GetAllUserRoleRelations(ctx context.Context) ([]map[string]interface{}, error) {
+
+func (r *roleRepository) GetAllUserOrgRoleRelations(
+	ctx context.Context,
+) ([]map[string]interface{}, error) {
 	var relations []map[string]interface{}
 	err := r.db.WithContext(ctx).
-		Table("user_roles").
-		Select("users.id as user_id, roles.code as role_code").
-		Joins("JOIN users ON user_roles.user_id = users.id").
-		Joins("JOIN roles ON user_roles.role_id = roles.id").
+		Table("user_org_roles").
+		Select("users.id as user_id, roles.code as role_code, user_org_roles.org_id as org_id").
+		Joins("JOIN users ON user_org_roles.user_id = users.id").
+		Joins("JOIN roles ON user_org_roles.role_id = roles.id").
 		Where("users.deleted_at IS NULL AND roles.deleted_at IS NULL").
 		Find(&relations).Error
 	return relations, err

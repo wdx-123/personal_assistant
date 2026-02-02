@@ -52,9 +52,10 @@ func InitRouter() *gin.Engine {
 	SystemGroup := Router.Group("")
 	permissionMW := middleware.NewPermissionMiddleware(service.GroupApp) // 获取实例
 	SystemGroup.Use(middleware.JWTAuth())                                // JWT认证
-	SystemGroup.Use(permissionMW.CheckPermission())                      // 创建权限中间件
+	SystemGroup.Use(permissionMW.CheckPermission())                      // 权限中间件
 	{
-		// 权限相关路由
+		systemRouter.InitApiRouter(SystemGroup)
+		systemRouter.InitMenuRouter(SystemGroup)
 	}
 	// 业务路由组 - 需要JWT，但不需严格的权限控制
 	BusinessGroup := Router.Group("")

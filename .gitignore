@@ -12,3 +12,6 @@ log/
 *.temp
 .env
 configs/configs.yaml
+
+# 临时测试文件夹
+aaa/

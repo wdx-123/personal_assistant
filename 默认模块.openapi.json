@@ -1,0 +1,3109 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "默认模块",
+    "description": "",
+    "version": "1.0.0"
+  },
+  "tags": [
+    {
+      "name": "System: Menu"
+    },
+    {
+      "name": "System: Role"
+    },
+    {
+      "name": "System: User"
+    },
+    {
+      "name": "System: Org"
+    },
+    {
+      "name": "System: API"
+    }
+  ],
+  "paths": {
+    "/api/system/menu/tree": {
+      "get": {
+        "summary": "获取完整菜单树",
+        "deprecated": false,
+        "description": "获取系统所有菜单的树形结构（包含目录、菜单、按钮），用于菜单配置页面展示。",
+        "tags": [
+          "System: Menu"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseMenuTree"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseUnauthorized"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsePermissionDenied"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "服务器错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseInternalError"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/menu/my": {
+      "get": {
+        "summary": "获取当前用户路由",
+        "deprecated": false,
+        "description": "根据当前登录用户及其所在组织的角色，获取有权限访问的菜单列表（用于前端侧边栏渲染）。",
+        "tags": [
+          "System: Menu"
+        ],
+        "parameters": [
+          {
+            "name": "org_id",
+            "in": "query",
+            "description": "可选：指定组织上下文，默认使用用户当前组织",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseMenuTree"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "401": {
+            "description": "未认证",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseUnauthorized"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "403": {
+            "description": "无权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsePermissionDenied"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "500": {
+            "description": "服务器错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseInternalError"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/menu/list": {
+      "get": {
+        "summary": "获取菜单列表",
+        "deprecated": false,
+        "description": "分页获取菜单列表，支持类型、状态与模糊搜索。",
+        "tags": [
+          "System: Menu"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "description": "1:目录 2:菜单 3:按钮",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                1,
+                2,
+                3
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "1:显示 0:隐藏",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                0,
+                1
+              ]
+            }
+          },
+          {
+            "name": "parent_id",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "按名称或code模糊搜索",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseMenuList"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/menu": {
+      "post": {
+        "summary": "创建菜单/按钮",
+        "deprecated": false,
+        "description": "创建一个新的菜单项或按钮权限。",
+        "tags": [
+          "System: Menu"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestCreateMenu"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/menu/{id}": {
+      "get": {
+        "summary": "获取菜单详情",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "System: Menu"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "",
+            "required": true,
+            "example": 0,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseMenuDetail"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "更新菜单",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "System: Menu"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "",
+            "required": true,
+            "example": 0,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestUpdateMenu"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "summary": "删除菜单",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "System: Menu"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "",
+            "required": true,
+            "example": 0,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/menu/bind_api": {
+      "post": {
+        "summary": "绑定 API 到菜单",
+        "deprecated": false,
+        "description": "将后端 API 接口绑定到指定的菜单或按钮上，拥有该菜单权限即拥有对应 API 调用权限。传入的api_ids会直接覆盖原有绑定关系。",
+        "tags": [
+          "System: Menu"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestBindMenuAPI"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/role/list": {
+      "get": {
+        "summary": "获取角色列表",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "System: Role"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                0,
+                1
+              ]
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseRoleList"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/role": {
+      "post": {
+        "summary": "创建角色",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "System: Role"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestCreateRole"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/role/{id}": {
+      "put": {
+        "summary": "更新角色",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "System: Role"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "",
+            "required": true,
+            "example": 0,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestUpdateRole"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "summary": "删除角色",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "System: Role"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "",
+            "required": true,
+            "example": 0,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/role/assign_menu": {
+      "post": {
+        "summary": "分配菜单权限",
+        "deprecated": false,
+        "description": "为角色分配菜单权限，传入的menu_ids会直接覆盖原有权限。",
+        "tags": [
+          "System: Role"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestAssignRoleMenu"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/role/{id}/menus": {
+      "get": {
+        "summary": "获取角色菜单权限",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "System: Role"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "",
+            "required": true,
+            "example": 0,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseRoleMenuIDs"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/user/list": {
+      "get": {
+        "summary": "获取用户列表",
+        "deprecated": false,
+        "description": "分页获取用户列表，支持按组织、关键词过滤。",
+        "tags": [
+          "System: User"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
+          },
+          {
+            "name": "org_id",
+            "in": "query",
+            "description": "组织ID过滤",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "搜索关键词(用户名/手机号)",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseUserList"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/user/{id}": {
+      "get": {
+        "summary": "获取用户详情",
+        "deprecated": false,
+        "description": "根据用户ID获取用户详细信息，包含基本信息、当前组织、角色等。",
+        "tags": [
+          "System: User"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "用户ID",
+            "required": true,
+            "example": 1001,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseUserDetail"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "404": {
+            "description": "用户不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseUserNotFound"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/user/{id}/roles": {
+      "get": {
+        "summary": "获取用户在组织下的角色",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "System: User"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "",
+            "required": true,
+            "example": 0,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "org_id",
+            "in": "query",
+            "description": "",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseRoleListSimple"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/user/assign_role": {
+      "post": {
+        "summary": "分配角色 (授权)",
+        "deprecated": false,
+        "description": "在指定组织下，为用户分配一个或多个角色。传入的role_ids会直接覆盖用户在该组织下的原有角色。",
+        "tags": [
+          "System: User"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestAssignUserRole"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/org": {
+      "post": {
+        "summary": "创建组织",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "System: Org"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestCreateOrg"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/org/list": {
+      "get": {
+        "summary": "获取组织列表",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "System: Org"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseOrgList"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/org/{id}": {
+      "get": {
+        "summary": "获取组织详情",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "System: Org"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "",
+            "required": true,
+            "example": 0,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseOrgDetail"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "更新组织",
+        "deprecated": false,
+        "description": "更新组织信息，仅组织所有者或管理员可操作。",
+        "tags": [
+          "System: Org"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "组织ID",
+            "required": true,
+            "example": 1,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestUpdateOrg"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "403": {
+            "description": "无权限（非所有者）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsePermissionDenied"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "404": {
+            "description": "组织不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseOrgNotFound"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "summary": "删除组织",
+        "deprecated": false,
+        "description": "删除组织，仅组织所有者可操作。删除前会校验组织下是否还有成员。",
+        "tags": [
+          "System: Org"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "组织ID",
+            "required": true,
+            "example": 1,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "force",
+            "in": "query",
+            "description": "强制删除（即使组织下有成员）",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "400": {
+            "description": "组织下还有成员，无法删除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseInvalidParams"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "403": {
+            "description": "无权限（非所有者）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponsePermissionDenied"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "404": {
+            "description": "组织不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseOrgNotFound"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/org/current": {
+      "put": {
+        "summary": "切换当前组织",
+        "deprecated": false,
+        "description": "设置用户当前组织（影响权限判定）。",
+        "tags": [
+          "System: Org"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestSetCurrentOrg"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/org/my": {
+      "get": {
+        "summary": "获取我的组织",
+        "deprecated": false,
+        "description": "",
+        "tags": [
+          "System: Org"
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseMyOrgs"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/api/list": {
+      "get": {
+        "summary": "获取API列表",
+        "deprecated": false,
+        "description": "分页获取系统注册的所有API接口列表，支持按状态、分组、关键词过滤。",
+        "tags": [
+          "System: API"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "页码",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "每页数量",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "状态过滤：1启用 0禁用",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                0,
+                1
+              ]
+            }
+          },
+          {
+            "name": "group_id",
+            "in": "query",
+            "description": "所属菜单组ID",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "method",
+            "in": "query",
+            "description": "请求方法过滤",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "GET",
+                "POST",
+                "PUT",
+                "DELETE",
+                "PATCH"
+              ]
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "按路径或描述模糊搜索",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseAPIList"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/api": {
+      "post": {
+        "summary": "创建API",
+        "deprecated": false,
+        "description": "手动注册一个新的API接口到系统中。",
+        "tags": [
+          "System: API"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestCreateAPI"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "400": {
+            "description": "参数错误或API已存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseInvalidParams"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/api/{id}": {
+      "get": {
+        "summary": "获取API详情",
+        "deprecated": false,
+        "description": "根据ID获取API详细信息。",
+        "tags": [
+          "System: API"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "API ID",
+            "required": true,
+            "example": 101,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseAPIDetail"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "404": {
+            "description": "API不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseAPINotFound"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "更新API",
+        "deprecated": false,
+        "description": "更新API接口信息。",
+        "tags": [
+          "System: API"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "API ID",
+            "required": true,
+            "example": 101,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestUpdateAPI"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "404": {
+            "description": "API不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseAPINotFound"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "summary": "删除API",
+        "deprecated": false,
+        "description": "删除一个API接口。删除前会解除与菜单的绑定关系。",
+        "tags": [
+          "System: API"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "API ID",
+            "required": true,
+            "example": 101,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "404": {
+            "description": "API不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseAPINotFound"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/api/sync": {
+      "post": {
+        "summary": "同步路由",
+        "deprecated": false,
+        "description": "自动扫描并同步系统中的所有路由到API表。新增的路由会被添加，已删除的路由会被标记为禁用。",
+        "tags": [
+          "System: API"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestSyncAPI"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSyncAPI"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ResponseSuccess": {
+        "type": "object",
+        "description": "成功响应（无数据）",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "业务状态码：0表示成功",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "type": "object",
+            "properties": {},
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "ResponseMenuTree": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MenuItem"
+            }
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "ResponseUnauthorized": {
+        "type": "object",
+        "description": "未授权响应（code: 11000）",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "未授权",
+            "example": 11000
+          },
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "用户未登录"
+          },
+          "data": {
+            "type": "object",
+            "description": "可能包含AuthResponse结构",
+            "properties": {},
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "ResponseMenuList": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PageDataMenu"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "ResponsePermissionDenied": {
+        "type": "object",
+        "description": "权限不足响应（code: 11006）",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "权限不足",
+            "example": 11006
+          },
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "权限不足"
+          },
+          "data": {
+            "type": "object",
+            "properties": {},
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "ResponseMenuDetail": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/MenuItem"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "ResponseInternalError": {
+        "type": "object",
+        "description": "服务器内部错误响应（code: 10004）",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "服务器内部错误",
+            "example": 10004
+          },
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "服务器内部错误"
+          },
+          "data": {
+            "type": "object",
+            "properties": {},
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "MenuItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "example": 1
+          },
+          "parent_id": {
+            "type": "integer",
+            "example": 0
+          },
+          "name": {
+            "type": "string",
+            "example": "系统管理"
+          },
+          "code": {
+            "type": "string",
+            "example": "sys_manage"
+          },
+          "type": {
+            "type": "integer",
+            "description": "1:目录 2:菜单 3:按钮",
+            "example": 1
+          },
+          "icon": {
+            "type": "string",
+            "example": "setting"
+          },
+          "route_path": {
+            "type": "string",
+            "example": "/system"
+          },
+          "component_path": {
+            "type": "string",
+            "example": "Layout"
+          },
+          "status": {
+            "type": "integer",
+            "description": "1:显示 0:隐藏",
+            "example": 1
+          },
+          "sort": {
+            "type": "integer",
+            "example": 1
+          },
+          "desc": {
+            "type": "string",
+            "example": "系统设置相关"
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MenuItem"
+            }
+          },
+          "apis": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/APIItemSimple"
+            }
+          }
+        }
+      },
+      "ResponseInvalidParams": {
+        "type": "object",
+        "description": "参数错误响应（code: 10001）",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "参数错误",
+            "example": 10001
+          },
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "参数错误"
+          },
+          "data": {
+            "type": "object",
+            "properties": {},
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "RequestCreateMenu": {
+        "type": "object",
+        "required": [
+          "parent_id",
+          "name",
+          "code",
+          "type"
+        ],
+        "properties": {
+          "parent_id": {
+            "type": "integer",
+            "description": "父ID, 0为顶级",
+            "example": 1
+          },
+          "name": {
+            "type": "string",
+            "example": "新增用户"
+          },
+          "code": {
+            "type": "string",
+            "example": "sys_user_add"
+          },
+          "type": {
+            "type": "integer",
+            "description": "1:目录 2:菜单 3:按钮",
+            "example": 3
+          },
+          "icon": {
+            "type": "string",
+            "example": "plus"
+          },
+          "route_path": {
+            "type": "string",
+            "example": ""
+          },
+          "component_path": {
+            "type": "string",
+            "example": ""
+          },
+          "status": {
+            "type": "integer",
+            "example": 1
+          },
+          "sort": {
+            "type": "integer",
+            "default": 0
+          },
+          "desc": {
+            "type": "string",
+            "example": "用户新增按钮"
+          }
+        }
+      },
+      "APIItemSimple": {
+        "type": "object",
+        "description": "API简要信息（用于菜单关联展示）",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "example": 101
+          },
+          "path": {
+            "type": "string",
+            "example": "/api/system/user/list"
+          },
+          "method": {
+            "type": "string",
+            "example": "GET"
+          }
+        }
+      },
+      "ResponseUserNotFound": {
+        "type": "object",
+        "description": "用户不存在响应（code: 20001）",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "用户不存在",
+            "example": 20001
+          },
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "用户不存在"
+          },
+          "data": {
+            "type": "object",
+            "properties": {},
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "RequestUpdateMenu": {
+        "type": "object",
+        "properties": {
+          "parent_id": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "type": {
+            "type": "integer",
+            "enum": [
+              1,
+              2,
+              3
+            ]
+          },
+          "icon": {
+            "type": "string"
+          },
+          "route_path": {
+            "type": "string"
+          },
+          "component_path": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "sort": {
+            "type": "integer"
+          },
+          "desc": {
+            "type": "string"
+          }
+        }
+      },
+      "ResponseOrgNotFound": {
+        "type": "object",
+        "description": "组织不存在响应（code: 30001）",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "组织不存在",
+            "example": 30001
+          },
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "组织不存在"
+          },
+          "data": {
+            "type": "object",
+            "properties": {},
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "RequestBindMenuAPI": {
+        "type": "object",
+        "required": [
+          "menu_id",
+          "api_ids"
+        ],
+        "properties": {
+          "menu_id": {
+            "type": "integer",
+            "example": 2
+          },
+          "api_ids": {
+            "type": "array",
+            "description": "API ID列表（全量替换）",
+            "items": {
+              "type": "integer"
+            },
+            "example": [
+              101,
+              102
+            ]
+          }
+        }
+      },
+      "ResponseAPINotFound": {
+        "type": "object",
+        "description": "API不存在响应（code: 30301）",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "API不存在",
+            "example": 30301
+          },
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "API不存在"
+          },
+          "data": {
+            "type": "object",
+            "properties": {},
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "ResponseRoleList": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PageDataRole"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "ResponseRoleListSimple": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "example": 2
+                },
+                "name": {
+                  "type": "string",
+                  "example": "普通用户"
+                },
+                "code": {
+                  "type": "string",
+                  "example": "user"
+                }
+              }
+            }
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "RequestCreateRole": {
+        "type": "object",
+        "required": [
+          "name",
+          "code"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "运营专员"
+          },
+          "code": {
+            "type": "string",
+            "example": "operator"
+          },
+          "desc": {
+            "type": "string",
+            "example": "负责运营"
+          }
+        }
+      },
+      "RoleItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "example": 1
+          },
+          "name": {
+            "type": "string",
+            "example": "超级管理员"
+          },
+          "code": {
+            "type": "string",
+            "example": "super_admin"
+          },
+          "desc": {
+            "type": "string",
+            "example": "拥有所有权限"
+          },
+          "status": {
+            "type": "integer",
+            "description": "1:启用 0:禁用",
+            "example": 1
+          }
+        }
+      },
+      "PageDataMenu": {
+        "type": "object",
+        "description": "菜单分页数据",
+        "properties": {
+          "list": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MenuItem"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "总数",
+            "example": 100
+          },
+          "page": {
+            "type": "integer",
+            "description": "当前页码",
+            "example": 1
+          },
+          "page_size": {
+            "type": "integer",
+            "description": "每页大小",
+            "example": 10
+          }
+        }
+      },
+      "RequestUpdateRole": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "desc": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer",
+            "enum": [
+              0,
+              1
+            ]
+          }
+        }
+      },
+      "RequestAssignRoleMenu": {
+        "type": "object",
+        "required": [
+          "role_id",
+          "menu_ids"
+        ],
+        "properties": {
+          "role_id": {
+            "type": "integer",
+            "example": 1
+          },
+          "menu_ids": {
+            "type": "array",
+            "description": "菜单ID列表（全量替换）",
+            "items": {
+              "type": "integer"
+            },
+            "example": [
+              1,
+              2,
+              3,
+              4
+            ]
+          }
+        }
+      },
+      "ResponseRoleMenuIDs": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "integer"
+            },
+            "example": [
+              1,
+              2,
+              3
+            ]
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "ResponseUserList": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PageDataUser"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "RequestAssignUserRole": {
+        "type": "object",
+        "required": [
+          "user_id",
+          "org_id",
+          "role_ids"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "example": 1001
+          },
+          "org_id": {
+            "type": "integer",
+            "example": 1
+          },
+          "role_ids": {
+            "type": "array",
+            "description": "角色ID列表（全量替换该用户在该组织下的角色）",
+            "items": {
+              "type": "integer"
+            },
+            "example": [
+              2,
+              3
+            ]
+          }
+        }
+      },
+      "RequestCreateOrg": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "研发中心"
+          },
+          "description": {
+            "type": "string",
+            "example": "产品研发部"
+          },
+          "code": {
+            "type": "string",
+            "description": "加入邀请码",
+            "example": "DEV001"
+          }
+        }
+      },
+      "ResponseOrgList": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PageDataOrg"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "UserListItem": {
+        "type": "object",
+        "description": "用户列表项",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "example": 1001
+          },
+          "username": {
+            "type": "string",
+            "example": "zhangsan"
+          },
+          "phone": {
+            "type": "string",
+            "example": "13800000000"
+          },
+          "current_org": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "example": 1
+              },
+              "name": {
+                "type": "string",
+                "example": "总公司"
+              }
+            }
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "example": 2
+                },
+                "name": {
+                  "type": "string",
+                  "example": "普通用户"
+                }
+              }
+            }
+          }
+        }
+      },
+      "ResponseOrgDetail": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/OrgItem"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "ResponseUserDetail": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/UserDetailItem"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "PageDataRole": {
+        "type": "object",
+        "description": "角色分页数据",
+        "properties": {
+          "list": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RoleItem"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "总数",
+            "example": 10
+          },
+          "page": {
+            "type": "integer",
+            "description": "当前页码",
+            "example": 1
+          },
+          "page_size": {
+            "type": "integer",
+            "description": "每页大小",
+            "example": 10
+          }
+        }
+      },
+      "OrgItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "example": 1
+          },
+          "name": {
+            "type": "string",
+            "example": "总公司"
+          },
+          "description": {
+            "type": "string",
+            "example": "总部组织"
+          },
+          "code": {
+            "type": "string",
+            "description": "加入邀请码",
+            "example": "HQ"
+          },
+          "owner_id": {
+            "type": "integer",
+            "description": "创建者/负责人ID",
+            "example": 1
+          }
+        }
+      },
+      "UserDetailItem": {
+        "type": "object",
+        "description": "用户详情",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "example": 1001
+          },
+          "uuid": {
+            "type": "string",
+            "description": "用户唯一标识符",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "username": {
+            "type": "string",
+            "example": "zhangsan"
+          },
+          "phone": {
+            "type": "string",
+            "example": "13800000000"
+          },
+          "email": {
+            "type": "string",
+            "example": "zhangsan@example.com"
+          },
+          "avatar": {
+            "type": "string",
+            "example": "https://example.com/avatar.jpg"
+          },
+          "address": {
+            "type": "string",
+            "example": "北京市朝阳区"
+          },
+          "signature": {
+            "type": "string",
+            "example": "这是我的个性签名"
+          },
+          "register": {
+            "type": "integer",
+            "description": "注册来源",
+            "example": 1
+          },
+          "freeze": {
+            "type": "boolean",
+            "description": "是否冻结",
+            "example": false
+          },
+          "current_org": {
+            "type": "object",
+            "description": "当前所属组织",
+            "properties": {
+              "id": {
+                "type": "integer",
+                "example": 1
+              },
+              "name": {
+                "type": "string",
+                "example": "总公司"
+              }
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2024-01-15T10:30:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2024-06-20T15:45:00Z"
+          }
+        }
+      },
+      "RequestSetCurrentOrg": {
+        "type": "object",
+        "required": [
+          "org_id"
+        ],
+        "properties": {
+          "org_id": {
+            "type": "integer",
+            "example": 1
+          }
+        }
+      },
+      "ResponseMyOrgs": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "example": 1
+                },
+                "name": {
+                  "type": "string",
+                  "example": "总公司"
+                },
+                "is_owner": {
+                  "type": "boolean",
+                  "example": true
+                }
+              }
+            }
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "RequestUpdateOrg": {
+        "type": "object",
+        "description": "更新组织请求",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "组织名称",
+            "example": "研发中心（新）"
+          },
+          "description": {
+            "type": "string",
+            "description": "组织描述",
+            "example": "产品研发部门"
+          },
+          "code": {
+            "type": "string",
+            "description": "加入邀请码",
+            "example": "DEV002"
+          }
+        }
+      },
+      "PageDataUser": {
+        "type": "object",
+        "description": "用户分页数据",
+        "properties": {
+          "list": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserListItem"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "总数",
+            "example": 50
+          },
+          "page": {
+            "type": "integer",
+            "description": "当前页码",
+            "example": 1
+          },
+          "page_size": {
+            "type": "integer",
+            "description": "每页大小",
+            "example": 10
+          }
+        }
+      },
+      "APIItem": {
+        "type": "object",
+        "description": "API接口详情",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "example": 101
+          },
+          "path": {
+            "type": "string",
+            "description": "API路径",
+            "example": "/api/system/user/list"
+          },
+          "method": {
+            "type": "string",
+            "description": "请求方法",
+            "example": "GET"
+          },
+          "detail": {
+            "type": "string",
+            "description": "API描述",
+            "example": "获取用户列表"
+          },
+          "group_id": {
+            "type": "integer",
+            "description": "所属菜单组ID",
+            "example": 5
+          },
+          "status": {
+            "type": "integer",
+            "description": "状态：1启用 0禁用",
+            "example": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2024-01-15T10:30:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2024-06-20T15:45:00Z"
+          }
+        }
+      },
+      "ResponseAPIList": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PageDataAPI"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "ResponseAPIDetail": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/APIItem"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "RequestCreateAPI": {
+        "type": "object",
+        "description": "创建API请求",
+        "required": [
+          "path",
+          "method"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "API路径",
+            "example": "/api/system/user/create"
+          },
+          "method": {
+            "type": "string",
+            "description": "请求方法",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "DELETE",
+              "PATCH"
+            ],
+            "example": "POST"
+          },
+          "detail": {
+            "type": "string",
+            "description": "API描述",
+            "example": "创建新用户"
+          },
+          "group_id": {
+            "type": "integer",
+            "description": "所属菜单组ID",
+            "example": 5
+          },
+          "status": {
+            "type": "integer",
+            "description": "状态：1启用 0禁用",
+            "default": 1,
+            "example": 1
+          }
+        }
+      },
+      "RequestUpdateAPI": {
+        "type": "object",
+        "description": "更新API请求",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "API路径"
+          },
+          "method": {
+            "type": "string",
+            "description": "请求方法",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "DELETE",
+              "PATCH"
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "description": "API描述"
+          },
+          "group_id": {
+            "type": "integer",
+            "description": "所属菜单组ID"
+          },
+          "status": {
+            "type": "integer",
+            "description": "状态：1启用 0禁用",
+            "enum": [
+              0,
+              1
+            ]
+          }
+        }
+      },
+      "RequestSyncAPI": {
+        "type": "object",
+        "description": "同步API请求",
+        "properties": {
+          "delete_removed": {
+            "type": "boolean",
+            "description": "是否删除已移除的路由（默认仅禁用）",
+            "default": false,
+            "example": false
+          }
+        }
+      },
+      "ResponseSyncAPI": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "同步成功"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "added": {
+                "type": "integer",
+                "description": "新增API数量",
+                "example": 5
+              },
+              "updated": {
+                "type": "integer",
+                "description": "更新API数量",
+                "example": 3
+              },
+              "disabled": {
+                "type": "integer",
+                "description": "禁用API数量",
+                "example": 2
+              },
+              "total": {
+                "type": "integer",
+                "description": "当前API总数",
+                "example": 50
+              }
+            }
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "PageDataOrg": {
+        "type": "object",
+        "description": "组织分页数据",
+        "properties": {
+          "list": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrgItem"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "总数",
+            "example": 3
+          },
+          "page": {
+            "type": "integer",
+            "description": "当前页码",
+            "example": 1
+          },
+          "page_size": {
+            "type": "integer",
+            "description": "每页大小",
+            "example": 10
+          }
+        }
+      },
+      "PageDataAPI": {
+        "type": "object",
+        "description": "API分页数据",
+        "properties": {
+          "list": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/APIItem"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "总数",
+            "example": 50
+          },
+          "page": {
+            "type": "integer",
+            "description": "当前页码",
+            "example": 1
+          },
+          "page_size": {
+            "type": "integer",
+            "description": "每页大小",
+            "example": 10
+          }
+        }
+      }
+    },
+    "responses": {},
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "在请求头中使用 Authorization: Bearer <token>"
+      }
+    }
+  },
+  "servers": [],
+  "security": []
+}

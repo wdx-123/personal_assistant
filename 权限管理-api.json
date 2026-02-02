@@ -1,0 +1,722 @@
+{
+  "openapi": "3.0.1",
+  "info": {
+    "title": "默认模块",
+    "description": "",
+    "version": "1.0.0"
+  },
+  "tags": [
+    {
+      "name": "System: API"
+    }
+  ],
+  "paths": {
+    "/api/system/api/list": {
+      "get": {
+        "summary": "获取API列表",
+        "deprecated": false,
+        "description": "分页获取系统注册的所有API接口列表，支持按状态、分组、关键词过滤。",
+        "tags": [
+          "System: API"
+        ],
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "页码",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 1
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "每页数量",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 10
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "状态过滤：1启用 0禁用",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "enum": [
+                0,
+                1
+              ]
+            }
+          },
+          {
+            "name": "group_id",
+            "in": "query",
+            "description": "所属菜单组ID",
+            "required": false,
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "name": "method",
+            "in": "query",
+            "description": "请求方法过滤",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "GET",
+                "POST",
+                "PUT",
+                "DELETE",
+                "PATCH"
+              ]
+            }
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "按路径或描述模糊搜索",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseAPIList"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/api": {
+      "post": {
+        "summary": "创建API",
+        "deprecated": false,
+        "description": "手动注册一个新的API接口到系统中。",
+        "tags": [
+          "System: API"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestCreateAPI"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "400": {
+            "description": "参数错误或API已存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseInvalidParams"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/api/{id}": {
+      "get": {
+        "summary": "获取API详情",
+        "deprecated": false,
+        "description": "根据ID获取API详细信息。",
+        "tags": [
+          "System: API"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "API ID",
+            "required": true,
+            "example": 101,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseAPIDetail"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "404": {
+            "description": "API不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseAPINotFound"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "put": {
+        "summary": "更新API",
+        "deprecated": false,
+        "description": "更新API接口信息。",
+        "tags": [
+          "System: API"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "API ID",
+            "required": true,
+            "example": 101,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestUpdateAPI"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "404": {
+            "description": "API不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseAPINotFound"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      },
+      "delete": {
+        "summary": "删除API",
+        "deprecated": false,
+        "description": "删除一个API接口。删除前会解除与菜单的绑定关系。",
+        "tags": [
+          "System: API"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "API ID",
+            "required": true,
+            "example": 101,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSuccess"
+                }
+              }
+            },
+            "headers": {}
+          },
+          "404": {
+            "description": "API不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseAPINotFound"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    },
+    "/api/system/api/sync": {
+      "post": {
+        "summary": "同步路由",
+        "deprecated": false,
+        "description": "自动扫描并同步系统中的所有路由到API表。新增的路由会被添加，已删除的路由会被标记为禁用。",
+        "tags": [
+          "System: API"
+        ],
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestSyncAPI"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResponseSyncAPI"
+                }
+              }
+            },
+            "headers": {}
+          }
+        },
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ResponseSuccess": {
+        "type": "object",
+        "description": "成功响应（无数据）",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "业务状态码：0表示成功",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "type": "object",
+            "properties": {},
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "ResponseInvalidParams": {
+        "type": "object",
+        "description": "参数错误响应（code: 10001）",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "参数错误",
+            "example": 10001
+          },
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "参数错误"
+          },
+          "data": {
+            "type": "object",
+            "properties": {},
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "ResponseAPINotFound": {
+        "type": "object",
+        "description": "API不存在响应（code: 30301）",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "API不存在",
+            "example": 30301
+          },
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "API不存在"
+          },
+          "data": {
+            "type": "object",
+            "properties": {},
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "APIItem": {
+        "type": "object",
+        "description": "API接口详情",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "example": 101
+          },
+          "path": {
+            "type": "string",
+            "description": "API路径",
+            "example": "/api/system/user/list"
+          },
+          "method": {
+            "type": "string",
+            "description": "请求方法",
+            "example": "GET"
+          },
+          "detail": {
+            "type": "string",
+            "description": "API描述",
+            "example": "获取用户列表"
+          },
+          "group_id": {
+            "type": "integer",
+            "description": "所属菜单组ID",
+            "example": 5
+          },
+          "status": {
+            "type": "integer",
+            "description": "状态：1启用 0禁用",
+            "example": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2024-01-15T10:30:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2024-06-20T15:45:00Z"
+          }
+        }
+      },
+      "ResponseAPIList": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PageDataAPI"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "ResponseAPIDetail": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/APIItem"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "RequestCreateAPI": {
+        "type": "object",
+        "description": "创建API请求",
+        "required": [
+          "path",
+          "method"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "API路径",
+            "example": "/api/system/user/create"
+          },
+          "method": {
+            "type": "string",
+            "description": "请求方法",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "DELETE",
+              "PATCH"
+            ],
+            "example": "POST"
+          },
+          "detail": {
+            "type": "string",
+            "description": "API描述",
+            "example": "创建新用户"
+          },
+          "group_id": {
+            "type": "integer",
+            "description": "所属菜单组ID",
+            "example": 5
+          },
+          "status": {
+            "type": "integer",
+            "description": "状态：1启用 0禁用",
+            "default": 1,
+            "example": 1
+          }
+        }
+      },
+      "RequestUpdateAPI": {
+        "type": "object",
+        "description": "更新API请求",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "API路径"
+          },
+          "method": {
+            "type": "string",
+            "description": "请求方法",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "DELETE",
+              "PATCH"
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "description": "API描述"
+          },
+          "group_id": {
+            "type": "integer",
+            "description": "所属菜单组ID"
+          },
+          "status": {
+            "type": "integer",
+            "description": "状态：1启用 0禁用",
+            "enum": [
+              0,
+              1
+            ]
+          }
+        }
+      },
+      "RequestSyncAPI": {
+        "type": "object",
+        "description": "同步API请求",
+        "properties": {
+          "delete_removed": {
+            "type": "boolean",
+            "description": "是否删除已移除的路由（默认仅禁用）",
+            "default": false,
+            "example": false
+          }
+        }
+      },
+      "ResponseSyncAPI": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "同步成功"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "added": {
+                "type": "integer",
+                "description": "新增API数量",
+                "example": 5
+              },
+              "updated": {
+                "type": "integer",
+                "description": "更新API数量",
+                "example": 3
+              },
+              "disabled": {
+                "type": "integer",
+                "description": "禁用API数量",
+                "example": 2
+              },
+              "total": {
+                "type": "integer",
+                "description": "当前API总数",
+                "example": 50
+              }
+            }
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1706789012345
+          }
+        }
+      },
+      "PageDataAPI": {
+        "type": "object",
+        "description": "API分页数据",
+        "properties": {
+          "list": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/APIItem"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "description": "总数",
+            "example": 50
+          },
+          "page": {
+            "type": "integer",
+            "description": "当前页码",
+            "example": 1
+          },
+          "page_size": {
+            "type": "integer",
+            "description": "每页大小",
+            "example": 10
+          }
+        }
+      }
+    },
+    "responses": {},
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "在请求头中使用 Authorization: Bearer <token>"
+      }
+    }
+  },
+  "servers": [],
+  "security": []
+}

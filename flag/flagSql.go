@@ -22,7 +22,7 @@ func SQL() error {
 		&entity.JwtBlacklist{},   // JWT黑名单表（兼容现有代码）
 		&entity.Role{},           // 角色表
 		&entity.Menu{},           // 菜单表
-		&entity.UserRole{},       // 用户角色关联表
+		&entity.UserOrgRole{},    // 用户组织角色关联表
 		&entity.API{},            // api表
 		&entity.OutboxEvent{},    // Outbox事件表
 	)

@@ -2,9 +2,11 @@ package system
 
 import (
 	"context"
-	"gorm.io/gorm"
+	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository/interfaces"
+
+	"gorm.io/gorm"
 )
 
 type menuRepository struct {
@@ -47,30 +49,87 @@ func (m *menuRepository) Delete(ctx context.Context, id uint) error {
 }
 
 // 业务相关查询
-func (m *menuRepository) GetMenuList(ctx context.Context, page, pageSize int) ([]*entity.Menu, int64, error) {
+
+// GetMenuList 获取菜单列表（分页，支持过滤）
+func (m *menuRepository) GetMenuList(ctx context.Context, filter *request.MenuListFilter) ([]*entity.Menu, int64, error) {
 	var menus []*entity.Menu
 	var total int64
 
-	offset := (page - 1) * pageSize
-	err := m.db.WithContext(ctx).Model(&entity.Menu{}).Count(&total).Error
-	if err != nil {
+	query := m.db.WithContext(ctx).Model(&entity.Menu{})
+
+	if filter != nil {
+		if filter.Type != nil {
+			query = query.Where("type = ?", *filter.Type)
+		}
+		if filter.Status != nil {
+			query = query.Where("status = ?", *filter.Status)
+		}
+		if filter.ParentID != nil {
+			query = query.Where("parent_id = ?", *filter.ParentID)
+		}
+		if filter.Keyword != "" {
+			query = query.Where("name LIKE ? OR code LIKE ?", "%"+filter.Keyword+"%", "%"+filter.Keyword+"%")
+		}
+	}
+
+	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	err = m.db.WithContext(ctx).Offset(offset).Limit(pageSize).Find(&menus).Error
+	page := 1
+	pageSize := 10
+	if filter != nil {
+		if filter.Page > 0 {
+			page = filter.Page
+		}
+		if filter.PageSize > 0 {
+			pageSize = filter.PageSize
+		}
+	}
+
+	offset := (page - 1) * pageSize
+	err := query.Order("sort ASC, id ASC").Offset(offset).Limit(pageSize).Find(&menus).Error
 	return menus, total, err
 }
 
-func (m *menuRepository) GetAllMenus(ctx context.Context) ([]*entity.Menu, error) {
+// GetAllMenus 获取所有菜单
+func (m *menuRepository) GetAllMenus(
+	ctx context.Context,
+) ([]*entity.Menu, error) {
 	var menus []*entity.Menu
 	err := m.db.WithContext(ctx).Find(&menus).Error
 	return menus, err
 }
 
-func (m *menuRepository) GetMenuTree(ctx context.Context, parentID uint) ([]*entity.Menu, error) {
+// GetMenuTree 获取菜单树
+func (m *menuRepository) GetMenuTree(
+	ctx context.Context,
+	parentID uint,
+) ([]*entity.Menu, error) {
 	var menus []*entity.Menu
-	err := m.db.WithContext(ctx).Where("parent_id = ?", parentID).Order("sort ASC").Find(&menus).Error
+	err := m.db.WithContext(ctx).
+		Where("parent_id = ?", parentID).
+		Order("sort ASC").Find(&menus).Error
 	return menus, err
+}
+
+// GetMenuChildren 获取指定菜单的直接子菜单
+func (m *menuRepository) GetMenuChildren(
+	ctx context.Context,
+	parentID uint,
+) ([]*entity.Menu, error) {
+	var menus []*entity.Menu
+	err := m.db.WithContext(ctx).
+		Where("parent_id = ?", parentID).
+		Order("sort ASC").Find(&menus).Error
+	return menus, err
+}
+
+// HasChildren 检查菜单是否有子菜单
+func (m *menuRepository) HasChildren(ctx context.Context, menuID uint) (bool, error) {
+	var count int64
+	err := m.db.WithContext(ctx).Model(&entity.Menu{}).Where("parent_id = ?", menuID).Count(&count).Error
+	return count > 0, err
 }
 
 func (m *menuRepository) GetActiveMenus(ctx context.Context) ([]*entity.Menu, error) {
@@ -91,10 +150,25 @@ func (m *menuRepository) AssignAPIToMenu(ctx context.Context, menuID, apiID uint
 	return m.db.WithContext(ctx).Exec("INSERT IGNORE INTO menu_apis (menu_id, api_id) VALUES (?, ?)", menuID, apiID).Error
 }
 
+// RemoveAPIFromMenu 从菜单移除API
 func (m *menuRepository) RemoveAPIFromMenu(ctx context.Context, menuID, apiID uint) error {
-	return m.db.WithContext(ctx).Exec("DELETE FROM menu_apis WHERE menu_id = ? AND api_id = ?", menuID, apiID).Error
+	return m.db.WithContext(ctx).
+		Exec("DELETE FROM menu_apis WHERE menu_id = ? AND api_id = ?", menuID, apiID).Error
 }
 
+// RemoveAPIFromAllMenus 从所有菜单中移除指定API（删除API前解绑）
+func (m *menuRepository) RemoveAPIFromAllMenus(ctx context.Context, apiID uint) error {
+	return m.db.WithContext(ctx).
+		Exec("DELETE FROM menu_apis WHERE api_id = ?", apiID).Error
+}
+
+// ClearMenuAPIs 清空菜单的所有API绑定（bind_api 覆盖前调用）
+func (m *menuRepository) ClearMenuAPIs(ctx context.Context, menuID uint) error {
+	return m.db.WithContext(ctx).
+		Exec("DELETE FROM menu_apis WHERE menu_id = ?", menuID).Error
+}
+
+// GetMenuAPIs 获取菜单关联的API列表
 func (m *menuRepository) GetMenuAPIs(ctx context.Context, menuID uint) ([]*entity.API, error) {
 	var apis []*entity.API
 	err := m.db.WithContext(ctx).
@@ -105,6 +179,7 @@ func (m *menuRepository) GetMenuAPIs(ctx context.Context, menuID uint) ([]*entit
 	return apis, err
 }
 
+// GetAPIMenus 获取API所属的菜单列表
 func (m *menuRepository) GetAPIMenus(ctx context.Context, apiID uint) ([]*entity.Menu, error) {
 	var menus []*entity.Menu
 	err := m.db.WithContext(ctx).
@@ -116,7 +191,6 @@ func (m *menuRepository) GetAPIMenus(ctx context.Context, apiID uint) ([]*entity
 }
 
 // 角色菜单关系查询
-
 func (m *menuRepository) GetMenusByRoleID(ctx context.Context, roleID uint) ([]*entity.Menu, error) {
 	var menus []*entity.Menu
 	err := m.db.WithContext(ctx).
@@ -127,20 +201,23 @@ func (m *menuRepository) GetMenusByRoleID(ctx context.Context, roleID uint) ([]*
 	return menus, err
 }
 
-func (m *menuRepository) GetMenusByUserID(ctx context.Context, userID uint) ([]*entity.Menu, error) {
+// GetMenusByUserID 获取用户的菜单列表
+func (m *menuRepository) GetMenusByUserID(
+	ctx context.Context,
+	userID uint,
+	orgID uint,
+) ([]*entity.Menu, error) {
 	var menus []*entity.Menu
-	err := m.db.WithContext(ctx).
+	db := m.db.WithContext(ctx).
 		Table("menus").
-		Joins("JOIN role_menus ON menus.id = role_menus.menu_id").
-		Joins("JOIN user_roles ON role_menus.role_id = user_roles.role_id").
-		Where("user_roles.user_id = ? AND menus.deleted_at IS NULL", userID).
-		Distinct().
-		Find(&menus).Error
+		Joins("JOIN role_menus ON menus.id = role_menus.menu_id")
+	db = db.Joins("JOIN user_org_roles ON role_menus.role_id = user_org_roles.role_id").
+		Where("user_org_roles.user_id = ? AND user_org_roles.org_id = ? AND menus.deleted_at IS NULL", userID, orgID)
+	err := db.Distinct().Find(&menus).Error
 	return menus, err
 }
 
 // 权限同步相关
-
 func (m *menuRepository) GetAllMenuAPIRelations(ctx context.Context) ([]map[string]interface{}, error) {
 	var relations []map[string]interface{}
 	err := m.db.WithContext(ctx).

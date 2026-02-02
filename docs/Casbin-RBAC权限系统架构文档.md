@@ -59,7 +59,7 @@ API表 (apis)
 └── ...
 
 关系表（核心）：
-├── user_roles (用户-角色关系) ← 用户角色通过此表管理
+├── user_org_roles (用户-组织-角色关系) ← 多租户核心关系表
 ├── role_menus (角色-菜单关系)  
 └── menu_apis (菜单-API关系)
 ```
@@ -85,8 +85,8 @@ Casbin 将权限关系存储为策略规则：
 
 ```
 # 用户角色关系 (g策略)
-g, 1, admin        # 用户1拥有admin角色
-g, 2, user         # 用户2拥有user角色
+g, 1@1, admin        # 用户1在组织1拥有admin角色
+g, 1@2, user         # 用户1在组织2拥有user角色
 
 # 角色菜单权限 (p策略)  
 p, admin, user_manage, read    # admin角色可以访问用户管理菜单
@@ -139,12 +139,12 @@ func (p *PermissionMiddleware) CheckPermission() gin.HandlerFunc {
 ```
 请求 /api/users (GET) 
     ↓
-1. 用户ID: "1"
+1. 用户ID: "1"，当前组织ID: "1"
     ↓  
-2. Casbin查询: Enforce("1", "/api/users:GET", "access")
+2. Casbin查询: Enforce("1@1", "/api/users:GET", "access")
     ↓
 3. Casbin内部推理:
-   - 用户1有admin角色: g("1", "admin") ✓
+   - 用户1在组织1有admin角色: g("1@1", "admin") ✓
    - admin角色有user_manage菜单权限: p("admin", "user_manage", "read") ✓  
    - user_manage菜单有/api/users:GET权限: p("user_manage", "/api/users:GET", "access") ✓
     ↓
@@ -179,7 +179,7 @@ func (u *UserService) Register(ctx *gin.Context, req *request.RegisterReq) (*ent
     defaultRole, err := u.roleRepo.GetByCode(ctx, defaultRoleCode)
     
     // 5. 通过权限服务分配角色（同时更新数据库和Casbin）
-    err = u.permissionService.AssignRoleToUser(ctx, user.ID, defaultRole.ID)
+    err = u.permissionService.AssignRoleToUserInOrg(ctx, user.ID, req.OrgID, defaultRole.ID)
     
     return user, nil
 }
@@ -188,20 +188,20 @@ func (u *UserService) Register(ctx *gin.Context, req *request.RegisterReq) (*ent
 ### 5.2 角色分配的双重操作
 
 ```go
-func (p *PermissionService) AssignRoleToUser(ctx context.Context, userID, roleID uint) error {
+func (p *PermissionService) AssignRoleToUserInOrg(ctx context.Context, userID, orgID, roleID uint) error {
     // 获取角色信息
     role, err := roleRepo.GetByID(ctx, roleID)
     
-    // 1. 数据库操作：在user_roles表中插入关系记录
-    err = roleRepo.AssignRoleToUser(ctx, userID, roleID)
+    // 1. 数据库操作：在user_org_roles表中插入关系记录
+    err = roleRepo.AssignRoleToUserInOrg(ctx, userID, orgID, roleID)
     
     // 2. Casbin操作：添加用户角色关系到内存策略
-    userIDStr := strconv.FormatUint(uint64(userID), 10)
-    _, err = p.casbinSvc.Enforcer.AddRoleForUser(userIDStr, role.Code)
+    subject := fmt.Sprintf("%d@%d", userID, orgID)
+    _, err = p.casbinSvc.Enforcer.AddRoleForUser(subject, role.Code)
     
     // 如果Casbin操作失败，回滚数据库操作（保证数据一致性）
     if err != nil {
-        roleRepo.RemoveRoleFromUser(ctx, userID, roleID)
+        roleRepo.RemoveRoleFromUserInOrg(ctx, userID, orgID, roleID)
         return err
     }
     

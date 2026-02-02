@@ -36,17 +36,15 @@ type RoleRepository interface {
 	// GetMenuRoles 获取菜单所属的角色列表
 	GetMenuRoles(ctx context.Context, menuID uint) ([]*entity.Role, error)
 
-	// AssignRoleToUser 为用户分配角色
-	AssignRoleToUser(ctx context.Context, userID, roleID uint) error
-	// RemoveRoleFromUser 从用户移除角色
-	RemoveRoleFromUser(ctx context.Context, userID, roleID uint) error
-	// GetUsersByRole 获取具有特定角色的用户列表
-	GetUsersByRole(ctx context.Context, roleID uint) ([]*entity.User, error)
-	// GetUserRoles 获取用户的角色列表
-	GetUserRoles(ctx context.Context, userID uint) ([]*entity.Role, error)
+	// AssignRoleToUserInOrg 为用户在组织中分配角色
+	AssignRoleToUserInOrg(ctx context.Context, userID, orgID, roleID uint) error
+	// RemoveRoleFromUserInOrg 从用户在组织中移除角色
+	RemoveRoleFromUserInOrg(ctx context.Context, userID, orgID, roleID uint) error
+	// GetUserRolesByOrg 获取用户在组织中的角色列表
+	GetUserRolesByOrg(ctx context.Context, userID, orgID uint) ([]*entity.Role, error)
 
 	// GetAllRoleMenuRelations 获取所有角色与菜单的关联关系（用于Casbin同步）
 	GetAllRoleMenuRelations(ctx context.Context) ([]map[string]interface{}, error)
-	// GetAllUserRoleRelations 获取所有用户与角色的关联关系（用于Casbin同步）
-	GetAllUserRoleRelations(ctx context.Context) ([]map[string]interface{}, error)
+	// GetAllUserOrgRoleRelations 获取所有用户在组织中的角色关联关系（用于Casbin同步）
+	GetAllUserOrgRoleRelations(ctx context.Context) ([]map[string]interface{}, error)
 }
