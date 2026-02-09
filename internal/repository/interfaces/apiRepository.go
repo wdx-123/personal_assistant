@@ -23,8 +23,6 @@ type APIRepository interface {
 	GetAPIList(ctx context.Context, filter *request.ApiListFilter) ([]*entity.API, int64, error)
 	// GetAllAPIs 获取所有API
 	GetAllAPIs(ctx context.Context) ([]*entity.API, error)
-	// GetAPIsByGroup 根据分组获取API
-	GetAPIsByGroup(ctx context.Context, groupID uint) ([]*entity.API, error)
 	// GetActiveAPIs 获取所有启用的API
 	GetActiveAPIs(ctx context.Context) ([]*entity.API, error)
 	// ExistsByPathAndMethod 检查路径和方法组合是否存在

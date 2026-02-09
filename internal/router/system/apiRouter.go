@@ -11,7 +11,7 @@ type ApiRouter struct{}
 
 // InitApiRouter 初始化API路由，挂载到 SystemGroup（需JWT+权限）
 func (r *ApiRouter) InitApiRouter(router *gin.RouterGroup) {
-	apiGroup := router.Group("api/system/api")
+	apiGroup := router.Group("system/api")
 	apiCtrl := controller.ApiGroupApp.SystemApiGroup.GetApiCtrl()
 	{
 		apiGroup.GET("list", apiCtrl.GetAPIList)       // 获取API列表

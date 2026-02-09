@@ -19,6 +19,7 @@ type Config struct {
 	Crawler   Crawler   `json:"crawler" yaml:"crawler"`
 	Task      Task      `json:"task" yaml:"task"`           // 定时任务配置
 	Messaging Messaging `json:"messaging" yaml:"messaging"` // 消息队列配置
+	RateLimit RateLimit `json:"rate_limit" yaml:"rate_limit"` // 限流配置
 }
 
 func NewConfig() *Config {
@@ -113,11 +114,13 @@ func NewConfig() *Config {
 	}
 	// 静态文件配置初始化
 	_static := &Static{
-		Path:         viper.GetString("static.path"),
-		Prefix:       viper.GetString("static.prefix"),
-		MaxSize:      viper.GetInt("static.max_size"),
-		MaxUploads:   viper.GetInt("static.max_uploads"),
-		AllowedTypes: viper.GetStringSlice("static.allowed_types"),
+		Path:                 viper.GetString("static.path"),
+		Prefix:               viper.GetString("static.prefix"),
+		MaxSize:              viper.GetInt("static.max_size"),
+		MaxUploads:           viper.GetInt("static.max_uploads"),
+		AllowedTypes:         viper.GetStringSlice("static.allowed_types"),
+		MaxConcurrentUploads: viper.GetInt("static.max_concurrent_uploads"),
+		UserQuotaMB:          viper.GetInt("static.user_quota_mb"),
 	}
 	// 高德地图API配置初始化
 	_gaode := &Gaode{
@@ -184,6 +187,16 @@ func NewConfig() *Config {
 		RankingSyncIntervalSeconds:            viper.GetInt("task.ranking_sync_interval_seconds"),       // 读取排行榜间隔
 	}
 
+	// 限流配置初始化
+	_rateLimit := &RateLimit{
+		Upload: UploadRateLimit{
+			GlobalLimit:     viper.GetInt("rate_limit.upload.global_limit"),
+			GlobalWindowSec: viper.GetInt("rate_limit.upload.global_window_sec"),
+			UserLimit:       viper.GetInt("rate_limit.upload.user_limit"),
+			UserWindowSec:   viper.GetInt("rate_limit.upload.user_window_sec"),
+		},
+	}
+
 	_messaging := &Messaging{
 		RedisStreamReadCount: viper.GetInt("messaging.redis_stream_read_count"),
 		RedisStreamBlockMs:   viper.GetInt("messaging.redis_stream_block_ms"),
@@ -211,5 +224,6 @@ func NewConfig() *Config {
 		Crawler:   *_crawler,
 		Task:      *_task,
 		Messaging: *_messaging,
+		RateLimit: *_rateLimit,
 	}
 }

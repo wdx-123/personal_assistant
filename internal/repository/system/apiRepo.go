@@ -61,9 +61,6 @@ func (a *apiRepository) GetAPIList(ctx context.Context, filter *request.ApiListF
 		if filter.Status != nil {
 			query = query.Where("status = ?", *filter.Status)
 		}
-		if filter.GroupID != nil && *filter.GroupID > 0 {
-			query = query.Where("group_id = ?", *filter.GroupID)
-		}
 		if filter.Method != "" {
 			query = query.Where("method = ?", filter.Method)
 		}
@@ -95,12 +92,6 @@ func (a *apiRepository) GetAPIList(ctx context.Context, filter *request.ApiListF
 func (a *apiRepository) GetAllAPIs(ctx context.Context) ([]*entity.API, error) {
 	var apis []*entity.API
 	err := a.db.WithContext(ctx).Find(&apis).Error
-	return apis, err
-}
-
-func (a *apiRepository) GetAPIsByGroup(ctx context.Context, groupID uint) ([]*entity.API, error) {
-	var apis []*entity.API
-	err := a.db.WithContext(ctx).Where("group_id = ?", groupID).Find(&apis).Error
 	return apis, err
 }
 

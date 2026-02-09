@@ -45,6 +45,10 @@ func Init() {
 	global.Redis = core.ConnectRedis()
 	// 初始化Casbin
 	core.InitCasbin()
+	// 初始化存储驱动（本地/七牛，七牛自动包装熔断器）
+	core.InitStorage()
+	// 初始化上传限流器（依赖 Redis）
+	core.InitUploadRateLimiters()
 	// 初始化flag
 	flag.InitFlag()
 	// 初始化Repository层

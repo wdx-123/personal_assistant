@@ -54,16 +54,26 @@ func InitRouter() *gin.Engine {
 	SystemGroup.Use(middleware.JWTAuth())                                // JWT认证
 	SystemGroup.Use(permissionMW.CheckPermission())                      // 权限中间件
 	{
+		// 路由管理(api管理)
 		systemRouter.InitApiRouter(SystemGroup)
+		// 菜单管理
 		systemRouter.InitMenuRouter(SystemGroup)
+		// 角色管理
+		systemRouter.InitRoleRouter(SystemGroup)
+		// 组织管理
+		systemRouter.InitOrgAuthRouter(SystemGroup)
 	}
 	// 业务路由组 - 需要JWT，但不需严格的权限控制
 	BusinessGroup := Router.Group("")
 	BusinessGroup.Use(middleware.JWTAuth())
+	uploadRateLimitMW := middleware.UploadRateLimitMiddleware(global.UploadGlobalLimiter, global.UploadUserLimiter)
 	{
 		// OJ 相关路由
 		systemRouter.InitOJRouter(BusinessGroup)
-		// todo 业务路由扩展
+		// 图片路由：登录即可访问，上传接口额外挂载限流中间件（全局+用户级双层限流）
+		systemRouter.InitImageRouter(BusinessGroup, uploadRateLimitMW)
+		// 组织路由：登录即可切换组织、查看我的组织
+		systemRouter.InitOrgBusinessRouter(BusinessGroup)
 	}
 	return Router
 }

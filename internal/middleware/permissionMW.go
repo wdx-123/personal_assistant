@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"personal_assistant/global"
+	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/service"
 	"personal_assistant/pkg/response"
@@ -163,7 +164,7 @@ func (a *permissionAuth) loadUserRoles() bool {
 	for i, role := range roles {
 		a.userRoles[i] = role.Code
 		// 检查是否包含超级管理员角色
-		if role.Code == "super_admin" || role.Code == "SuperAdmin" {
+		if role.Code == consts.RoleCodeSuperAdmin || role.Code == "SuperAdmin" {
 			a.isSuperAdmin = true
 		}
 	}

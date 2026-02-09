@@ -11449,3 +11449,54 @@
 {"level":"ERROR","time":"2026-01-23T11:47:32.495+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"13223737513","error":"验证码错误"}
 {"level":"ERROR","time":"2026-01-23T11:49:31.793+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"13223737513","error":"账号或密码错误"}
 {"level":"ERROR","time":"2026-01-23T11:49:48.418+0800","caller":"system/userCtrl.go:72","msg":"手机号登录失败","phone":"13223737513","error":"验证码错误"}
+{"level":"WARN","time":"2026-02-08T14:49:53.139+0800","caller":"middleware/permissionMW.go:224","msg":"用户无权限访问API","userID":39,"path":"/api/system/image/upload","method":"POST","roles":[]}
+{"level":"ERROR","time":"2026-02-08T16:29:31.132+0800","caller":"system/ojSvc.go:345","msg":"failed to sync leetcode user","slug":"","error":"invalid identifier"}
+{"level":"ERROR","time":"2026-02-08T17:29:31.111+0800","caller":"system/ojSvc.go:345","msg":"failed to sync leetcode user","slug":"","error":"invalid identifier"}
+{"level":"ERROR","time":"2026-02-08T18:29:31.129+0800","caller":"system/ojSvc.go:345","msg":"failed to sync leetcode user","slug":"","error":"invalid identifier"}
+{"level":"ERROR","time":"2026-02-08T19:29:31.102+0800","caller":"system/ojSvc.go:345","msg":"failed to sync leetcode user","slug":"","error":"invalid identifier"}
+{"level":"ERROR","time":"2026-02-08T20:29:31.114+0800","caller":"system/ojSvc.go:345","msg":"failed to sync leetcode user","slug":"","error":"invalid identifier"}
+{"level":"ERROR","time":"2026-02-08T21:29:31.118+0800","caller":"system/ojSvc.go:345","msg":"failed to sync leetcode user","slug":"","error":"invalid identifier"}
+{"level":"ERROR","time":"2026-02-08T22:16:25.946+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable host."}
+{"level":"ERROR","time":"2026-02-08T22:16:25.974+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable host."}
+{"level":"ERROR","time":"2026-02-08T22:16:25.975+0800","caller":"redislock/concurrency_lock.go:162","msg":"自动续期失败","key":"lock:luogu:sync:all_users","error":"执行lua脚本失败: dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable host."}
+{"level":"WARN","time":"2026-02-08T22:16:26.411+0800","caller":"system/ojSvc.go:300","msg":"skip syncing user: lock held (possibly binding)","uid":"2004326"}
+{"level":"ERROR","time":"2026-02-08T22:16:27.978+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable host."}
+{"level":"ERROR","time":"2026-02-08T22:16:28.070+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable host."}
+{"level":"ERROR","time":"2026-02-08T22:16:29.835+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-02-08T22:16:30.180+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-02-08T22:16:30.293+0800","caller":"outbox/processor.go:46","msg":"OutboxRelay: 获取待发布事件失败","error":"invalid connection"}
+{"level":"ERROR","time":"2026-02-08T22:16:30.813+0800","caller":"outbox/processor.go:46","msg":"OutboxRelay: 获取待发布事件失败","error":"dial tcp 180.184.87.86:3306: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"WARN","time":"2026-02-08T22:16:30.862+0800","caller":"system/ojSvc.go:300","msg":"skip syncing user: lock held (possibly binding)","uid":"1614273"}
+{"level":"ERROR","time":"2026-02-08T22:16:31.168+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-02-08T22:16:31.368+0800","caller":"outbox/processor.go:46","msg":"OutboxRelay: 获取待发布事件失败","error":"dial tcp 180.184.87.86:3306: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-02-08T22:16:31.368+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-02-08T22:16:32.346+0800","caller":"outbox/processor.go:46","msg":"OutboxRelay: 获取待发布事件失败","error":"dial tcp 180.184.87.86:3306: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-02-08T22:16:32.418+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-02-08T22:16:32.662+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-02-08T22:16:33.338+0800","caller":"outbox/processor.go:46","msg":"OutboxRelay: 获取待发布事件失败","error":"dial tcp 180.184.87.86:3306: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-02-08T22:16:33.659+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-02-08T22:16:33.857+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-02-08T22:16:34.363+0800","caller":"outbox/processor.go:46","msg":"OutboxRelay: 获取待发布事件失败","error":"dial tcp 180.184.87.86:3306: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-02-08T22:16:34.991+0800","caller":"messaging/redis_subscriber.go:74","msg":"读取消息失败","error":"dial tcp 180.184.87.86:6379: connectex: A socket operation was attempted to an unreachable network."}
+{"level":"ERROR","time":"2026-02-08T22:19:03.357+0800","caller":"redislock/concurrency_lock.go:212","msg":"释放锁失败","key":"luogu:sync:all_users","error":"释放锁失败"}
+{"level":"ERROR","time":"2026-02-08T22:29:31.331+0800","caller":"system/ojSvc.go:345","msg":"failed to sync leetcode user","slug":"","error":"invalid identifier"}
+{"level":"ERROR","time":"2026-02-08T23:29:31.599+0800","caller":"system/ojSvc.go:345","msg":"failed to sync leetcode user","slug":"","error":"invalid identifier"}
+{"level":"ERROR","time":"2026-02-09T19:10:26.364+0800","caller":"core/gorm.go:29","msg":"Failed to connect to MySQL:","error":"dial tcp :3306: connectex: No connection could be made because the target machine actively refused it."}
+{"level":"ERROR","time":"2026-02-09T19:11:00.170+0800","caller":"core/gorm.go:29","msg":"Failed to connect to MySQL:","error":"dial tcp :3306: connectex: No connection could be made because the target machine actively refused it."}
+{"level":"ERROR","time":"2026-02-09T19:21:36.920+0800","caller":"core/gorm.go:29","msg":"Failed to connect to MySQL:","error":"dial tcp 127.0.0.1:3306: connectex: No connection could be made because the target machine actively refused it."}
+{"level":"ERROR","time":"2026-02-09T19:22:07.987+0800","caller":"core/gorm.go:29","msg":"Failed to connect to MySQL:","error":"dial tcp 127.0.0.1:3306: connectex: No connection could be made because the target machine actively refused it."}
+{"level":"ERROR","time":"2026-02-09T19:22:56.374+0800","caller":"core/redis.go:30","msg":"Failed to connect to Redis:","error":"WRONGPASS invalid username-password pair or user is disabled."}
+{"level":"ERROR","time":"2026-02-09T19:23:12.643+0800","caller":"core/gorm.go:29","msg":"Failed to connect to MySQL:","error":"Error 1045 (28000): Access denied for user 'root'@'42.229.41.251' (using password: YES)"}
+{"level":"ERROR","time":"2026-02-09T19:24:13.560+0800","caller":"core/redis.go:30","msg":"Failed to connect to Redis:","error":"WRONGPASS invalid username-password pair or user is disabled."}
+{"level":"ERROR","time":"2026-02-09T19:24:49.525+0800","caller":"core/redis.go:30","msg":"Failed to connect to Redis:","error":"WRONGPASS invalid username-password pair or user is disabled."}
+{"level":"WARN","time":"2026-02-09T19:35:48.542+0800","caller":"middleware/permissionMW.go:225","msg":"用户无权限访问API","userID":39,"path":"/system/role/list","method":"GET","roles":[]}
+{"level":"WARN","time":"2026-02-09T19:38:12.146+0800","caller":"middleware/permissionMW.go:225","msg":"用户无权限访问API","userID":39,"path":"/system/role/list","method":"GET","roles":[]}
+{"level":"WARN","time":"2026-02-09T19:38:19.124+0800","caller":"middleware/permissionMW.go:225","msg":"用户无权限访问API","userID":39,"path":"/system/role/list","method":"GET","roles":[]}
+{"level":"WARN","time":"2026-02-09T19:40:04.617+0800","caller":"middleware/permissionMW.go:225","msg":"用户无权限访问API","userID":39,"path":"/system/role/list","method":"GET","roles":[]}
+{"level":"ERROR","time":"2026-02-09T19:53:39.835+0800","caller":"system/roleCtrl.go:89","msg":"创建角色参数绑定失败","error":"EOF"}
+{"level":"ERROR","time":"2026-02-09T20:32:55.707+0800","caller":"system/roleCtrl.go:151","msg":"删除角色失败","id":3,"error":"[10001] 系统内置角色不允许删除"}
+{"level":"ERROR","time":"2026-02-09T20:33:02.088+0800","caller":"system/roleCtrl.go:151","msg":"删除角色失败","id":31,"error":"[10005] 数据库错误: record not found"}
+{"level":"ERROR","time":"2026-02-09T20:33:59.251+0800","caller":"system/roleCtrl.go:200","msg":"获取角色菜单权限失败","id":0,"error":"[10005] 数据库错误: record not found"}
+{"level":"ERROR","time":"2026-02-09T20:37:21.543+0800","caller":"system/apiCtrl.go:80","msg":"创建API参数绑定失败","error":"EOF"}
+{"level":"ERROR","time":"2026-02-09T20:43:07.002+0800","caller":"system/apiCtrl.go:146","msg":"同步API失败","error":"[10005] 数据库错误: Error 1452 (23000): Cannot add or update a child row: a foreign key constraint fails (`meta_assist`.`apis`, CONSTRAINT `fk_apis_menu` FOREIGN KEY (`group_id`) REFERENCES `menus` (`id`))"}
+{"level":"ERROR","time":"2026-02-09T20:51:46.840+0800","caller":"system/ojSvc.go:345","msg":"failed to sync leetcode user","slug":"","error":"invalid identifier"}

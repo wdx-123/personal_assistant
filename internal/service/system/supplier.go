@@ -11,6 +11,8 @@ type Supplier interface {
 	GetOJSvc() *OJService
 	GetApiSvc() *ApiService
 	GetMenuSvc() *MenuService
+	GetRoleSvc() *RoleService
+	GetImageSvc() *ImageService
 }
 
 // SetUp 工厂函数，统一管理
@@ -23,6 +25,8 @@ func SetUp(repositoryGroup *repository.Group) Supplier {
 	ss.ojService = NewOJService(repositoryGroup)
 	ss.apiService = NewApiService(repositoryGroup)
 	ss.menuService = NewMenuService(repositoryGroup)
+	ss.roleService = NewRoleService(repositoryGroup)
+	ss.imageService = NewImageService(repositoryGroup)
 
 	// UserService 需要依赖 PermissionService，所以在 permissionService 初始化后创建
 	ss.userService = NewUserService(repositoryGroup, ss.permissionService)

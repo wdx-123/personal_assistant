@@ -12,6 +12,8 @@ type Supplier interface {
 	GetOJCtrl() *OJCtrl
 	GetApiCtrl() *ApiCtrl
 	GetMenuCtrl() *MenuCtrl
+	GetRoleCtrl() *RoleCtrl
+	GetImageCtrl() *ImageCtrl
 }
 
 // SetUp 工厂函数-单例
@@ -38,6 +40,12 @@ func SetUp(service *service.Group) Supplier {
 	}
 	cs.menuCtrl = &MenuCtrl{
 		menuService: service.SystemServiceSupplier.GetMenuSvc(),
+	}
+	cs.roleCtrl = &RoleCtrl{
+		roleService: service.SystemServiceSupplier.GetRoleSvc(),
+	}
+	cs.imageCtrl = &ImageCtrl{
+		imageService: service.SystemServiceSupplier.GetImageSvc(),
 	}
 	return cs
 }

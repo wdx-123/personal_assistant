@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"personal_assistant/global"
+	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository"
 	"personal_assistant/pkg/casbin"
@@ -313,34 +314,78 @@ func (p *PermissionService) RemoveRoleFromUserInOrg(ctx context.Context, userID,
 
 // === 查询功能 ===
 
-// GetUserRoles 获取用户的所有角色
+// GetUserRoles 获取用户的所有角色（全局角色 + 当前组织角色）
+// 超级管理员拥有全局权限，不依赖组织上下文即可放行
 func (p *PermissionService) GetUserRoles(ctx context.Context, userID uint) ([]entity.Role, error) {
 	roleRepo := p.repositoryGroup.SystemRepositorySupplier.GetRoleRepository()
-	_, orgID, err := p.getUserSubject(ctx, userID)
+
+	// 1. 先查全局角色（org_id = 0，包含超级管理员等不绑定具体组织的角色）
+	globalRoles, err := roleRepo.GetUserGlobalRoles(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("获取用户上下文失败: %w", err)
+		return nil, fmt.Errorf("获取全局角色失败: %w", err)
 	}
-	var roles []*entity.Role
-	if orgID == nil || *orgID == 0 {
+
+	// 2. 如果持有超级管理员角色，直接返回，无需组织上下文
+	for _, role := range globalRoles {
+		if role.Code == consts.RoleCodeSuperAdmin {
+			return toRoleSlice(globalRoles), nil
+		}
+	}
+
+	// 3. 非超管用户，需要检查当前组织
+	_, orgID, err := p.getUserSubject(ctx, userID)
+	if err != nil || orgID == nil || *orgID == 0 {
+		// 如果有全局角色但无组织，仍然返回全局角色
+		if len(globalRoles) > 0 {
+			return toRoleSlice(globalRoles), nil
+		}
 		return nil, fmt.Errorf("未设置当前组织")
 	}
-	roles, err = roleRepo.GetUserRolesByOrg(ctx, userID, *orgID)
+
+	// 4. 查询当前组织内的角色
+	orgRoles, err := roleRepo.GetUserRolesByOrg(ctx, userID, *orgID)
 	if err != nil {
-		return nil, fmt.Errorf("获取用户角色失败: %w", err)
+		return nil, fmt.Errorf("获取组织角色失败: %w", err)
 	}
 
-	// 转换为值类型切片
+	// 5. 合并全局角色和组织角色后返回
+	allRoles := append(globalRoles, orgRoles...)
+	return toRoleSlice(allRoles), nil
+}
+
+// toRoleSlice 将角色指针切片转换为值类型切片
+func toRoleSlice(roles []*entity.Role) []entity.Role {
 	result := make([]entity.Role, len(roles))
-	for i, role := range roles {
-		result[i] = *role
+	for i, r := range roles {
+		result[i] = *r
 	}
-
-	return result, nil
+	return result
 }
 
 // GetUserMenus 获取用户可访问的菜单列表
+// 超级管理员直接返回所有启用菜单，普通用户按组织角色权限查询
 func (p *PermissionService) GetUserMenus(ctx context.Context, userID uint) ([]entity.Menu, error) {
 	menuRepo := p.repositoryGroup.SystemRepositorySupplier.GetMenuRepository()
+	roleRepo := p.repositoryGroup.SystemRepositorySupplier.GetRoleRepository()
+
+	// 1. 检查是否为超级管理员（全局角色）
+	globalRoles, _ := roleRepo.GetUserGlobalRoles(ctx, userID)
+	for _, role := range globalRoles {
+		if role.Code == consts.RoleCodeSuperAdmin {
+			// 超管返回所有启用菜单
+			allMenus, err := menuRepo.GetActiveMenus(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("获取全部菜单失败: %w", err)
+			}
+			result := make([]entity.Menu, len(allMenus))
+			for i, m := range allMenus {
+				result[i] = *m
+			}
+			return result, nil
+		}
+	}
+
+	// 2. 非超管，按原逻辑：根据当前组织查询用户可访问的菜单
 	_, orgID, err := p.getUserSubject(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("获取用户上下文失败: %w", err)

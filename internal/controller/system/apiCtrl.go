@@ -37,7 +37,6 @@ func (c *ApiCtrl) GetAPIList(ctx *gin.Context) {
 		Page:     req.Page,
 		PageSize: req.PageSize,
 		Status:   req.Status,
-		GroupID:  req.GroupID,
 		Method:   req.Method,
 		Keyword:  req.Keyword,
 	}
@@ -82,11 +81,10 @@ func (c *ApiCtrl) CreateAPI(ctx *gin.Context) {
 		return
 	}
 	api := &entity.API{
-		Path:    req.Path,
-		Method:  req.Method,
-		Detail:  req.Detail,
-		GroupID: req.GroupID,
-		Status:  req.Status,
+		Path:   req.Path,
+		Method: req.Method,
+		Detail: req.Detail,
+		Status: req.Status,
 	}
 	if api.Status == 0 {
 		api.Status = 1
@@ -113,7 +111,7 @@ func (c *ApiCtrl) UpdateAPI(ctx *gin.Context) {
 		response.BizFailWithMessage("参数错误", ctx)
 		return
 	}
-	if err := c.apiService.UpdateAPI(ctx.Request.Context(), uint(id), req.Path, req.Method, req.Detail, req.GroupID, req.Status); err != nil {
+	if err := c.apiService.UpdateAPI(ctx.Request.Context(), uint(id), req.Path, req.Method, req.Detail, req.Status); err != nil {
 		global.Log.Error("更新API失败", zap.Uint64("id", id), zap.Error(err))
 		response.BizFailWithError(err, ctx)
 		return
@@ -165,7 +163,6 @@ func entityToApiItem(api *entity.API) *resp.ApiItem {
 		Path:      api.Path,
 		Method:    api.Method,
 		Detail:    api.Detail,
-		GroupID:   api.GroupID,
 		Status:    api.Status,
 		CreatedAt: api.CreatedAt,
 		UpdatedAt: api.UpdatedAt,

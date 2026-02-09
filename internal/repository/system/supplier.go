@@ -21,6 +21,7 @@ type Supplier interface {
 	GetLeetcodeUserQuestionRepository() interfaces.LeetcodeUserQuestionRepository
 	GetLuoguUserQuestionRepository() interfaces.LuoguUserQuestionRepository
 	GetOutboxRepository() interfaces.OutboxRepository
+	GetImageRepository() interfaces.ImageRepository
 }
 
 // SetUp 工厂函数，统一管理 - 现在支持配置驱动
@@ -38,6 +39,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 	var leetcodeUserQuestionRepo interfaces.LeetcodeUserQuestionRepository
 	var luoguUserQuestionRepo interfaces.LuoguUserQuestionRepository
 	var outboxRepo interfaces.OutboxRepository
+	var imageRepo interfaces.ImageRepository
 
 	switch factoryConfig.DatabaseType {
 	case adapter.MySQL:
@@ -55,6 +57,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			leetcodeUserQuestionRepo = NewLeetcodeUserQuestionRepository(db)
 			luoguUserQuestionRepo = NewLuoguUserQuestionRepository(db)
 			outboxRepo = NewOutboxRepository(db)
+			imageRepo = NewImageRepository(db)
 		}
 	case adapter.MongoDB:
 		// 未来可以添加Mongo	DB实现
@@ -78,6 +81,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			leetcodeUserQuestionRepo = NewLeetcodeUserQuestionRepository(db)
 			luoguUserQuestionRepo = NewLuoguUserQuestionRepository(db)
 			outboxRepo = NewOutboxRepository(db)
+			imageRepo = NewImageRepository(db)
 		}
 	}
 	return &RepositorySupplier{
@@ -94,5 +98,6 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 		leetcodeUserQuestionRepository: leetcodeUserQuestionRepo,
 		luoguUserQuestionRepository:  luoguUserQuestionRepo,
 		outboxRepository:             outboxRepo,
+		imageRepository:              imageRepo,
 	}
 }

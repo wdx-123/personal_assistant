@@ -1,17 +1,29 @@
-# ��ִ���ļ�
+# 可执行文件
 *.exe
 cmd.exe
 blog-service.exe
 
-# ��־�ļ�
+# 日志文件
 *.log
 log/
 
-# ��ʱ�ļ�
+# 临时文件
 *.tmp
 *.temp
+
+# 敏感配置文件（不提交到版本库）
 .env
 configs/configs.yaml
 
 # 临时测试文件夹
 aaa/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# 编译产物
+/bin/
+/dist/

@@ -80,14 +80,13 @@ func (s *ApiService) CreateAPI(ctx context.Context, req *entity.API) error {
 	return nil
 }
 
-// UpdateAPI 更新API
+// UpdateAPI 更新API（支持部分更新）
 func (s *ApiService) UpdateAPI(
 	ctx context.Context,
 	id uint,
 	path *string,
 	method *string,
 	detail *string,
-	groupID *uint,
 	status *int,
 ) error {
 	api, err := s.apiRepo.GetByID(ctx, id)
@@ -105,9 +104,6 @@ func (s *ApiService) UpdateAPI(
 	}
 	if detail != nil {
 		api.Detail = *detail
-	}
-	if groupID != nil {
-		api.GroupID = *groupID
 	}
 	if status != nil {
 		api.Status = *status
@@ -177,21 +173,14 @@ func (s *ApiService) SyncAPI(
 		existingMap[key] = api
 	}
 
-	// 遍历路由：已存在则恢复启用，不存在则新增
+	// 遍历路由：数据库中不存在则新增，已存在则跳过（不自动恢复启用，启用由管理员手动操作）
 	for _, r := range routes {
 		if r.Method == "" || r.Path == "" {
 			continue
 		}
 		key := r.Path + ":" + r.Method
-		if exist, ok := existingMap[key]; ok {
-			// 已禁用的API重新启用
-			if exist.Status == 0 {
-				exist.Status = 1
-				if err := s.apiRepo.Update(ctx, exist); err != nil {
-					return added, updated, disabled, 0, errors.Wrap(errors.CodeDBError, err)
-				}
-				updated++
-			}
+		if _, ok := existingMap[key]; ok {
+			// 已存在（无论启用还是禁用），跳过，不干预管理员的决定
 			continue
 		}
 		// 新路由，创建API记录

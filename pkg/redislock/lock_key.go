@@ -12,6 +12,7 @@ const (
 	LockKeyLuoguProblemBankSyncKey   = "luogu:sync:problem_bank"      // 洛谷题库同步锁
 	LockKeyLuoguProblemBankWarmup    = "luogu:warmup:problem_bank"    // 洛谷题库预热锁
 	LockKeyLeetcodeProblemBankWarmup = "leetcode:warmup:problem_bank" // 力扣题库预热锁
+	lockKeyRoleMenuAssignFmt         = "role:menu:assign:%d"          // 角色菜单分配锁
 )
 
 func LockKeyLuoguBindUser(userID uint) string {
@@ -26,6 +27,11 @@ func LockKeyLuoguSyncSingleUser(identifier string) string {
 	return fmt.Sprintf(lockKeyLuoguUserSyncSingleFmt, identifier)
 }
 
-func LockKeyLeetcodeSyncSingleUser(identifier string) string { // 生成力扣单用户同步锁
-	return fmt.Sprintf(lockKeyLeetcodeUserSyncSingleFmt, identifier) // 返回格式化锁键
+func LockKeyLeetcodeSyncSingleUser(identifier string) string {
+	return fmt.Sprintf(lockKeyLeetcodeUserSyncSingleFmt, identifier)
+}
+
+// LockKeyRoleMenuAssign 生成角色菜单分配锁Key
+func LockKeyRoleMenuAssign(roleID uint) string {
+	return fmt.Sprintf(lockKeyRoleMenuAssignFmt, roleID)
 }

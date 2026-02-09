@@ -267,3 +267,16 @@ func (r *UserGormRepository) CheckEmailAddress(
 		Error
 	return err
 }
+
+// UpdateCurrentOrgID 更新用户当前组织ID
+func (r *UserGormRepository) UpdateCurrentOrgID(
+	ctx context.Context,
+	userID uint,
+	orgID *uint,
+) error {
+	return r.db.WithContext(ctx).
+		Model(&entity.User{}).
+		Where("id = ?", userID).
+		Update("current_org_id", orgID).
+		Error
+}

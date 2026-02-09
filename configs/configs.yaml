@@ -1,4 +1,4 @@
-mysql:
+﻿mysql:
   host: ""       # 宿主机本地访问 MySQL
   port: 3306
   config: charset=utf8mb4&parseTime=True&loc=Local
@@ -95,8 +95,8 @@ storage:
     base_url: ""      # 为空时复用 system.host + static.prefix
     key_prefix: ""    # 对象键前缀（可选）
   qiniu:
-    bucket: "wdx89"        # 七牛空间名（对应“空间管理”中的“wdx89”）
-    domain: "http://t4vpotpd5.hn-bkt.clouddn.com"        # 访问域名（从文件链接提取，七牛测试域名）
+    bucket: ""        # 七牛空间名（对应“空间管理”中的“wdx...”）
+    domain: ""                    # 访问域名（自有域名，已绑定七牛CDN）
     key_prefix: ""    # 对象键前缀（可选）
     access_key: ""  # AK（可用环境变量覆盖）
     secret_key: ""  # SK（可用环境变量覆盖）
@@ -112,6 +112,16 @@ static:
     - ".gif"
     - ".jpg"
     - ".bin"
+  max_concurrent_uploads: 50  # 最大并发上传数，0 表示不限
+  user_quota_mb: 50          # 单用户最大存储空间（MB），0 表示不限
+
+# 限流配置
+rate_limit:
+  upload:
+    global_limit: 100        # 全局：每窗口最多 100 次上传请求
+    global_window_sec: 60    # 全局窗口：60 秒
+    user_limit: 10           # 用户：每窗口最多 10 次上传请求
+    user_window_sec: 60      # 用户窗口：60 秒
 
 # 爬虫服务配置 (Infrastructure)
 crawler:
@@ -137,6 +147,7 @@ crawler:
     response_body_limit_bytes: 4194304       # 洛谷题目内容可能较多，放宽到 4MB
 task:
   outbox_cleanup_retention_days: 7
+  image_orphan_cleanup_cron: "@daily"  # 孤儿图片清理周期
   luogu_question_bank_warmup_enabled: true
   luogu_question_bank_warmup_batch_size: 500
   luogu_question_bank_warmup_lock_ttl_seconds: 300

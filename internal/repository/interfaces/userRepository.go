@@ -42,4 +42,7 @@ type UserRepository interface {
 
 	// CheckEmailAddress 检查邮箱是否可用（排除自身）
 	CheckEmailAddress(ctx context.Context, email string) error
+
+	// UpdateCurrentOrgID 更新用户当前组织ID
+	UpdateCurrentOrgID(ctx context.Context, userID uint, orgID *uint) error
 }

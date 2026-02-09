@@ -57,6 +57,8 @@ const (
 	CodeOrgAlreadyExists  BizCode = 30002 // 组织已存在
 	CodeOrgNameDuplicate  BizCode = 30003 // 组织名称重复
 	CodeNotOrgMember      BizCode = 30004 // 非组织成员
+	CodeOrgHasMembers     BizCode = 30005 // 组织下有成员，无法删除
+	CodeOrgOwnerOnly      BizCode = 30006 // 仅组织所有者可操作
 	CodeRoleNotFound      BizCode = 30101 // 角色不存在
 	CodeRoleAlreadyExists BizCode = 30102 // 角色已存在
 	CodeMenuNotFound       BizCode = 30201 // 菜单不存在
@@ -116,6 +118,8 @@ var codeMessages = map[BizCode]string{
 	CodeOrgAlreadyExists:  "组织已存在",
 	CodeOrgNameDuplicate:  "组织名称已存在",
 	CodeNotOrgMember:      "您不是该组织成员",
+	CodeOrgHasMembers:     "组织下还有成员，无法删除",
+	CodeOrgOwnerOnly:      "仅组织所有者可操作",
 	CodeRoleNotFound:      "角色不存在",
 	CodeRoleAlreadyExists: "角色已存在",
 	CodeMenuNotFound:       "菜单不存在",

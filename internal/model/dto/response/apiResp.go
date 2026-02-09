@@ -8,7 +8,6 @@ type ApiItem struct {
 	Path      string    `json:"path"`       // API路径
 	Method    string    `json:"method"`     // 请求方法
 	Detail    string    `json:"detail"`     // API描述
-	GroupID   uint      `json:"group_id"`   // 所属菜单组ID
 	Status    int       `json:"status"`     // 状态：1启用 0禁用
 	CreatedAt time.Time `json:"created_at"` // 创建时间
 	UpdatedAt time.Time `json:"updated_at"` // 更新时间
