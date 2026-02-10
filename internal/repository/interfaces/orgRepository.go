@@ -33,4 +33,9 @@ type OrgRepository interface {
 	GetOrgListWithKeyword(ctx context.Context, page, pageSize int, keyword string) ([]*entity.Org, int64, error)
 	// IsUserInOrg 检查用户是否属于指定组织
 	IsUserInOrg(ctx context.Context, userID, orgID uint) (bool, error)
+	// RemoveAllMembers 删除组织下的所有成员关联
+	RemoveAllMembers(ctx context.Context, orgID uint) error
+
+	// WithTx 启用事务（返回支持事务的新实例）
+	WithTx(tx any) OrgRepository
 }

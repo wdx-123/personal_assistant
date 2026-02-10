@@ -20,6 +20,14 @@ func NewUserRepository(db *gorm.DB) interfaces.UserRepository {
 	return &UserGormRepository{db: db}
 }
 
+// WithTx 启用事务
+func (r *UserGormRepository) WithTx(tx any) interfaces.UserRepository {
+	if transaction, ok := tx.(*gorm.DB); ok {
+		return &UserGormRepository{db: transaction}
+	}
+	return r
+}
+
 // GetByID 根据ID获取用户
 func (r *UserGormRepository) GetByID(
 	ctx context.Context,

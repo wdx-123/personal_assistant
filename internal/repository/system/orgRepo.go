@@ -18,6 +18,14 @@ func NewOrgRepository(db *gorm.DB) interfaces.OrgRepository {
 	return &orgRepository{db: db}
 }
 
+// WithTx 启用事务
+func (r *orgRepository) WithTx(tx any) interfaces.OrgRepository {
+	if transaction, ok := tx.(*gorm.DB); ok {
+		return &orgRepository{db: transaction}
+	}
+	return r
+}
+
 // GetByID 根据ID获取组织
 func (r *orgRepository) GetByID(ctx context.Context, id uint) (*entity.Org, error) {
 	var org entity.Org
@@ -83,6 +91,13 @@ func (r *orgRepository) ExistsByName(
 	var count int64
 	err := r.db.WithContext(ctx).Model(&entity.Org{}).Where("name = ?", name).Count(&count).Error
 	return count > 0, err
+}
+
+// RemoveAllMembers 删除组织下的所有成员关联
+func (r *orgRepository) RemoveAllMembers(ctx context.Context, orgID uint) error {
+	return r.db.WithContext(ctx).
+		Exec("DELETE FROM user_org_roles WHERE org_id = ?", orgID).
+		Error
 }
 
 // CountMembersByOrgID 查询组织下的成员数（user_org_roles 表去重 user_id）

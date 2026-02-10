@@ -19,6 +19,14 @@ func NewRoleRepository(db *gorm.DB) interfaces.RoleRepository {
 	return &roleRepository{db: db}
 }
 
+// WithTx 启用事务
+func (r *roleRepository) WithTx(tx any) interfaces.RoleRepository {
+	if transaction, ok := tx.(*gorm.DB); ok {
+		return &roleRepository{db: transaction}
+	}
+	return r
+}
+
 // ==================== CRUD 相关 ====================
 
 // GetByID 通过ID获取角色
@@ -185,16 +193,21 @@ func (r *roleRepository) GetRoleMenus(
 func (r *roleRepository) GetRoleMenuIDs(ctx context.Context, roleID uint) ([]uint, error) {
 	var menuIDs []uint
 	err := r.db.WithContext(ctx).
-		Table("role_menus").
-		Where("role_id = ?", roleID).
-		Pluck("menu_id", &menuIDs).Error
+		Table("menus").
+		Joins("JOIN role_menus ON menus.id = role_menus.menu_id").
+		Where("role_menus.role_id = ? AND menus.deleted_at IS NULL", roleID).
+		Pluck("menus.id", &menuIDs).Error
 	return menuIDs, err
 }
 
 // ReplaceRoleMenus 全量替换角色的菜单权限（事务，先删后增）
-func (r *roleRepository) ReplaceRoleMenus(ctx context.Context, roleID uint, menuIDs []uint) error {
+func (r *roleRepository) ReplaceRoleMenus(
+	ctx context.Context,
+	roleID uint,
+	menuIDs []uint,
+) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// 1. 删除旧关联
+		// 1. 删除旧关联 (硬删除关联表记录)
 		if err := tx.Exec("DELETE FROM role_menus WHERE role_id = ?", roleID).Error; err != nil {
 			return err
 		}
@@ -204,15 +217,18 @@ func (r *roleRepository) ReplaceRoleMenus(ctx context.Context, roleID uint, menu
 			return nil
 		}
 
-		// 构建批量插入SQL，避免循环单条插入
-		values := make([]interface{}, 0, len(menuIDs)*2)
-		placeholders := make([]string, 0, len(menuIDs))
-		for _, menuID := range menuIDs {
-			placeholders = append(placeholders, "(?, ?)")
-			values = append(values, roleID, menuID)
+		// 3. 构造 Role 对象并使用 Association 更新，这样更安全且兼容性好
+		role := entity.Role{}
+		role.ID = roleID
+
+		menus := make([]entity.Menu, len(menuIDs))
+		for i, id := range menuIDs {
+			menus[i].ID = id
 		}
-		sql := "INSERT INTO role_menus (role_id, menu_id) VALUES " + strings.Join(placeholders, ",")
-		return tx.Exec(sql, values...).Error
+
+		// 使用 GORM 的 Association 模式，它会自动处理中间表的插入
+		// 由于我们刚才已经手动 DELETE 清空了，这里 Append 即可
+		return tx.Model(&role).Association("Menus").Append(menus)
 	})
 }
 

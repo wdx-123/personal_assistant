@@ -45,4 +45,7 @@ type UserRepository interface {
 
 	// UpdateCurrentOrgID 更新用户当前组织ID
 	UpdateCurrentOrgID(ctx context.Context, userID uint, orgID *uint) error
+
+	// WithTx 启用事务（返回支持事务的新实例）
+	WithTx(tx any) UserRepository
 }

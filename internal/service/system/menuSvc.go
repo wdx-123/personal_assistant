@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"personal_assistant/global"
+	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
@@ -20,6 +21,8 @@ import (
 type MenuService struct {
 	menuRepo interfaces.MenuRepository
 	apiRepo  interfaces.APIRepository
+	roleRepo interfaces.RoleRepository
+	orgRepo  interfaces.OrgRepository
 }
 
 // NewMenuService 创建菜单服务实例
@@ -27,6 +30,8 @@ func NewMenuService(repositoryGroup *repository.Group) *MenuService {
 	return &MenuService{
 		menuRepo: repositoryGroup.SystemRepositorySupplier.GetMenuRepository(),
 		apiRepo:  repositoryGroup.SystemRepositorySupplier.GetAPIRepository(),
+		roleRepo: repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
+		orgRepo:  repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
 	}
 }
 
@@ -40,12 +45,47 @@ func (s *MenuService) GetMenuTree(ctx context.Context) ([]*response.MenuItem, er
 }
 
 // GetMyMenus 获取当前用户的菜单树（前端侧边栏）
-func (s *MenuService) GetMyMenus(ctx context.Context, userID, orgID uint) ([]*response.MenuItem, error) {
-	menus, err := s.menuRepo.GetMenusByUserID(ctx, userID, orgID)
+// orgID 为可选参数：超级管理员无需传入，普通用户必须指定组织
+func (s *MenuService) GetMyMenus(ctx context.Context, userID uint, orgID *uint) ([]*response.MenuItem, error) {
+	// 1. 检查是否为超级管理员（全局角色，org_id = 0）
+	globalRoles, _ := s.roleRepo.GetUserGlobalRoles(ctx, userID)
+	for _, role := range globalRoles {
+		if role.Code == consts.RoleCodeSuperAdmin {
+			// 超管：返回全部启用菜单，无需组织上下文
+			allMenus, err := s.menuRepo.GetActiveMenus(ctx)
+			if err != nil {
+				return nil, errors.Wrap(errors.CodeDBError, err)
+			}
+			return s.buildTree(allMenus, 0), nil
+		}
+	}
+
+	// 2. 非超管：必须指定组织ID
+	if orgID == nil || *orgID == 0 {
+		return nil, errors.NewWithMsg(errors.CodeInvalidParams, "请指定组织ID")
+	}
+
+	// 3. 校验组织是否存在
+	org, err := s.orgRepo.GetByID(ctx, *orgID)
+	if err != nil || org == nil {
+		return nil, errors.New(errors.CodeOrgNotFound)
+	}
+
+	// 4. 校验用户是否属于该组织
+	isMember, err := s.orgRepo.IsUserInOrg(ctx, userID, *orgID)
 	if err != nil {
 		return nil, errors.Wrap(errors.CodeDBError, err)
 	}
-	// 过滤只保留显示状态的菜单
+	if !isMember {
+		return nil, errors.New(errors.CodeNotOrgMember)
+	}
+
+	// 5. 获取用户在该组织下的菜单
+	menus, err := s.menuRepo.GetMenusByUserID(ctx, userID, *orgID)
+	if err != nil {
+		return nil, errors.Wrap(errors.CodeDBError, err)
+	}
+	// 过滤只保留启用状态的菜单
 	var activeMenus []*entity.Menu
 	for _, m := range menus {
 		if m.Status == 1 {

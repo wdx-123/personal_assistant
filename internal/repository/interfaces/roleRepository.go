@@ -64,4 +64,7 @@ type RoleRepository interface {
 	GetAllRoleMenuRelations(ctx context.Context) ([]map[string]interface{}, error)
 	// GetAllUserOrgRoleRelations 获取所有用户在组织中的角色关联关系（用于Casbin同步）
 	GetAllUserOrgRoleRelations(ctx context.Context) ([]map[string]interface{}, error)
+
+	// WithTx 启用事务（返回支持事务的新实例）
+	WithTx(tx any) RoleRepository
 }

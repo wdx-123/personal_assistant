@@ -37,9 +37,14 @@ func (c *MenuCtrl) GetMenuTree(ctx *gin.Context) {
 }
 
 // GetMyMenus 获取当前用户的菜单树（前端侧边栏）
+// org_id 为可选查询参数：超级管理员无需传入，普通用户不传则返回错误提示
 func (c *MenuCtrl) GetMyMenus(ctx *gin.Context) {
 	var req request.MyMenuReq
-	_ = ctx.ShouldBindQuery(&req)
+	if err := ctx.ShouldBindQuery(&req); err != nil {
+		global.Log.Error("获取用户菜单参数绑定失败", zap.Error(err))
+		response.BizFailWithMessage("参数错误", ctx)
+		return
+	}
 
 	// 从JWT获取用户信息
 	userID := jwt.GetUserID(ctx)
@@ -48,17 +53,8 @@ func (c *MenuCtrl) GetMyMenus(ctx *gin.Context) {
 		return
 	}
 
-	// 获取组织ID（必须传入org_id参数）
-	var orgID uint
-	if req.OrgID != nil && *req.OrgID > 0 {
-		orgID = *req.OrgID
-	}
-	if orgID == 0 {
-		response.BizFailWithMessage("请指定组织ID", ctx)
-		return
-	}
-
-	tree, err := c.menuService.GetMyMenus(ctx.Request.Context(), userID, orgID)
+	// org_id 作为可选参数透传给 Service，由 Service 决定是否必须
+	tree, err := c.menuService.GetMyMenus(ctx.Request.Context(), userID, req.OrgID)
 	if err != nil {
 		global.Log.Error("获取用户菜单失败", zap.Uint("userID", userID), zap.Error(err))
 		response.BizFailWithError(err, ctx)

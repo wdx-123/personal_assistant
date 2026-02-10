@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"personal_assistant/global"
 	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/dto/response"
@@ -11,6 +12,8 @@ import (
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/interfaces"
 	"personal_assistant/pkg/errors"
+
+	"gorm.io/gorm"
 )
 
 // OrgService 组织管理服务
@@ -68,11 +71,37 @@ func (s *OrgService) GetOrgList(
 }
 
 // GetOrgDetail 获取组织详情
+// 权限控制：
+// 1. 超级管理员：可查看任何组织
+// 2. 组织成员（包括 Owner）：仅可查看自己所在的组织
 func (s *OrgService) GetOrgDetail(
 	ctx context.Context,
-	id uint,
+	userID uint,
+	orgID uint,
 ) (*entity.Org, error) {
-	org, err := s.orgRepo.GetByID(ctx, id)
+	// 1. 检查是否为超级管理员
+	isSuperAdmin := false
+	globalRoles, _ := s.roleRepo.GetUserGlobalRoles(ctx, userID)
+	for _, role := range globalRoles {
+		if role.Code == consts.RoleCodeSuperAdmin {
+			isSuperAdmin = true
+			break
+		}
+	}
+
+	// 2. 如果不是超管，检查是否为组织成员
+	if !isSuperAdmin {
+		isMember, err := s.orgRepo.IsUserInOrg(ctx, userID, orgID)
+		if err != nil {
+			return nil, errors.Wrap(errors.CodeDBError, err)
+		}
+		if !isMember {
+			return nil, errors.NewWithMsg(errors.CodePermissionDenied, "无权查看该组织信息")
+		}
+	}
+
+	// 3. 获取详情
+	org, err := s.orgRepo.GetByID(ctx, orgID)
 	if err != nil {
 		return nil, errors.Wrap(errors.CodeOrgNotFound, err)
 	}
@@ -121,27 +150,36 @@ func (s *OrgService) CreateOrg(
 		return errors.New(errors.CodeOrgNameDuplicate)
 	}
 
-	// 创建组织
-	org := &entity.Org{
-		Name:        name,
-		Description: strings.TrimSpace(req.Description),
-		Code:        strings.TrimSpace(req.Code),
-		OwnerID:     userID,
-	}
-	if err := s.orgRepo.Create(ctx, org); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
+	// 开启事务
+	return global.DB.Transaction(func(tx *gorm.DB) error {
+		// 1. 创建组织
+		org := &entity.Org{
+			Name:        name,
+			Description: strings.TrimSpace(req.Description),
+			Code:        strings.TrimSpace(req.Code),
+			OwnerID:     userID,
+		}
+		// 使用 Repository 的事务方法
+		if err := s.orgRepo.WithTx(tx).Create(ctx, org); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
 
-	// 自动将创建者设为组织管理员（org_admin），拥有该组织的最高管理权限
-	orgAdminRole, roleErr := s.roleRepo.GetByCode(ctx, consts.RoleCodeOrgAdmin)
-	if roleErr == nil && orgAdminRole != nil && orgAdminRole.ID > 0 {
-		_ = s.roleRepo.AssignRoleToUserInOrg(ctx, userID, org.ID, orgAdminRole.ID)
-	}
+		// 2. 自动将创建者设为组织管理员
+		orgAdminRole, roleErr := s.roleRepo.GetByCode(ctx, consts.RoleCodeOrgAdmin)
+		if roleErr == nil && orgAdminRole != nil && orgAdminRole.ID > 0 {
+			// 使用 Repository 的事务方法
+			if err := s.roleRepo.WithTx(tx).AssignRoleToUserInOrg(ctx, userID, org.ID, orgAdminRole.ID); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
 
-	// 设置为用户的当前组织
-	_ = s.userRepo.UpdateCurrentOrgID(ctx, userID, &org.ID)
+		// 3. 设置为用户的当前组织
+		if err := s.userRepo.WithTx(tx).UpdateCurrentOrgID(ctx, userID, &org.ID); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
 
-	return nil
+		return nil
+	})
 }
 
 // UpdateOrg 更新组织信息（仅组织所有者可操作）
@@ -197,22 +235,31 @@ func (s *OrgService) DeleteOrg(ctx context.Context, userID, orgID uint, force bo
 		return errors.New(errors.CodeOrgOwnerOnly)
 	}
 
-	// 非强制删除时，检查组织下是否还有成员
+	// 非强制删除时，检查组织下是否还有成员（不包括 Owner 自己）
 	if !force {
 		memberCount, err := s.orgRepo.CountMembersByOrgID(ctx, orgID)
 		if err != nil {
 			return errors.Wrap(errors.CodeDBError, err)
 		}
-		if memberCount > 0 {
+		// 如果成员数 > 1（除了 Owner 还有别人），则不允许删除
+		if memberCount > 1 {
 			return errors.New(errors.CodeOrgHasMembers)
 		}
 	}
 
-	// 执行删除
-	if err := s.orgRepo.Delete(ctx, orgID); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-	return nil
+	// 开启事务
+	return global.DB.Transaction(func(tx *gorm.DB) error {
+		// 1. 删除所有成员关联
+		if err := tx.WithContext(ctx).Exec("DELETE FROM user_org_roles WHERE org_id = ?", orgID).Error; err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+
+		// 2. 执行删除组织
+		if err := tx.WithContext(ctx).Delete(&entity.Org{}, orgID).Error; err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		return nil
+	})
 }
 
 // SetCurrentOrg 切换用户当前组织

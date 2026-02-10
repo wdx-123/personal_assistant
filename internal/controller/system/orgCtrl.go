@@ -65,7 +65,8 @@ func (ctrl *OrgCtrl) GetOrgDetail(c *gin.Context) {
 		return
 	}
 
-	org, err := ctrl.orgService.GetOrgDetail(c.Request.Context(), uint(id))
+	userID := jwt.GetUserID(c)
+	org, err := ctrl.orgService.GetOrgDetail(c.Request.Context(), userID, uint(id))
 	if err != nil {
 		global.Log.Error("获取组织详情失败", zap.Uint64("id", id), zap.Error(err))
 		response.BizFailWithError(err, c)
@@ -179,5 +180,7 @@ func entityToOrgItem(org *entity.Org) *resp.OrgItem {
 		Description: org.Description,
 		Code:        org.Code,
 		OwnerID:     org.OwnerID,
+		CreatedAt:   org.CreatedAt.Format("2006-01-02 15:04:05"),
+		UpdatedAt:   org.UpdatedAt.Format("2006-01-02 15:04:05"),
 	}
 }
