@@ -2,6 +2,7 @@ package system
 
 import (
 	"strconv"
+	"time"
 
 	"personal_assistant/global"
 	"personal_assistant/internal/model/dto/request"
@@ -180,7 +181,7 @@ func entityToOrgItem(org *entity.Org) *resp.OrgItem {
 		Description: org.Description,
 		Code:        org.Code,
 		OwnerID:     org.OwnerID,
-		CreatedAt:   org.CreatedAt.Format("2006-01-02 15:04:05"),
-		UpdatedAt:   org.UpdatedAt.Format("2006-01-02 15:04:05"),
+		CreatedAt:   org.CreatedAt.Format(time.DateTime),
+		UpdatedAt:   org.UpdatedAt.Format(time.DateTime),
 	}
 }
