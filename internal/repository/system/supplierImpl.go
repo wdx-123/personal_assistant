@@ -12,7 +12,12 @@ type RepositorySupplier struct {
 
 	leetcodeUserDetailRepository interfaces.LeetcodeUserDetailRepository
 	luoguUserDetailRepository    interfaces.LuoguUserDetailRepository
+	leetcodeQuestionBankRepository interfaces.LeetcodeQuestionBankRepository
+	luoguQuestionBankRepository  interfaces.LuoguQuestionBankRepository
+	leetcodeUserQuestionRepository interfaces.LeetcodeUserQuestionRepository
+	luoguUserQuestionRepository  interfaces.LuoguUserQuestionRepository
 	outboxRepository             interfaces.OutboxRepository
+	imageRepository              interfaces.ImageRepository
 }
 
 func (r *RepositorySupplier) GetUserRepository() interfaces.UserRepository {
@@ -47,6 +52,26 @@ func (r *RepositorySupplier) GetLuoguUserDetailRepository() interfaces.LuoguUser
 	return r.luoguUserDetailRepository
 }
 
+func (r *RepositorySupplier) GetLeetcodeQuestionBankRepository() interfaces.LeetcodeQuestionBankRepository {
+	return r.leetcodeQuestionBankRepository
+}
+
+func (r *RepositorySupplier) GetLeetcodeUserQuestionRepository() interfaces.LeetcodeUserQuestionRepository {
+	return r.leetcodeUserQuestionRepository
+}
+
+func (r *RepositorySupplier) GetLuoguQuestionBankRepository() interfaces.LuoguQuestionBankRepository {
+	return r.luoguQuestionBankRepository
+}
+
+func (r *RepositorySupplier) GetLuoguUserQuestionRepository() interfaces.LuoguUserQuestionRepository {
+	return r.luoguUserQuestionRepository
+}
+
 func (r *RepositorySupplier) GetOutboxRepository() interfaces.OutboxRepository {
 	return r.outboxRepository
+}
+
+func (r *RepositorySupplier) GetImageRepository() interfaces.ImageRepository {
+	return r.imageRepository
 }

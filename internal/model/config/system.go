@@ -17,6 +17,9 @@ type System struct {
 	// 角色配置相关
 	DefaultRoleCode string `json:"default_role_code" yaml:"default_role_code"` // 新用户注册时的默认角色代码，如 "user"
 	DefaultRoleName string `json:"default_role_name" yaml:"default_role_name"` // 默认角色的显示名称，用于日志和错误提示
+	
+	// 业务逻辑相关
+	BindCoolDownHours int `json:"bind_cool_down_hours" yaml:"bind_cool_down_hours"` // 换绑冷却时间（小时），防止频繁换绑
 }
 
 // Addr 服务器监听地址（主机:端口号）

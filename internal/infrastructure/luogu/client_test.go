@@ -106,6 +106,48 @@ func TestClient_RemoteHTTPError(t *testing.T) {
 	}
 }
 
+func TestClient_StructuredError(t *testing.T) {
+	t.Parallel()
+
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Header().Set("Content-Type", "application/json")
+		// 模拟 Python 服务返回的 JSON 错误
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok":    false,
+			"error": "403 Client Error: Forbidden for url: https://www.luogu.com.cn/user/123/practice",
+		})
+	}))
+	defer s.Close()
+
+	c, err := NewClient(s.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = c.GetPractice(context.Background(), 12345, 0)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var re *RemoteHTTPError
+	if !errors.As(err, &re) {
+		t.Fatalf("expected RemoteHTTPError, got %T", err)
+	}
+
+	// 验证是否成功提取了 clean message
+	expected := "403 Client Error: Forbidden for url: https://www.luogu.com.cn/user/123/practice"
+	if re.Message != expected {
+		t.Fatalf("expected message %q, got %q", expected, re.Message)
+	}
+	
+	// 验证 Error() 输出格式
+	expectedErrorStr := "luogu remote error: 403 Client Error: Forbidden for url: https://www.luogu.com.cn/user/123/practice (status=500)"
+	if err.Error() != expectedErrorStr {
+		t.Fatalf("expected error string %q, got %q", expectedErrorStr, err.Error())
+	}
+}
+
 func As(err error, target any) bool {
 	return errors.As(err, target)
 }

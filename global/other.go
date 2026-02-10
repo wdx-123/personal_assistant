@@ -9,6 +9,7 @@ const (
 	StatusInternalServerError AppCode = 5000 // 服务器内部错误
 	StatusUnauthorized        AppCode = 4010 // 未授权
 	StatusForbidden           AppCode = 4230 // 状态禁止
+	StatusTooManyRequests     AppCode = 4290 // 请求过于频繁
 )
 
 // JWT相关错误码

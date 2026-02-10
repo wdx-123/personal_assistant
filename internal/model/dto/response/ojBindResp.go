@@ -6,12 +6,10 @@ type BindOJAccountResp struct {
 	RealName   string `json:"real_name"`
 	UserAvatar string `json:"user_avatar"`
 
-	EasyNumber   int `json:"easy_number,omitempty"`
-	MediumNumber int `json:"medium_number,omitempty"`
-	HardNumber   int `json:"hard_number,omitempty"`
-	TotalNumber  int `json:"total_number,omitempty"`
-
-	PassedNumber int `json:"passed_number,omitempty"`
+	// 统一使用 PassedNumber 表示通过的题目总数
+	// LeetCode: 对应 TotalNumber (Easy + Medium + Hard)
+	// Luogu: 对应 PassedNumber
+	PassedNumber int `json:"passed_number"`
 }
 
 func (b BindOJAccountResp) ToResponse(input *BindOJAccountResp) *BindOJAccountResp {

@@ -7,7 +7,7 @@ type Menu struct {
 	gorm.Model
 	ParentID      uint   `json:"parent_id" gorm:"default:0;comment:父菜单ID(0表示顶级菜单)"`
 	Name          string `json:"name" gorm:"size:50;not null;comment:菜单名称"`
-	Code          string `json:"code" gorm:"size:50;not null;unique;comment:权限标识"`
+	Code          string `json:"code" gorm:"size:50;not null;comment:权限标识"`
 	Icon          string `json:"icon" gorm:"size:50;comment:菜单图标"`
 	Type          int    `json:"type" gorm:"default:1;comment:菜单类型(1:目录 2:菜单 3:按钮)"`
 	RouteName     string `json:"route_name" gorm:"size:100;comment:路由名称"`

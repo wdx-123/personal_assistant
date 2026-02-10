@@ -4,6 +4,7 @@ package response
 type RefreshTokenResponse struct {
 	AccessToken          string `json:"access_token"`            // 新的访问令牌
 	AccessTokenExpiresAt int64  `json:"access_token_expires_at"` // 访问令牌过期时间戳（毫秒）
+	RefreshToken         string `json:"refresh_token"`
 }
 
 // AuthResponse token无效的返回方式

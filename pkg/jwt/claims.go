@@ -185,11 +185,20 @@ func ClearRefreshToken(c *gin.Context) {
 
 // setCookie 设置指定名称和值的 Cookie
 func setCookie(c *gin.Context, name, value string, maxAge int, host string) {
+	// 自动判断是否为 HTTPS (支持反向代理场景)
+	// 本地联调/开发环境通常是 HTTP，X-Forwarded-Proto 为空
+	isSecure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
+
 	// 判断 host 是否是 IP 地址；IP 访问下不要设置 domain
 	if net.ParseIP(host) != nil {
-		c.SetCookie(name, value, maxAge, "/", "", c.Request.TLS != nil, true)
+		// IP 访问（通常是局域网/开发环境）：
+		// 1. Secure 跟随实际协议（HTTP即为false）
+		// 2. HttpOnly 必须为 true 防止 XSS
+		// 3. Domain 置空
+		c.SetCookie(name, value, maxAge, "/", "", isSecure, true)
 		return
 	}
 	// 域名访问：设置 domain 为主机名
-	c.SetCookie(name, value, maxAge, "/", host, c.Request.TLS != nil, true)
+	// 设置 SameSite 为 Lax（默认），如需 Strict 需显式调用 c.SetSameSite(http.SameSiteStrictMode)
+	c.SetCookie(name, value, maxAge, "/", host, isSecure, true)
 }

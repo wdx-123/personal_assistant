@@ -4,30 +4,25 @@ import "github.com/spf13/viper"
 
 // Config 应用全局配置结构体，包含所有核心模块配置
 type Config struct {
-	ES      ES      `json:"es" yaml:"es"`           // Elasticsearch配置
-	Redis   Redis   `json:"redis" yaml:"redis"`     // Redis配置
-	Mysql   Mysql   `json:"mysql" yaml:"mysql"`     // MySQL数据库配置
-	System  System  `json:"system" yaml:"system"`   // 系统服务配置
-	Zap     Zap     `json:"zap" yaml:"zap"`         // 日志配置
-	JWT     JWT     `json:"jwt" yaml:"jwt"`         // JWT认证配置
-	Upload  Upload  `json:"upload" yaml:"upload"`   // 文件上传配置
-	Captcha Captcha `json:"captcha" yaml:"captcha"` // 验证码配置
-	Email   Email   `json:"email" yaml:"email"`     // 邮件发送配置
-	Gaode   Gaode   `json:"gaode" yaml:"gaode"`     // 高德地图API配置
-	Website Website `json:"website" yaml:"website"` // 个人网站配置
-	Storage Storage `json:"storage" yaml:"storage"` // 存储驱动配置
-	Static  Static  `json:"static" yaml:"static"`   // 静态文件配置
-	Crawler Crawler `json:"crawler" yaml:"crawler"`
+	Redis     Redis     `json:"redis" yaml:"redis"`     // Redis配置
+	Mysql     Mysql     `json:"mysql" yaml:"mysql"`     // MySQL数据库配置
+	System    System    `json:"system" yaml:"system"`   // 系统服务配置
+	Zap       Zap       `json:"zap" yaml:"zap"`         // 日志配置
+	JWT       JWT       `json:"jwt" yaml:"jwt"`         // JWT认证配置
+	Upload    Upload    `json:"upload" yaml:"upload"`   // 文件上传配置
+	Captcha   Captcha   `json:"captcha" yaml:"captcha"` // 验证码配置
+	Email     Email     `json:"email" yaml:"email"`     // 邮件发送配置
+	Gaode     Gaode     `json:"gaode" yaml:"gaode"`     // 高德地图API配置
+	Website   Website   `json:"website" yaml:"website"` // 个人网站配置
+	Storage   Storage   `json:"storage" yaml:"storage"` // 存储驱动配置
+	Static    Static    `json:"static" yaml:"static"`   // 静态文件配置
+	Crawler   Crawler   `json:"crawler" yaml:"crawler"`
+	Task      Task      `json:"task" yaml:"task"`           // 定时任务配置
+	Messaging Messaging `json:"messaging" yaml:"messaging"` // 消息队列配置
+	RateLimit RateLimit `json:"rate_limit" yaml:"rate_limit"` // 限流配置
 }
 
 func NewConfig() *Config {
-	// Elasticsearch配置初始化
-	_es := &ES{
-		URL:            viper.GetString("es.url"),
-		Username:       viper.GetString("es.username"),
-		Password:       viper.GetString("es.password"),
-		IsConsolePrint: viper.GetBool("es.is_console_print"),
-	}
 	// Redis配置初始化
 	_redis := &Redis{
 		Address:  viper.GetString("redis.address"),
@@ -59,6 +54,9 @@ func NewConfig() *Config {
 		// 角色配置
 		DefaultRoleCode: viper.GetString("system.default_role_code"),
 		DefaultRoleName: viper.GetString("system.default_role_name"),
+
+		// 业务逻辑配置
+		BindCoolDownHours: viper.GetInt("system.bind_cool_down_hours"),
 	}
 	// 日志配置初始化
 	_zap := &Zap{
@@ -116,11 +114,13 @@ func NewConfig() *Config {
 	}
 	// 静态文件配置初始化
 	_static := &Static{
-		Path:         viper.GetString("static.path"),
-		Prefix:       viper.GetString("static.prefix"),
-		MaxSize:      viper.GetInt("static.max_size"),
-		MaxUploads:   viper.GetInt("static.max_uploads"),
-		AllowedTypes: viper.GetStringSlice("static.allowed_types"),
+		Path:                 viper.GetString("static.path"),
+		Prefix:               viper.GetString("static.prefix"),
+		MaxSize:              viper.GetInt("static.max_size"),
+		MaxUploads:           viper.GetInt("static.max_uploads"),
+		AllowedTypes:         viper.GetStringSlice("static.allowed_types"),
+		MaxConcurrentUploads: viper.GetInt("static.max_concurrent_uploads"),
+		UserQuotaMB:          viper.GetInt("static.user_quota_mb"),
 	}
 	// 高德地图API配置初始化
 	_gaode := &Gaode{
@@ -176,20 +176,54 @@ func NewConfig() *Config {
 		},
 	}
 
+	_task := &Task{
+		OutboxCleanupRetentionDays:            viper.GetInt("task.outbox_cleanup_retention_days"),
+		LuoguQuestionBankWarmupEnabled:        viper.GetBool("task.luogu_question_bank_warmup_enabled"),
+		LuoguQuestionBankWarmupBatchSize:      viper.GetInt("task.luogu_question_bank_warmup_batch_size"),
+		LuoguQuestionBankWarmupLockTTLSeconds: viper.GetInt("task.luogu_question_bank_warmup_lock_ttl_seconds"),
+		LuoguSyncUserIntervalSeconds:          viper.GetInt("task.luogu_sync_user_interval_seconds"),    // 读取洛谷用户间隔
+		LeetcodeSyncUserIntervalSeconds:       viper.GetInt("task.leetcode_sync_user_interval_seconds"), // 读取力扣用户间隔
+		LeetcodeSyncIntervalSeconds:           viper.GetInt("task.leetcode_sync_interval_seconds"),      // 读取力扣全量间隔
+		RankingSyncIntervalSeconds:            viper.GetInt("task.ranking_sync_interval_seconds"),       // 读取排行榜间隔
+	}
+
+	// 限流配置初始化
+	_rateLimit := &RateLimit{
+		Upload: UploadRateLimit{
+			GlobalLimit:     viper.GetInt("rate_limit.upload.global_limit"),
+			GlobalWindowSec: viper.GetInt("rate_limit.upload.global_window_sec"),
+			UserLimit:       viper.GetInt("rate_limit.upload.user_limit"),
+			UserWindowSec:   viper.GetInt("rate_limit.upload.user_window_sec"),
+		},
+	}
+
+	_messaging := &Messaging{
+		RedisStreamReadCount: viper.GetInt("messaging.redis_stream_read_count"),
+		RedisStreamBlockMs:   viper.GetInt("messaging.redis_stream_block_ms"),
+		LuoguBindTopic:       viper.GetString("messaging.luogu_bind_topic"),
+		LuoguBindGroup:       viper.GetString("messaging.luogu_bind_group"),
+		LuoguBindConsumer:    viper.GetString("messaging.luogu_bind_consumer"),
+		LeetcodeBindTopic:    viper.GetString("messaging.leetcode_bind_topic"),
+		LeetcodeBindGroup:    viper.GetString("messaging.leetcode_bind_group"),
+		LeetcodeBindConsumer: viper.GetString("messaging.leetcode_bind_consumer"),
+	}
+
 	return &Config{
-		ES:      *_es,
-		Redis:   *_redis,
-		Mysql:   *_mysql,
-		System:  *_system,
-		Zap:     *_zap,
-		JWT:     *_jwt,
-		Upload:  *_upload,
-		Captcha: *_captcha,
-		Email:   *_email,
-		Storage: *_storage,
-		Static:  *_static,
-		Gaode:   *_gaode,
-		Website: *_website,
-		Crawler: *_crawler,
+		Redis:     *_redis,
+		Mysql:     *_mysql,
+		System:    *_system,
+		Zap:       *_zap,
+		JWT:       *_jwt,
+		Upload:    *_upload,
+		Captcha:   *_captcha,
+		Email:     *_email,
+		Storage:   *_storage,
+		Static:    *_static,
+		Gaode:     *_gaode,
+		Website:   *_website,
+		Crawler:   *_crawler,
+		Task:      *_task,
+		Messaging: *_messaging,
+		RateLimit: *_rateLimit,
 	}
 }

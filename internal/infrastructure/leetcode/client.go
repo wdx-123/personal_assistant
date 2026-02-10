@@ -157,6 +157,25 @@ func (c *Client) PublicProfile(
 	return &out, nil
 }
 
+// SubmitStats 获取用户提交统计
+// 对应接口: POST /leetcode/submit_stats
+func (c *Client) SubmitStats(
+	ctx context.Context,
+	username string,
+	sleepSec float64,
+) (*SubmitStatsResponse, error) {
+	req := submitStatsRequest{
+		Username: username,
+		SleepSec: sleepSec,
+	}
+	var out SubmitStatsResponse
+	if err := c.post(ctx, "/leetcode/submit_stats", req, &out); err != nil {
+		return nil, err
+	}
+
+	return &out, nil
+}
+
 // RecentAC 获取用户最近 AC 记录
 // 对应接口: POST /leetcode/recent_ac
 func (c *Client) RecentAC(

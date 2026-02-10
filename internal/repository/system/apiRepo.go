@@ -2,7 +2,9 @@ package system
 
 import (
 	"context"
+
 	"gorm.io/gorm"
+	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository/interfaces"
 )
@@ -48,29 +50,48 @@ func (a *apiRepository) Delete(ctx context.Context, id uint) error {
 
 // 业务相关查询
 
-func (a *apiRepository) GetAPIList(ctx context.Context, page, pageSize int) ([]*entity.API, int64, error) {
+// GetAPIList 获取API列表（分页，支持过滤）
+func (a *apiRepository) GetAPIList(ctx context.Context, filter *request.ApiListFilter) ([]*entity.API, int64, error) {
 	var apis []*entity.API
 	var total int64
 
-	offset := (page - 1) * pageSize
-	err := a.db.WithContext(ctx).Model(&entity.API{}).Count(&total).Error
-	if err != nil {
+	query := a.db.WithContext(ctx).Model(&entity.API{})
+
+	if filter != nil {
+		if filter.Status != nil {
+			query = query.Where("status = ?", *filter.Status)
+		}
+		if filter.Method != "" {
+			query = query.Where("method = ?", filter.Method)
+		}
+		if filter.Keyword != "" {
+			query = query.Where("path LIKE ? OR detail LIKE ?", "%"+filter.Keyword+"%", "%"+filter.Keyword+"%")
+		}
+	}
+
+	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	err = a.db.WithContext(ctx).Offset(offset).Limit(pageSize).Find(&apis).Error
+	page := 1
+	pageSize := 10
+	if filter != nil {
+		if filter.Page > 0 {
+			page = filter.Page
+		}
+		if filter.PageSize > 0 {
+			pageSize = filter.PageSize
+		}
+	}
+
+	offset := (page - 1) * pageSize
+	err := query.Offset(offset).Limit(pageSize).Order("id ASC").Find(&apis).Error
 	return apis, total, err
 }
 
 func (a *apiRepository) GetAllAPIs(ctx context.Context) ([]*entity.API, error) {
 	var apis []*entity.API
 	err := a.db.WithContext(ctx).Find(&apis).Error
-	return apis, err
-}
-
-func (a *apiRepository) GetAPIsByGroup(ctx context.Context, groupID uint) ([]*entity.API, error) {
-	var apis []*entity.API
-	err := a.db.WithContext(ctx).Where("group_id = ?", groupID).Find(&apis).Error
 	return apis, err
 }
 
@@ -87,14 +108,14 @@ func (a *apiRepository) ExistsByPathAndMethod(ctx context.Context, path, method 
 
 // 权限查询
 
-func (a *apiRepository) GetAPIsByUserID(ctx context.Context, userID uint) ([]*entity.API, error) {
+func (a *apiRepository) GetAPIsByUserID(ctx context.Context, userID, orgID uint) ([]*entity.API, error) {
 	var apis []*entity.API
 	err := a.db.WithContext(ctx).
 		Table("apis").
 		Joins("JOIN menu_apis ON apis.id = menu_apis.api_id").
 		Joins("JOIN role_menus ON menu_apis.menu_id = role_menus.menu_id").
-		Joins("JOIN user_roles ON role_menus.role_id = user_roles.role_id").
-		Where("user_roles.user_id = ? AND apis.deleted_at IS NULL", userID).
+		Joins("JOIN user_org_roles ON role_menus.role_id = user_org_roles.role_id").
+		Where("user_org_roles.user_id = ? AND user_org_roles.org_id = ? AND apis.deleted_at IS NULL", userID, orgID).
 		Distinct().
 		Find(&apis).Error
 	return apis, err
@@ -111,14 +132,14 @@ func (a *apiRepository) GetAPIsByRoleID(ctx context.Context, roleID uint) ([]*en
 	return apis, err
 }
 
-func (a *apiRepository) CheckUserAPIPermission(ctx context.Context, userID uint, path, method string) (bool, error) {
+func (a *apiRepository) CheckUserAPIPermission(ctx context.Context, userID, orgID uint, path, method string) (bool, error) {
 	var count int64
 	err := a.db.WithContext(ctx).
 		Table("apis").
 		Joins("JOIN menu_apis ON apis.id = menu_apis.api_id").
 		Joins("JOIN role_menus ON menu_apis.menu_id = role_menus.menu_id").
-		Joins("JOIN user_roles ON role_menus.role_id = user_roles.role_id").
-		Where("user_roles.user_id = ? AND apis.path = ? AND apis.method = ? AND apis.deleted_at IS NULL", userID, path, method).
+		Joins("JOIN user_org_roles ON role_menus.role_id = user_org_roles.role_id").
+		Where("user_org_roles.user_id = ? AND user_org_roles.org_id = ? AND apis.path = ? AND apis.method = ? AND apis.deleted_at IS NULL", userID, orgID, path, method).
 		Count(&count).Error
 	return count > 0, err
 }

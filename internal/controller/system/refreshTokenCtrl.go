@@ -3,11 +3,14 @@ package system
 import (
 	"errors"
 	"github.com/gin-gonic/gin"
+	"io"
 	"personal_assistant/global"
+	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
 	serviceSystem "personal_assistant/internal/service/system"
 	"personal_assistant/pkg/jwt"
 	"personal_assistant/pkg/response"
+	"strings"
 )
 
 type RefreshTokenCtrl struct {
@@ -17,8 +20,22 @@ type RefreshTokenCtrl struct {
 func (r *RefreshTokenCtrl) RefreshToken(c *gin.Context) {
 	helper := response.NewAPIHelper(c, "RefreshToken")
 
-	RefreshToken := jwt.GetRefreshToken(c)
-	if RefreshToken == "" {
+	refreshToken := jwt.GetRefreshToken(c)
+	if refreshToken == "" {
+		var req request.RefreshTokenRequest
+		if err := c.ShouldBindJSON(&req); err == nil {
+			refreshToken = strings.TrimSpace(req.RefreshToken)
+			if refreshToken == "" {
+				refreshToken = strings.TrimSpace(req.XRefreshToken)
+			}
+		} else if err != io.EOF {
+			helper.HandleBindError(err)
+			response.NewResponse[resp.AuthResponse, resp.AuthResponse](c).
+				SetCode(global.StatusBadRequest).Failed(err.Error(), "参数错误")
+			return
+		}
+	}
+	if refreshToken == "" {
 		err1 := errors.New("RefreshToken token is required")
 		helper.HandleBindError(err1)
 		response.NewResponse[resp.AuthResponse, resp.AuthResponse](c).
@@ -27,7 +44,7 @@ func (r *RefreshTokenCtrl) RefreshToken(c *gin.Context) {
 	}
 
 	// 检查refresh token是否在黑名单中
-	if r.jwtService.IsInBlacklist(RefreshToken) {
+	if r.jwtService.IsInBlacklist(refreshToken) {
 		helper.CommonError("token is blacklist", global.StatusUnauthorized, nil)
 		response.NewResponse[resp.AuthResponse, resp.AuthResponse](c).SetCode(global.StatusUnauthorized).
 			Failed("token is blacklist", &resp.AuthResponse{
@@ -37,7 +54,7 @@ func (r *RefreshTokenCtrl) RefreshToken(c *gin.Context) {
 	}
 
 	// 获取用户所有信息
-	refreshReq, jwtErr := r.jwtService.GetAccessToken(c.Request.Context(), RefreshToken)
+	refreshReq, jwtErr := r.jwtService.GetAccessToken(c.Request.Context(), refreshToken)
 	if jwtErr != nil {
 		helper.HandleJWTError(jwtErr)
 		response.NewResponse[resp.AuthResponse, resp.AuthResponse](c).SetCode(jwtErr.Code).
@@ -49,6 +66,9 @@ func (r *RefreshTokenCtrl) RefreshToken(c *gin.Context) {
 	}
 
 	// 创建令牌
+	if refreshReq != nil {
+		refreshReq.RefreshToken = refreshToken
+	}
 	response.NewResponse[resp.RefreshTokenResponse, resp.RefreshTokenResponse](c).
 		SetTrans(&resp.RefreshTokenResponse{}).
 		Success("刷新成功", refreshReq)

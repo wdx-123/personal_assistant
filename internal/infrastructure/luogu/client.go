@@ -2,6 +2,7 @@ package luogu
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -133,7 +134,10 @@ func NewClient(baseURL string, opts ...Option) (*Client, error) {
 
 // GetPractice 获取用户练习记录
 // 对应接口: POST /luogu/practice
-func (c *Client) GetPractice(ctx context.Context, uid int, sleepSec float64) (*GetPracticeResponse, error) {
+func (c *Client) GetPractice(
+	ctx context.Context,
+	uid int, sleepSec float64,
+) (*GetPracticeResponse, error) {
 	req := getPracticeRequest{
 		UID:      uid,
 		SleepSec: sleepSec,
@@ -182,6 +186,16 @@ func (c *Client) post(ctx context.Context, path string, body any, out any) error
 			StatusCode: resp.StatusCode(),
 			Body:       resp.String(),
 		}
+
+		// 尝试解析结构化错误
+		var errResp struct {
+			OK    bool   `json:"ok"`
+			Error string `json:"error"`
+		}
+		if jsonErr := json.Unmarshal(resp.Body(), &errResp); jsonErr == nil && errResp.Error != "" {
+			httpErr.Message = errResp.Error
+		}
+
 		c.logError("luogu remote http error", httpErr, endpoint, resp.StatusCode())
 		return httpErr
 	}

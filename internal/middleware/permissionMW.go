@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"personal_assistant/global"
+	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/service"
 	"personal_assistant/pkg/response"
@@ -54,12 +55,16 @@ func (p *PermissionMiddleware) CheckPermission() gin.HandlerFunc {
 
 		// 链式验证流程
 		switch {
+		// 白名单路由直接通过
 		case !auth.checkWhiteList():
 			return
+			// 获取用户信息
 		case !auth.extractUserInfo():
 			return
+			// 检查是否为超级管理员
 		case !auth.checkSuperUser():
 			return
+			// 检查API权限
 		case !auth.checkAPIPermission():
 			return
 		default:
@@ -159,7 +164,7 @@ func (a *permissionAuth) loadUserRoles() bool {
 	for i, role := range roles {
 		a.userRoles[i] = role.Code
 		// 检查是否包含超级管理员角色
-		if role.Code == "super_admin" || role.Code == "SuperAdmin" {
+		if role.Code == consts.RoleCodeSuperAdmin || role.Code == "SuperAdmin" {
 			a.isSuperAdmin = true
 		}
 	}

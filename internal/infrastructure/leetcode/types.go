@@ -24,18 +24,27 @@ type PublicProfileResponse struct {
 			RealName   string `json:"realName"`   // 用户真实姓名（若已公开）
 			UserAvatar string `json:"userAvatar"` // 用户头像 URL
 		} `json:"profile"`
-		SubmitStats struct {
-			AcSubmissionNum []struct {
-				Difficulty string `json:"difficulty"`
-				Count      int    `json:"count"`
-			} `json:"acSubmissionNum"`
-		} `json:"submitStats"`
-		SubmitStatsGlobal struct {
-			AcSubmissionNum []struct {
-				Difficulty string `json:"difficulty"`
-				Count      int    `json:"count"`
-			} `json:"acSubmissionNum"`
-		} `json:"submitStatsGlobal"`
+	} `json:"data"`
+}
+
+// submitStatsRequest 提交统计请求参数
+type submitStatsRequest struct {
+	Username string  `json:"username"`  // 目标用户的 LeetCode 用户名或 slug
+	SleepSec float64 `json:"sleep_sec"` // 模拟请求延迟秒数
+}
+
+// SubmitStatsResponse 提交统计响应结构
+type SubmitStatsResponse struct {
+	OK   bool `json:"ok"`
+	Data struct {
+		Stats struct {
+			UserProfileUserQuestionProgress struct {
+				NumAcceptedQuestions []struct {
+					Difficulty string `json:"difficulty"`
+					Count      int    `json:"count"`
+				} `json:"numAcceptedQuestions"`
+			} `json:"userProfileUserQuestionProgress"`
+		} `json:"stats"`
 	} `json:"data"`
 }
 

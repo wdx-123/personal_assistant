@@ -23,7 +23,11 @@ func InitConfig(path string) {
 	viper.SetConfigName("configs")
 
 	if err := viper.ReadInConfig(); err != nil {
-		global.Log.Fatal("配置文件加载失败") // 早期处理错误
+		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
+			global.Log.Warn("配置文件未找到，将仅使用环境变量", zap.Error(err))
+		} else {
+			global.Log.Fatal("配置文件加载失败", zap.Error(err))
+		}
 	}
 
 	// 绑定验证码相关配置到环境变量
@@ -45,7 +49,7 @@ func InitConfig(path string) {
 	_ = viper.BindEnv("storage.current", "STORAGE_CURRENT")
 	_ = viper.BindEnv("storage.local.base_url", "STORAGE_LOCAL_BASE_URL")
 	_ = viper.BindEnv("storage.local.key_prefix", "STORAGE_LOCAL_KEY_PREFIX")
-	_ = viper.BindEnv("crawler.leetcode.base_url", "LEETCODE_BASE_URL")
+	_ = viper.BindEnv("crawler.leetcode.base_url", "CRAWLER_LEETCODE_BASE_URL", "LEETCODE_BASE_URL")
 	_ = viper.BindEnv("crawler.leetcode.timeout_ms", "LEETCODE_TIMEOUT_MS")
 	_ = viper.BindEnv("crawler.leetcode.max_idle_conns", "LEETCODE_MAX_IDLE_CONNS")
 	_ = viper.BindEnv("crawler.leetcode.max_idle_conns_per_host", "LEETCODE_MAX_IDLE_CONNS_PER_HOST")
@@ -54,6 +58,15 @@ func InitConfig(path string) {
 	_ = viper.BindEnv("crawler.leetcode.retry_wait_ms", "LEETCODE_RETRY_WAIT_MS")
 	_ = viper.BindEnv("crawler.leetcode.retry_max_wait_ms", "LEETCODE_RETRY_MAX_WAIT_MS")
 	_ = viper.BindEnv("crawler.leetcode.response_body_limit_bytes", "LEETCODE_RESPONSE_BODY_LIMIT_BYTES")
+	_ = viper.BindEnv("crawler.luogu.base_url", "CRAWLER_LUOGU_BASE_URL", "LUOGU_BASE_URL")
+	_ = viper.BindEnv("crawler.luogu.timeout_ms", "LUOGU_TIMEOUT_MS")
+	_ = viper.BindEnv("crawler.luogu.max_idle_conns", "LUOGU_MAX_IDLE_CONNS")
+	_ = viper.BindEnv("crawler.luogu.max_idle_conns_per_host", "LUOGU_MAX_IDLE_CONNS_PER_HOST")
+	_ = viper.BindEnv("crawler.luogu.idle_conn_timeout_sec", "LUOGU_IDLE_CONN_TIMEOUT_SEC")
+	_ = viper.BindEnv("crawler.luogu.retry_count", "LUOGU_RETRY_COUNT")
+	_ = viper.BindEnv("crawler.luogu.retry_wait_ms", "LUOGU_RETRY_WAIT_MS")
+	_ = viper.BindEnv("crawler.luogu.retry_max_wait_ms", "LUOGU_RETRY_MAX_WAIT_MS")
+	_ = viper.BindEnv("crawler.luogu.response_body_limit_bytes", "LUOGU_RESPONSE_BODY_LIMIT_BYTES")
 	_ = viper.BindEnv("storage.qiniu.bucket", "STORAGE_QINIU_BUCKET")
 	_ = viper.BindEnv("storage.qiniu.domain", "STORAGE_QINIU_DOMAIN")
 	_ = viper.BindEnv("storage.qiniu.key_prefix", "STORAGE_QINIU_KEY_PREFIX")
@@ -65,12 +78,6 @@ func InitConfig(path string) {
 	_ = viper.BindEnv("static.prefix", "STATIC_PREFIX")
 	_ = viper.BindEnv("static.max_size", "STATIC_MAX_SIZE")
 	_ = viper.BindEnv("static.max_uploads", "STATIC_MAX_UPLOADS")
-
-	// 绑定Elasticsearch相关配置到环境变量（补充完整）
-	_ = viper.BindEnv("es.url", "ES_URL")
-	_ = viper.BindEnv("es.username", "ES_USERNAME")
-	_ = viper.BindEnv("es.password", "ES_PASSWORD")
-	_ = viper.BindEnv("es.is_console_print", "ES_IS_CONSOLE_PRINT")
 
 	// 绑定高德地图相关配置到环境变量
 	_ = viper.BindEnv("gaode.enable", "GAODE_ENABLE")
@@ -107,9 +114,20 @@ func InitConfig(path string) {
 	_ = viper.BindEnv("redis.password", "REDIS_PASSWORD")
 	_ = viper.BindEnv("redis.db", "REDIS_DB")
 
+	_ = viper.BindEnv("task.outbox_cleanup_retention_days", "TASK_OUTBOX_CLEANUP_RETENTION_DAYS")
+	_ = viper.BindEnv("task.luogu_question_bank_warmup_enabled", "TASK_LUOGU_QUESTION_BANK_WARMUP_ENABLED")
+	_ = viper.BindEnv("task.luogu_question_bank_warmup_batch_size", "TASK_LUOGU_QUESTION_BANK_WARMUP_BATCH_SIZE")
+	_ = viper.BindEnv("task.luogu_question_bank_warmup_lock_ttl_seconds", "TASK_LUOGU_QUESTION_BANK_WARMUP_LOCK_TTL_SECONDS")
+	_ = viper.BindEnv("task.ranking_sync_interval_seconds", "TASK_RANKING_SYNC_INTERVAL_SECONDS")
+	_ = viper.BindEnv("messaging.redis_stream_read_count", "MESSAGING_REDIS_STREAM_READ_COUNT")
+	_ = viper.BindEnv("messaging.redis_stream_block_ms", "MESSAGING_REDIS_STREAM_BLOCK_MS")
+	_ = viper.BindEnv("messaging.luogu_bind_topic", "MESSAGING_LUOGU_BIND_TOPIC")
+	_ = viper.BindEnv("messaging.luogu_bind_group", "MESSAGING_LUOGU_BIND_GROUP")
+	_ = viper.BindEnv("messaging.luogu_bind_consumer", "MESSAGING_LUOGU_BIND_CONSUMER")
+
 	// 绑定系统服务相关配置到环境变量（补充完整）
 	_ = viper.BindEnv("system.host", "SYSTEM_HOST")
-	_ = viper.BindEnv("system.port", "PORT") // 复用PORT环境变量
+	_ = viper.BindEnv("system.port", "SYSTEM_PORT", "PORT")
 	_ = viper.BindEnv("system.env", "SYSTEM_ENV")
 	_ = viper.BindEnv("system.router_prefix", "SYSTEM_ROUTER_PREFIX")
 	_ = viper.BindEnv("system.auto_migrate", "AUTO_MIGRATE")
@@ -150,6 +168,15 @@ func InitConfig(path string) {
 	_ = viper.BindEnv("zap.max_backups", "ZAP_MAX_BACKUPS")
 	_ = viper.BindEnv("zap.max_age", "ZAP_MAX_AGE")
 	_ = viper.BindEnv("zap.is_console_print", "ZAP_IS_CONSOLE_PRINT")
+
+	_ = viper.BindEnv("messaging.redis_stream_read_count", "MESSAGING_REDIS_STREAM_READ_COUNT")
+	_ = viper.BindEnv("messaging.redis_stream_block_ms", "MESSAGING_REDIS_STREAM_BLOCK_MS")
+	_ = viper.BindEnv("messaging.luogu_bind_topic", "MESSAGING_LUOGU_BIND_TOPIC")
+	_ = viper.BindEnv("messaging.luogu_bind_group", "MESSAGING_LUOGU_BIND_GROUP")
+	_ = viper.BindEnv("messaging.luogu_bind_consumer", "MESSAGING_LUOGU_BIND_CONSUMER")
+	_ = viper.BindEnv("messaging.leetcode_bind_topic", "MESSAGING_LEETCODE_BIND_TOPIC")
+	_ = viper.BindEnv("messaging.leetcode_bind_group", "MESSAGING_LEETCODE_BIND_GROUP")
+	_ = viper.BindEnv("messaging.leetcode_bind_consumer", "MESSAGING_LEETCODE_BIND_CONSUMER")
 
 	global.Log.Info("--------- configs list--------\n")
 	for _, key := range viper.AllKeys() {

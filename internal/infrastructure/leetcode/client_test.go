@@ -64,6 +64,58 @@ func TestClient_PublicProfile_OK(t *testing.T) {
 	}
 }
 
+func TestClient_SubmitStats_OK(t *testing.T) {
+	t.Parallel()
+
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.Path != "/leetcode/submit_stats" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok": true,
+			"data": map[string]any{
+				"stats": map[string]any{
+					"userProfileUserQuestionProgress": map[string]any{
+						"numAcceptedQuestions": []map[string]any{
+							{"difficulty": "EASY", "count": 10},
+							{"difficulty": "MEDIUM", "count": 20},
+							{"difficulty": "HARD", "count": 5},
+						},
+					},
+				},
+			},
+		})
+	}))
+	defer s.Close()
+
+	c, err := NewClient(s.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	resp, err := c.SubmitStats(ctx, "u1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected OK=true")
+	}
+	stats := resp.Data.Stats.UserProfileUserQuestionProgress.NumAcceptedQuestions
+	if len(stats) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(stats))
+	}
+}
+
 func TestClient_RecentAC_OK(t *testing.T) {
 	t.Parallel()
 

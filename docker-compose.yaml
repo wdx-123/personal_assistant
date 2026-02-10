@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: personal_assistant_app
+    restart: always
+    ports:
+      - "8002:8002"
+    volumes:
+      - ./static:/app/static
+      - ./log:/app/log
+    env_file:
+      - .env
+    environment:
+      - SYSTEM_HOST=${SYSTEM_HOST}
+      - SYSTEM_PORT=${SYSTEM_PORT}
+      - AUTO_MIGRATE=${AUTO_MIGRATE}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_NAME=${DB_NAME}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_ADDRESS=${REDIS_ADDRESS}
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - CRAWLER_LEETCODE_BASE_URL=${CRAWLER_LEETCODE_BASE_URL}
+      - CRAWLER_LUOGU_BASE_URL=${CRAWLER_LUOGU_BASE_URL}
+      - STORAGE_CURRENT=${STORAGE_CURRENT}
+      - STORAGE_QINIU_ACCESS_KEY=${STORAGE_QINIU_ACCESS_KEY}
+      - STORAGE_QINIU_SECRET_KEY=${STORAGE_QINIU_SECRET_KEY}
+      - STORAGE_QINIU_BUCKET=${STORAGE_QINIU_BUCKET}
+      - STORAGE_QINIU_DOMAIN=${STORAGE_QINIU_DOMAIN}

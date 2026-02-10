@@ -1,75 +1,40 @@
 package consts
 
-import "encoding/json"
-
-// Category 图片类别
+// Category 图片类别（底层为 int，JSON 序列化/反序列化均使用数值）
+// form 绑定与 JSON 绑定行为一致，前端统一使用 int 值
 type Category int
 
 const (
-	Null         Category = iota // 未使用
-	System                       // 系统
-	Carousel                     // 背景
-	Cover                        // 封面
-	Illustration                 // 插图
-	AdImage                      // 广告
-	Logo                         // 友链
+	CatNull         Category = iota // 0 - 未使用
+	CatSystem                       // 1 - 系统
+	CatCarousel                     // 2 - 轮播
+	CatCover                        // 3 - 封面
+	CatIllustration                 // 4 - 插图
+	CatAdImage                      // 5 - 广告
+	CatLogo                         // 6 - Logo
+	CatAvatar                       // 7 - 头像
 )
 
-// MarshalJSON 实现了 json.Marshaler 接口
-func (c Category) MarshalJSON() ([]byte, error) {
-	return json.Marshal(c.String())
-}
-
-// UnmarshalJSON 实现了 json.Unmarshaler 接口
-func (c *Category) UnmarshalJSON(data []byte) error {
-	var str string
-	if err := json.Unmarshal(data, &str); err != nil {
-		return err
-	}
-	*c = ToCategory(str)
-	return nil
-}
-
-// String 方法返回 Category 的字符串表示
+// String 返回 Category 的中文可读标签
 func (c Category) String() string {
 	switch c {
-	case Null:
+	case CatNull:
 		return "未使用"
-	case System:
+	case CatSystem:
 		return "系统"
-	case Carousel:
-		return "背景"
-	case Cover:
+	case CatCarousel:
+		return "轮播"
+	case CatCover:
 		return "封面"
-	case Illustration:
+	case CatIllustration:
 		return "插图"
-	case AdImage:
+	case CatAdImage:
 		return "广告"
-	case Logo:
-		return "友链"
+	case CatLogo:
+		return "Logo"
+	case CatAvatar:
+		return "头像"
 	default:
 		return "未知类别"
-	}
-}
-
-// ToCategory 函数将字符串转换为 Category
-func ToCategory(str string) Category {
-	switch str {
-	case "未使用":
-		return Null
-	case "系统":
-		return System
-	case "背景":
-		return Carousel
-	case "封面":
-		return Cover
-	case "插图":
-		return Illustration
-	case "广告":
-		return AdImage
-	case "友链":
-		return Logo
-	default:
-		return -1
 	}
 }

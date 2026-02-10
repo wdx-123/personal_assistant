@@ -20,6 +20,14 @@ func NewUserRepository(db *gorm.DB) interfaces.UserRepository {
 	return &UserGormRepository{db: db}
 }
 
+// WithTx 启用事务
+func (r *UserGormRepository) WithTx(tx any) interfaces.UserRepository {
+	if transaction, ok := tx.(*gorm.DB); ok {
+		return &UserGormRepository{db: transaction}
+	}
+	return r
+}
+
 // GetByID 根据ID获取用户
 func (r *UserGormRepository) GetByID(
 	ctx context.Context,
@@ -94,6 +102,24 @@ func (r *UserGormRepository) GetByPhone(
 		return nil, err
 	}
 	return &user, nil
+}
+
+// GetByIDs 批量获取用户
+func (r *UserGormRepository) GetByIDs(
+	ctx context.Context,
+	ids []uint,
+) ([]*entity.User, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var users []*entity.User
+	err := r.db.WithContext(ctx).
+		Where("id IN ?", ids).
+		Find(&users).Error
+	if err != nil {
+		return nil, err
+	}
+	return users, nil
 }
 
 // Create 创建用户
@@ -248,4 +274,17 @@ func (r *UserGormRepository) CheckEmailAddress(
 		First(&entity.User{}).
 		Error
 	return err
+}
+
+// UpdateCurrentOrgID 更新用户当前组织ID
+func (r *UserGormRepository) UpdateCurrentOrgID(
+	ctx context.Context,
+	userID uint,
+	orgID *uint,
+) error {
+	return r.db.WithContext(ctx).
+		Model(&entity.User{}).
+		Where("id = ?", userID).
+		Update("current_org_id", orgID).
+		Error
 }

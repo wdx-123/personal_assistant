@@ -2,7 +2,7 @@
 
 ## 📋 概述
 
-Flag 模块是 Go Blog 项目的命令行工具集，提供了数据库管理、数据导入导出、Elasticsearch 索引管理等功能。该模块基于 `github.com/urfave/cli` 构建，支持多种命令行操作。
+Flag 模块是 Go Blog 项目的命令行工具集，提供了数据库管理、数据导入导出等功能。该模块基于 `github.com/urfave/cli` 构建，支持多种命令行操作。
 
 ## 🏗️ 模块结构
 
@@ -12,7 +12,6 @@ flag/
 ├── flag_sql.go        # 数据库表结构初始化
 ├── flag_sql_export.go # MySQL 数据导出
 ├── flag_sql_import.go # MySQL 数据导入
-└── flag_es.go         # Elasticsearch 索引管理
 ```
 
 ## 🚀 使用方法
@@ -67,30 +66,7 @@ go build -o blog-service.exe cmd/main.go
 - **处理方式**: 逐条执行 SQL 语句
 - **错误处理**: 收集所有执行错误并统一报告
 
-#### 2. Elasticsearch 管理
-
-##### 🔍 初始化 ES 索引
-```bash
-.\blog-service.exe --es
-```
-- **功能**: 初始化 Elasticsearch 索引
-- **状态**: 🚧 待实现 (当前为空函数)
-
-##### 📤 导出 ES 数据
-```bash
-.\blog-service.exe --es-export
-```
-- **功能**: 导出 Elasticsearch 数据
-- **状态**: 🚧 待实现 (标志已定义，功能待开发)
-
-##### 📥 导入 ES 数据
-```bash
-.\blog-service.exe --es-import C:\path\to\file.json
-```
-- **功能**: 导入数据到 Elasticsearch
-- **状态**: 🚧 待实现 (标志已定义，功能待开发)
-
-#### 3. 管理员管理
+#### 2. 管理员管理
 
 ##### 👤 创建管理员
 ```bash

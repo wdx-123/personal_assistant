@@ -15,6 +15,7 @@ type server interface {
 func RunServer() {
     addr := global.Config.System.Addr()
     Router := router.InitRouter()
+    global.Router = Router
 
     // 初始化服务器并启动
     s := initServer(addr, Router)

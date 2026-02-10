@@ -6,6 +6,10 @@ type controllerSupplier struct {
 	userCtrl         *UserCtrl
 	orgCtrl          *OrgCtrl
 	ojCtrl           *OJCtrl
+	apiCtrl          *ApiCtrl
+	menuCtrl         *MenuCtrl
+	roleCtrl         *RoleCtrl
+	imageCtrl        *ImageCtrl
 }
 
 func (c *controllerSupplier) GetRefreshTokenCtrl() *RefreshTokenCtrl {
@@ -23,4 +27,20 @@ func (c *controllerSupplier) GetOrgCtrl() *OrgCtrl {
 
 func (c *controllerSupplier) GetOJCtrl() *OJCtrl {
 	return c.ojCtrl
+}
+
+func (c *controllerSupplier) GetApiCtrl() *ApiCtrl {
+	return c.apiCtrl
+}
+
+func (c *controllerSupplier) GetMenuCtrl() *MenuCtrl {
+	return c.menuCtrl
+}
+
+func (c *controllerSupplier) GetRoleCtrl() *RoleCtrl {
+	return c.roleCtrl
+}
+
+func (c *controllerSupplier) GetImageCtrl() *ImageCtrl {
+	return c.imageCtrl
 }

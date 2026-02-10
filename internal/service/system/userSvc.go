@@ -71,9 +71,10 @@ func (u *UserService) Register(
 	}
 
 	// 4. 处理组织选择
-	if req.OrgID > 0 {
-		user.CurrentOrgID = &req.OrgID
+	if req.OrgID <= 0 {
+		return nil, errors.New("必须指定组织")
 	}
+	user.CurrentOrgID = &req.OrgID
 
 	global.Log.Error(user.Password)
 
@@ -102,7 +103,8 @@ func (u *UserService) Register(
 	}
 
 	// 分配角色
-	if err = u.permissionService.AssignRoleToUser(ctx, user.ID, defaultRole.ID); err != nil {
+	err = u.permissionService.AssignRoleToUserInOrg(ctx, user.ID, req.OrgID, defaultRole.ID)
+	if err != nil {
 		global.Log.Error("分配默认角色失败",
 			zap.Uint("user_id", user.ID),
 			zap.Uint("role_id", defaultRole.ID),

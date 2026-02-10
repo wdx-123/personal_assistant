@@ -9,6 +9,10 @@ type Supplier interface {
 	GetUserSvc() *UserService
 	GetOrgSvc() *OrgService
 	GetOJSvc() *OJService
+	GetApiSvc() *ApiService
+	GetMenuSvc() *MenuService
+	GetRoleSvc() *RoleService
+	GetImageSvc() *ImageService
 }
 
 // SetUp 工厂函数，统一管理
@@ -16,12 +20,15 @@ func SetUp(repositoryGroup *repository.Group) Supplier {
 	ss := &serviceSupplier{}
 	ss.jwtService = NewJWTService(repositoryGroup)
 	ss.permissionService = NewPermissionService(repositoryGroup)
-	ss.baseService = NewBaseService() // 用不到repo层
+	ss.baseService = NewBaseService()
 	ss.orgService = NewOrgService(repositoryGroup)
 	ss.ojService = NewOJService(repositoryGroup)
+	ss.apiService = NewApiService(repositoryGroup)
+	ss.menuService = NewMenuService(repositoryGroup)
+	ss.roleService = NewRoleService(repositoryGroup)
+	ss.imageService = NewImageService(repositoryGroup)
 
 	// UserService 需要依赖 PermissionService，所以在 permissionService 初始化后创建
-	// 创建用户服务（注入权限服务）
 	ss.userService = NewUserService(repositoryGroup, ss.permissionService)
 	return ss
 }

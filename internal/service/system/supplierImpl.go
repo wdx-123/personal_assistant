@@ -8,6 +8,10 @@ type serviceSupplier struct {
 	userService       *UserService
 	orgService        *OrgService
 	ojService         *OJService
+	apiService        *ApiService
+	menuService       *MenuService
+	roleService       *RoleService
+	imageService      *ImageService
 }
 
 func (s *serviceSupplier) GetJWTSvc() *JWTService {
@@ -28,4 +32,20 @@ func (s *serviceSupplier) GetOrgSvc() *OrgService {
 
 func (s *serviceSupplier) GetOJSvc() *OJService {
 	return s.ojService
+}
+
+func (s *serviceSupplier) GetApiSvc() *ApiService {
+	return s.apiService
+}
+
+func (s *serviceSupplier) GetMenuSvc() *MenuService {
+	return s.menuService
+}
+
+func (s *serviceSupplier) GetRoleSvc() *RoleService {
+	return s.roleService
+}
+
+func (s *serviceSupplier) GetImageSvc() *ImageService {
+	return s.imageService
 }

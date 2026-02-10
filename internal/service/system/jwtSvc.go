@@ -12,7 +12,7 @@ import (
 	"personal_assistant/pkg/jwt"
 	"personal_assistant/pkg/util"
 
-	"github.com/go-redis/redis"
+	"github.com/go-redis/redis/v8"
 
 	"github.com/gofrs/uuid"
 	"go.uber.org/zap"
@@ -156,8 +156,11 @@ func (j *JWTService) IssueLoginTokens(
 
 	// 多点登录控制
 	if global.Config.System.UseMultipoint {
-		if old, err := j.GetRedisJWT(user.UUID); errors.Is(err, redis.Nil) {
-			// 无旧记录，直接设置新的刷新令牌
+		// 尝试获取旧的JWT
+		old, err := j.GetRedisJWT(ctx, user.UUID)
+
+		if errors.Is(err, redis.Nil) {
+			// 无旧记录（Redis中不存在该用户的token），这属于正常情况，直接设置新的刷新令牌
 			if err := j.SetRedisJWT(refreshToken, user.UUID); err != nil {
 				return nil, "", 0, &erro.JWTError{
 					Code:    global.StatusInternalServerError,
@@ -166,14 +169,14 @@ func (j *JWTService) IssueLoginTokens(
 				}
 			}
 		} else if err != nil {
-			// 读取Redis失败
+			// 读取Redis失败（真正的错误，如连接超时、认证失败等）
 			return nil, "", 0, &erro.JWTError{
 				Code:    global.StatusInternalServerError,
 				Message: "读取登录状态失败",
 				Err:     err,
 			}
 		} else {
-			// 旧刷新令牌加入黑名单，并写入新令牌
+			// 存在旧记录，将旧刷新令牌加入黑名单
 			bl := entity.JwtBlacklist{JWT: old}
 			if err = j.JoinInBlacklist(ctx, bl); err != nil {
 				return nil, "", 0, &erro.JWTError{
@@ -182,6 +185,7 @@ func (j *JWTService) IssueLoginTokens(
 					Err:     err,
 				}
 			}
+			// 写入新令牌
 			if err = j.SetRedisJWT(refreshToken, user.UUID); err != nil {
 				return nil, "", 0, &erro.JWTError{
 					Code:    global.StatusInternalServerError,
@@ -197,6 +201,7 @@ func (j *JWTService) IssueLoginTokens(
 		User:                 user,
 		AccessToken:          accessToken,
 		AccessTokenExpiresAt: accessClaims.ExpiresAt.Unix() * 1000,
+		RefreshToken:         refreshToken,
 	}
 	return res, refreshToken, refreshClaims.ExpiresAt.Unix() * 1000, nil
 }

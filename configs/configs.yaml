@@ -1,34 +1,30 @@
-es:
-  url: http://127.0.0.1:9200
-  username: "elastic"
-  password: "1234"
-  is_console_print: true
-mysql:
-  host: 180.184.87.86       # 宿主机本地访问 MySQL
+﻿mysql:
+  host: ""       # 宿主机本地访问 MySQL
   port: 3306
   config: charset=utf8mb4&parseTime=True&loc=Local
   db_name: meta_assist
   username: root
-  password: Wang13839575053
+  password: ""
   max_idle_conns: 10    # 连接池空闲最大连接数
   max_open_conns: 100   # 连接池最大打开连接数
-  log_mode: info        # 日志级别
+  log_mode: silent        # 日志级别
 redis:
-  address: 180.184.87.86:6379  # 宿主机本地访问 Redis
-  password: "wdx13839575053@"             # Redis 密码（默认）
+  address: ""  # 宿主机本地访问 Redis
+  password: ""             # Redis 密码（默认）
   db: 0                    # 使用第 0 个数据库
 system:
   host: 0.0.0.0 # 监听所有本地网卡；外部访问用机器实际IP
-  port: 8080 # 服务对外暴露的端口号
+  port: 8002 # 服务对外暴露的端口号
   env: dev # 应用运行环境（release=生产环境；dev=开发环境；test=测试环境等）
   router_prefix: controller # API 接口的统一前缀（所有接口路径会以 /controller 开头）
   auto_migrate: true
   use_multipoint: true # 是否启用"多点"能力（如多客户端连接、多节点通信等场景）
-  sessions_secret: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx # Session 加密/签名的密钥（保障会话安全）
+  sessions_secret: "" # Session 加密/签名的密钥（保障会话安全）
   default_role_code: "user" # 新用户注册时的默认角色代码
   default_role_name: "普通用户" # 默认角色的显示名称
+  bind_cool_down_hours: 48 # 换绑冷却时间（小时），防止频繁换绑
 zap:
-  level: info #  日志级别为info：记录应用正常运行信息（如服务启动、接口请求成功），不包含debug调试信息和error错误信息，平衡日志详细度与性能
+  level: warn #  日志级别为error：仅记录错误信息，不包含info和debug信息
   filename: log/go_blog.log # 日志文件存储路径及名称：日志会写入项目根目录下的log文件夹，文件名为go_blog.log，便于统一管理和查找
   max_size: 200 # 单个日志文件最大容量为200MB（依赖lumberjack库）：当文件达到200MB时自动切割为旧日志（如go_blog.log.1），避免单文件过大导致查看/备份困难
   max_backups: 30 # 最多保留30个旧日志文件（依赖lumberjack库）：超过30个时自动删除最旧的日志，防止历史日志占用过多磁盘空间
@@ -38,7 +34,7 @@ zap:
 jwt:
   access_token_secret: a8f5f167f44f4964e6c998dee827110c3b2e5a8b5d2f8e4c9a1b3d7f6e0c2a4b  # 访问令牌密钥，用于签名和验证访问令牌
   refresh_token_secret: b9e6e278e55e5a75f7d099eff938221d4c3f6b9c6e3f9f5d0a2c4e8g7f1d3b5c  # 刷新令牌密钥，用于签名和验证刷新令牌
-  access_token_expiry_time: 15m   # 访问令牌过期时间，2小时后需要刷新
+  access_token_expiry_time: 2h   # 访问令牌过期时间，2小时后需要刷新
   refresh_token_expiry_time: 15d  # 刷新令牌过期时间，7天后需要重新登录
   issuer: go_blog system               # JWT 发行者标识，用于标识令牌的发行方
 
@@ -59,9 +55,9 @@ captcha:
 email:
   host: smtp.qq.com          # SMTP 服务器地址
   port: 465                  # SMTP 服务器端口号
-  from: w13839575053@qq.com  # 发件人邮箱地址
+  from: ""  # 发件人邮箱地址
   nickname: 十二         # 发件人显示名称
-  secret: zycclubrhfncdfid   # 邮箱授权码或密码
+  secret: ""   # 邮箱授权码或密码
   is_ssl: true               # 是否使用SSL加密连接
 
 # 高德地图API配置
@@ -73,10 +69,10 @@ gaode:
 website:
   logo: ""                                    # 网站小图标/Logo，用于浏览器标签页显示
   full_logo: ""                               # 网站完整Logo，用于页面头部显示
-  title: 十二的个人博客                  # 网站标题，显示在浏览器标题栏
-  slogan: 博客标题                             # 网站中文标语/口号
+  title: 个人助手                  # 网站标题，显示在浏览器标题栏
+  slogan: 标题                             # 网站中文标语/口号
   slogan_en: Blog Title                       # 网站英文标语/口号
-  description: 博客描述                        # 网站描述，用于SEO和页面介绍
+  description: 描述                        # 网站描述，用于SEO和页面介绍
   version: 1.0.0                             # 网站版本号
   created_at: "2025-1-15"                    # 网站创建日期
   icp_filing: icp备案号                       # ICP备案号，中国大陆网站必需
@@ -99,11 +95,11 @@ storage:
     base_url: ""      # 为空时复用 system.host + static.prefix
     key_prefix: ""    # 对象键前缀（可选）
   qiniu:
-    bucket: "wdx89"        # 七牛空间名（对应“空间管理”中的“wdx89”）
-    domain: "http://t4vpotpd5.hn-bkt.clouddn.com"        # 访问域名（从文件链接提取，七牛测试域名）
+    bucket: ""        # 七牛空间名（对应“空间管理”中的“wdx...”）
+    domain: ""                    # 访问域名（自有域名，已绑定七牛CDN）
     key_prefix: ""    # 对象键前缀（可选）
-    access_key: "l1ck5kcmqbuyEcqb9RIIyIpZW6gYRXg-uTIUi4cB"  # AK（可用环境变量覆盖）
-    secret_key: "XLm1_etEN2EyY-wt35VLnyM_utDELjVrxZN5boZb"  # SK（可用环境变量覆盖）
+    access_key: ""  # AK（可用环境变量覆盖）
+    secret_key: ""  # SK（可用环境变量覆盖）
 # 静态文件配置
 static:
   path: "./static/images"
@@ -116,6 +112,16 @@ static:
     - ".gif"
     - ".jpg"
     - ".bin"
+  max_concurrent_uploads: 50  # 最大并发上传数，0 表示不限
+  user_quota_mb: 50          # 单用户最大存储空间（MB），0 表示不限
+
+# 限流配置
+rate_limit:
+  upload:
+    global_limit: 100        # 全局：每窗口最多 100 次上传请求
+    global_window_sec: 60    # 全局窗口：60 秒
+    user_limit: 10           # 用户：每窗口最多 10 次上传请求
+    user_window_sec: 60      # 用户窗口：60 秒
 
 # 爬虫服务配置 (Infrastructure)
 crawler:
@@ -139,3 +145,25 @@ crawler:
     retry_wait_ms: 200
     retry_max_wait_ms: 2000
     response_body_limit_bytes: 4194304       # 洛谷题目内容可能较多，放宽到 4MB
+task:
+  outbox_cleanup_retention_days: 7
+  image_orphan_cleanup_cron: "@daily"  # 孤儿图片清理周期
+  luogu_question_bank_warmup_enabled: true
+  luogu_question_bank_warmup_batch_size: 500
+  luogu_question_bank_warmup_lock_ttl_seconds: 300
+  leetcode_question_bank_warmup_enabled: true
+  leetcode_question_bank_warmup_batch_size: 500
+  leetcode_question_bank_warmup_lock_ttl_seconds: 300
+  luogu_sync_user_interval_seconds: 10
+  leetcode_sync_user_interval_seconds: 10 # 力扣用户同步间隔秒数
+  leetcode_sync_interval_seconds: 3600 # 力扣全量同步间隔秒数
+  ranking_sync_interval_seconds: 3600
+messaging:
+  redis_stream_read_count: 1
+  redis_stream_block_ms: 5000
+  luogu_bind_topic: "luogu.bind"
+  luogu_bind_group: "luogu_bind_group"
+  luogu_bind_consumer: "luogu_bind_consumer"
+  leetcode_bind_topic: "leetcode.bind"
+  leetcode_bind_group: "leetcode_bind_group"
+  leetcode_bind_consumer: "leetcode_bind_consumer"
