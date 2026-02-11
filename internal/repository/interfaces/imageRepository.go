@@ -29,4 +29,10 @@ type ImageRepository interface {
 	FindOrphanKeys(ctx context.Context) (keys []string, drivers []string, err error)
 	// HardDeleteByKeys 物理删除指定 key 的所有已软删除记录（清理完物理文件后调用）
 	HardDeleteByKeys(ctx context.Context, keys []string) error
-} 
+
+	// UpdateCategoryByID 根据 ID 更新图片分类
+	UpdateCategoryByID(ctx context.Context, id uint, category consts.Category) error
+
+	// WithTx 启用事务
+	WithTx(tx any) ImageRepository
+}

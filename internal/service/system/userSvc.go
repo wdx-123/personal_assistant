@@ -12,6 +12,7 @@ import (
 	"github.com/gofrs/uuid"
 	"github.com/mojocn/base64Captcha"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/entity"
@@ -20,9 +21,10 @@ import (
 )
 
 type UserService struct {
-	userRepo          interfaces.UserRepository // 依赖接口而不是具体实现
-	roleRepo          interfaces.RoleRepository // 角色仓储，用于获取默认角色
-	permissionService *PermissionService        // 权限服务，用于RBAC角色分配
+	userRepo          interfaces.UserRepository  // 依赖接口而不是具体实现
+	roleRepo          interfaces.RoleRepository  // 角色仓储，用于获取默认角色
+	imageRepo         interfaces.ImageRepository // 图片仓储
+	permissionService *PermissionService         // 权限服务，用于RBAC角色分配
 }
 
 func NewUserService(
@@ -32,6 +34,7 @@ func NewUserService(
 	return &UserService{
 		userRepo:          repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
 		roleRepo:          repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
+		imageRepo:         repositoryGroup.SystemRepositorySupplier.GetImageRepository(),
 		permissionService: permissionService,
 	}
 }
@@ -165,4 +168,241 @@ func (u *UserService) VerifyCode(
 	req request.LoginReq,
 ) bool {
 	return store.Verify(req.CaptchaID, req.Captcha, true)
+}
+
+// UpdateProfile 更新个人资料
+func (u *UserService) UpdateProfile(
+	ctx context.Context,
+	userID uint,
+	req *request.UpdateProfileReq,
+) (*entity.User, error) {
+	// 1. 获取用户
+	user, err := u.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return nil, errors.New("用户不存在")
+	}
+	if user == nil {
+		return nil, errors.New("用户不存在")
+	}
+
+	// 2. 开启事务
+	err = global.DB.Transaction(func(tx *gorm.DB) error {
+		updated, err := u.applyUserUpdates(ctx, tx, user, req)
+		if err != nil {
+			return err
+		}
+
+		// 3. 保存用户信息
+		if updated {
+			if err := u.userRepo.WithTx(tx).Update(ctx, user); err != nil {
+				global.Log.Error("更新用户信息失败", zap.Uint("userID", userID), zap.Error(err))
+				return errors.New("更新失败，请稍后重试")
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
+}
+
+// applyUserUpdates 应用用户更新逻辑
+func (u *UserService) applyUserUpdates(
+	ctx context.Context,
+	tx *gorm.DB,
+	user *entity.User,
+	req *request.UpdateProfileReq,
+) (bool, error) {
+	updated := false
+
+	// 更新用户名
+	if req.Username != nil && *req.Username != "" {
+		user.Username = *req.Username
+		updated = true
+	}
+	// 更新签名
+	if req.Signature != nil {
+		user.Signature = *req.Signature
+		updated = true
+	}
+	// 更新头像
+	if req.Avatar != nil && *req.Avatar != "" {
+		user.Avatar = *req.Avatar
+		updated = true
+
+		// 如果提供了 AvatarID，同步更新图片分类为"头像"
+		if req.AvatarID != nil && *req.AvatarID > 0 {
+			if err := u.imageRepo.WithTx(tx).UpdateCategoryByID(ctx, *req.AvatarID, consts.CatAvatar); err != nil {
+				global.Log.Warn("更新头像分类失败", zap.Uint("imageID", *req.AvatarID), zap.Error(err))
+				// 不阻断流程
+			}
+		}
+	}
+	return updated, nil
+}
+
+// ChangePhone 换绑手机号
+func (u *UserService) ChangePhone(
+	ctx context.Context,
+	userID uint,
+	req *request.ChangePhoneReq,
+) (*entity.User, error) {
+	// 1. 验证验证码
+	if !base64Captcha.DefaultMemStore.Verify(req.CaptchaID, req.Captcha, true) {
+		return nil, errors.New("验证码错误")
+	}
+
+	// 2. 获取用户
+	user, err := u.userRepo.GetByID(ctx, userID)
+	if err != nil || user == nil {
+		return nil, errors.New("用户不存在")
+	}
+
+	// 3. 验证当前密码
+	if !util.BcryptCheck(req.Password, user.Password) {
+		return nil, errors.New("密码错误")
+	}
+
+	// 4. 检查新手机号是否已存在
+	exists, err := u.userRepo.ExistsByPhone(ctx, req.NewPhone)
+	if err != nil {
+		return nil, errors.New("系统错误")
+	}
+	if exists {
+		return nil, errors.New("该手机号已被注册")
+	}
+
+	// 5. 更新手机号
+	user.Phone = req.NewPhone
+	if err := u.userRepo.Update(ctx, user); err != nil {
+		global.Log.Error("更新手机号失败", zap.Uint("userID", userID), zap.Error(err))
+		return nil, errors.New("更新失败")
+	}
+
+	return user, nil
+}
+
+// ChangePassword 修改密码
+func (u *UserService) ChangePassword(
+	ctx context.Context,
+	userID uint,
+	req *request.ChangePasswordReq,
+) error {
+	// 1. 获取用户
+	user, err := u.userRepo.GetByID(ctx, userID)
+	if err != nil || user == nil {
+		return errors.New("用户不存在")
+	}
+
+	// 2. 验证旧密码
+	if !util.BcryptCheck(req.OldPassword, user.Password) {
+		return errors.New("旧密码错误")
+	}
+
+	// 3. 更新密码
+	user.Password = util.BcryptHash(req.NewPassword)
+	if err := u.userRepo.Update(ctx, user); err != nil {
+		global.Log.Error("修改密码失败", zap.Uint("userID", userID), zap.Error(err))
+		return errors.New("修改失败")
+	}
+
+	return nil
+}
+
+// GetUserList 获取用户列表
+func (u *UserService) GetUserList(
+	ctx context.Context,
+	req *request.UserListReq,
+) (*resp.PageDataUser, error) {
+	// 1. 查询用户列表
+	users, total, err := u.userRepo.GetUserListWithFilter(ctx, req)
+	if err != nil {
+		global.Log.Error("获取用户列表失败", zap.Error(err))
+		return nil, errors.New("获取用户列表失败")
+	}
+
+	// 2. 组装数据（填充角色信息）
+	list := make([]*resp.UserListItem, 0, len(users))
+	for _, user := range users {
+		item := &resp.UserListItem{
+			ID:       user.ID,
+			Username: user.Username,
+			Phone:    util.DesensitizePhone(user.Phone),
+		}
+		if user.CurrentOrg != nil {
+			item.CurrentOrg.ID = user.CurrentOrg.ID
+			item.CurrentOrg.Name = user.CurrentOrg.Name
+		}
+
+		// 获取用户在该上下文下的角色
+		// 如果请求指定了 OrgID，则查询该 Org 下的角色
+		// 否则查询用户 CurrentOrg 下的角色
+		var targetOrgID uint
+		if req.OrgID > 0 {
+			targetOrgID = req.OrgID
+		} else if user.CurrentOrgID != nil {
+			targetOrgID = *user.CurrentOrgID
+		}
+
+		if targetOrgID > 0 {
+			roles, err := u.roleRepo.GetUserRolesByOrg(ctx, user.ID, targetOrgID)
+			if err == nil {
+				item.Roles = make([]struct {
+					ID   uint   `json:"id"`
+					Name string `json:"name"`
+				}, len(roles))
+				for i, r := range roles {
+					item.Roles[i].ID = r.ID
+					item.Roles[i].Name = r.Name
+				}
+			}
+		}
+
+		list = append(list, item)
+	}
+
+	return &resp.PageDataUser{
+		List:     list,
+		Total:    total,
+		Page:     req.Page,
+		PageSize: req.PageSize,
+	}, nil
+}
+
+// GetUserDetail 获取用户详情
+func (u *UserService) GetUserDetail(
+	ctx context.Context,
+	id uint,
+) (*entity.User, error) {
+	user, err := u.userRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	return user, nil
+}
+
+// GetUserRoles 获取用户在指定组织下的角色
+func (u *UserService) GetUserRoles(
+	ctx context.Context,
+	userID, orgID uint,
+) ([]*entity.Role, error) {
+	return u.roleRepo.GetUserRolesByOrg(ctx, userID, orgID)
+}
+
+// AssignRole 分配角色
+func (u *UserService) AssignRole(
+	ctx context.Context,
+	req *request.AssignUserRoleReq,
+) error {
+	// 检查用户是否存在
+	user, err := u.userRepo.GetByID(ctx, req.UserID)
+	if err != nil || user == nil {
+		return errors.New("用户不存在")
+	}
+
+	// 调用权限服务进行角色分配（全量替换）
+	return u.permissionService.ReplaceUserRolesInOrg(ctx, req.UserID, req.OrgID, req.RoleIDs)
 }

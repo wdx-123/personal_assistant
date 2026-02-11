@@ -173,6 +173,52 @@ func (r *UserGormRepository) GetUserList(
 	return users, total, nil
 }
 
+// GetUserListWithFilter 获取用户列表（支持过滤）
+func (r *UserGormRepository) GetUserListWithFilter(
+	ctx context.Context,
+	req *request.UserListReq,
+) ([]*entity.User, int64, error) {
+	var users []*entity.User
+	var total int64
+
+	db := r.db.WithContext(ctx).Model(&entity.User{})
+
+	// 关键词过滤
+	if req.Keyword != "" {
+		keyword := "%" + req.Keyword + "%"
+		db = db.Where("username LIKE ? OR phone LIKE ?", keyword, keyword)
+	}
+
+	// 组织过滤
+	if req.OrgID > 0 {
+		// 过滤属于该组织的用户
+		db = db.Where("id IN (SELECT user_id FROM user_org_roles WHERE org_id = ?)", req.OrgID)
+	}
+
+	// 统计总数
+	if err := db.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	// 分页
+	// 如果 Page 或 PageSize 为 0，设置默认值
+	page := req.Page
+	if page <= 0 {
+		page = 1
+	}
+	pageSize := req.PageSize
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+
+	offset := (page - 1) * pageSize
+	if err := db.Preload("CurrentOrg").Offset(offset).Limit(pageSize).Find(&users).Error; err != nil {
+		return nil, 0, err
+	}
+
+	return users, total, nil
+}
+
 // ExistsByUsername 检查用户名是否存在
 func (r *UserGormRepository) ExistsByUsername(
 	ctx context.Context,
