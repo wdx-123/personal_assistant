@@ -53,6 +53,8 @@ type RoleRepository interface {
 	AssignRoleToUserInOrg(ctx context.Context, userID, orgID, roleID uint) error
 	// RemoveRoleFromUserInOrg 从用户在组织中移除角色
 	RemoveRoleFromUserInOrg(ctx context.Context, userID, orgID, roleID uint) error
+	// ReplaceUserOrgRoles 全量替换用户在组织下的角色
+	ReplaceUserOrgRoles(ctx context.Context, userID, orgID uint, roleIDs []uint) error
 	// GetUserRolesByOrg 获取用户在组织中的角色列表
 	GetUserRolesByOrg(ctx context.Context, userID, orgID uint) ([]*entity.Role, error)
 	// GetUserGlobalRoles 获取用户的全局角色（org_id = 0，如超级管理员等不绑定具体组织的角色）

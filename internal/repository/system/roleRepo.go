@@ -276,6 +276,35 @@ func (r *roleRepository) RemoveRoleFromUserInOrg(
 		Error
 }
 
+// ReplaceUserOrgRoles 全量替换用户在组织下的角色
+func (r *roleRepository) ReplaceUserOrgRoles(
+	ctx context.Context,
+	userID, orgID uint,
+	roleIDs []uint,
+) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 1. 删除旧关联
+		if err := tx.Exec("DELETE FROM user_org_roles WHERE user_id = ? AND org_id = ?", userID, orgID).Error; err != nil {
+			return err
+		}
+
+		// 2. 批量插入新关联
+		if len(roleIDs) == 0 {
+			return nil
+		}
+
+		var values []string
+		var args []interface{}
+		for _, roleID := range roleIDs {
+			values = append(values, "(?, ?, ?)")
+			args = append(args, userID, orgID, roleID)
+		}
+
+		sql := "INSERT INTO user_org_roles (user_id, org_id, role_id) VALUES " + strings.Join(values, ",")
+		return tx.Exec(sql, args...).Error
+	})
+}
+
 // GetUserRolesByOrg 获取用户组织中的角色
 func (r *roleRepository) GetUserRolesByOrg(ctx context.Context, userID, orgID uint) ([]*entity.Role, error) {
 	var roles []*entity.Role

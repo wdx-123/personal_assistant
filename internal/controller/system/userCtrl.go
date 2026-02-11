@@ -9,6 +9,7 @@ import (
 	serviceSystem "personal_assistant/internal/service/system"
 	"personal_assistant/pkg/jwt"
 	"personal_assistant/pkg/response"
+	"personal_assistant/pkg/util"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -137,4 +138,191 @@ func (u *UserCtrl) Logout(c *gin.Context) {
 		SetCode(global.StatusOK).
 		Success("登出成功",
 			map[string]any{"message": "已成功退出登录"})
+}
+
+// UpdateProfile 更新个人资料
+func (u *UserCtrl) UpdateProfile(c *gin.Context) {
+	var req request.UpdateProfileReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		global.Log.Error("参数绑定失败", zap.Error(err))
+		response.BizFailWithMessage("参数错误", c)
+		return
+	}
+
+	userID := jwt.GetUserID(c)
+	user, err := u.userService.UpdateProfile(c.Request.Context(), userID, &req)
+	if err != nil {
+		global.Log.Error("更新个人资料失败", zap.Error(err))
+		response.BizFailWithError(err, c)
+		return
+	}
+
+	response.BizOkWithData(entityToUserDetail(user), c)
+}
+
+// ChangePhone 换绑手机号
+func (u *UserCtrl) ChangePhone(c *gin.Context) {
+	var req request.ChangePhoneReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		global.Log.Error("参数绑定失败", zap.Error(err))
+		response.BizFailWithMessage("参数错误", c)
+		return
+	}
+
+	userID := jwt.GetUserID(c)
+	user, err := u.userService.ChangePhone(c.Request.Context(), userID, &req)
+	if err != nil {
+		global.Log.Error("换绑手机号失败", zap.Error(err))
+		response.BizFailWithError(err, c)
+		return
+	}
+
+	response.BizOkWithData(entityToUserDetail(user), c)
+}
+
+// ChangePassword 修改密码
+func (u *UserCtrl) ChangePassword(c *gin.Context) {
+	var req request.ChangePasswordReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		global.Log.Error("参数绑定失败", zap.Error(err))
+		response.BizFailWithMessage("参数错误", c)
+		return
+	}
+
+	userID := jwt.GetUserID(c)
+	if err := u.userService.ChangePassword(c.Request.Context(), userID, &req); err != nil {
+		global.Log.Error("修改密码失败", zap.Error(err))
+		response.BizFailWithError(err, c)
+		return
+	}
+
+	response.BizOkWithMessage("密码修改成功，请重新登录", c)
+}
+
+
+
+
+// GetUserList 获取用户列表
+func (u *UserCtrl) GetUserList(c *gin.Context) {
+	var req request.UserListReq
+	if err := c.ShouldBindQuery(&req); err != nil {
+		response.BizFailWithMessage("参数错误", c)
+		return
+	}
+
+	data, err := u.userService.GetUserList(c.Request.Context(), &req)
+	if err != nil {
+		response.BizFailWithError(err, c)
+		return
+	}
+
+	response.BizOkWithData(data, c)
+}
+
+// GetUserDetail 获取用户详情
+func (u *UserCtrl) GetUserDetail(c *gin.Context) {
+	id := util.ParseUint(c.Param("id"))
+	if id == 0 {
+		response.BizFailWithMessage("ID无效", c)
+		return
+	}
+
+	user, err := u.userService.GetUserDetail(c.Request.Context(), uint(id))
+	if err != nil {
+		response.BizFailWithError(err, c)
+		return
+	}
+	if user == nil {
+		// 根据API设计返回特定Code: 20001
+		// 这里假设 errors.NewWithCode 或者直接构造响应
+		// 由于 BizFailWithCodeMsg 接受 errors.BizCode，我需要定义或者直接返回
+		// 简单起见，这里直接返回
+		c.JSON(200, gin.H{
+			"code":    20001,
+			"message": "用户不存在",
+			"success": false,
+			"data":    nil,
+		})
+		return
+	}
+
+	response.BizOkWithData(entityToUserDetail(user), c)
+}
+
+// GetUserRoles 获取用户在组织下的角色
+func (u *UserCtrl) GetUserRoles(c *gin.Context) {
+	id := util.ParseUint(c.Param("id"))
+	if id == 0 {
+		response.BizFailWithMessage("ID无效", c)
+		return
+	}
+	orgID := util.ParseUint(c.Query("org_id"))
+	if orgID == 0 {
+		response.BizFailWithMessage("必须指定组织ID", c)
+		return
+	}
+
+	roles, err := u.userService.GetUserRoles(c.Request.Context(), uint(id), uint(orgID))
+	if err != nil {
+		response.BizFailWithError(err, c)
+		return
+	}
+
+	// 转换为简单响应结构
+	list := make([]resp.RoleSimpleItem, len(roles))
+	for i, r := range roles {
+		list[i] = resp.RoleSimpleItem{
+			ID:   r.ID,
+			Name: r.Name,
+			Code: r.Code,
+		}
+	}
+
+	response.BizOkWithData(list, c)
+}
+
+// AssignRole 分配角色
+func (u *UserCtrl) AssignRole(c *gin.Context) {
+	var req request.AssignUserRoleReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BizFailWithMessage("参数错误", c)
+		return
+	}
+
+	if err := u.userService.AssignRole(c.Request.Context(), &req); err != nil {
+		response.BizFailWithError(err, c)
+		return
+	}
+
+	response.BizOk(c)
+}
+
+// ==================== 辅助函数 ====================
+
+// entityToUserDetail 将用户实体转换为详情DTO
+func entityToUserDetail(user *entity.User) *resp.UserDetailItem {
+	item := &resp.UserDetailItem{
+		ID:        user.ID,
+		UUID:      user.UUID.String(),
+		Username:  user.Username,
+		Phone:     util.DesensitizePhone(user.Phone),
+		Email:     user.Email,
+		Avatar:    user.Avatar,
+		Address:   user.Address,
+		Signature: user.Signature,
+		Register:  int(user.Register),
+		Freeze:    user.Freeze,
+		CreatedAt: user.CreatedAt.Format(time.DateTime),
+		UpdatedAt: user.UpdatedAt.Format(time.DateTime),
+	}
+	if user.CurrentOrg != nil {
+		item.CurrentOrg = struct {
+			ID   uint   `json:"id"`
+			Name string `json:"name"`
+		}{
+			ID:   user.CurrentOrg.ID,
+			Name: user.CurrentOrg.Name,
+		}
+	}
+	return item
 }

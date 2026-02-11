@@ -211,6 +211,52 @@ func (p *PermissionService) AssignRoleToUserInOrg(
 	return nil
 }
 
+// ReplaceUserRolesInOrg 全量替换用户在组织下的角色
+func (p *PermissionService) ReplaceUserRolesInOrg(
+	ctx context.Context,
+	userID, orgID uint,
+	roleIDs []uint,
+) error {
+	roleRepo := p.repositoryGroup.SystemRepositorySupplier.GetRoleRepository()
+
+	// 1. 获取所有新角色的详细信息（需要RoleCode用于Casbin）
+	var roles []entity.Role
+	for _, rid := range roleIDs {
+		role, err := roleRepo.GetByID(ctx, rid)
+		if err != nil {
+			return fmt.Errorf("获取角色信息失败(ID=%d): %w", rid, err)
+		}
+		roles = append(roles, *role)
+	}
+
+	// 2. 数据库事务更新
+	if err := roleRepo.ReplaceUserOrgRoles(ctx, userID, orgID, roleIDs); err != nil {
+		return fmt.Errorf("数据库更新用户角色失败: %w", err)
+	}
+
+	// 3. Casbin更新
+	subject := fmt.Sprintf("%d@%d", userID, orgID)
+
+	// 3.1 删除该用户在此组织下的所有角色关联
+	// DeleteRolesForUser 删除用户的所有角色
+	if _, err := p.casbinSvc.Enforcer.DeleteRolesForUser(subject); err != nil {
+		global.Log.Error("Casbin删除用户角色失败", zap.String("subject", subject), zap.Error(err))
+		// 仅记录错误，不阻断（Casbin状态可能需要后续同步修复）
+	}
+
+	// 3.2 添加新角色
+	for _, role := range roles {
+		if _, err := p.casbinSvc.Enforcer.AddRoleForUser(subject, role.Code); err != nil {
+			global.Log.Error("Casbin添加用户角色失败",
+				zap.String("subject", subject),
+				zap.String("role", role.Code),
+				zap.Error(err))
+		}
+	}
+
+	return nil
+}
+
 // AssignMenuToRole 为角色分配菜单权限
 func (p *PermissionService) AssignMenuToRole(ctx context.Context, roleID, menuID uint) error {
 	roleRepo := p.repositoryGroup.SystemRepositorySupplier.GetRoleRepository()

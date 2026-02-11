@@ -26,6 +26,8 @@ type UserRepository interface {
 
 	// GetUserList 获取用户列表（分页）
 	GetUserList(ctx context.Context, page, pageSize int) ([]*entity.User, int64, error)
+	// GetUserListWithFilter 获取用户列表（支持过滤）
+	GetUserListWithFilter(ctx context.Context, req *request.UserListReq) ([]*entity.User, int64, error)
 	// ExistsByUsername 检查用户名是否存在
 	ExistsByUsername(ctx context.Context, username string) (bool, error)
 	// ExistsByEmail 检查邮箱是否存在

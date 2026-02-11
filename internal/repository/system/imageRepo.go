@@ -47,6 +47,22 @@ func (r *imageRepository) GetByID(ctx context.Context, id uint) (*entity.Image, 
 	return &image, nil
 }
 
+// UpdateCategoryByID 根据 ID 更新图片分类
+func (r *imageRepository) UpdateCategoryByID(ctx context.Context, id uint, category consts.Category) error {
+	return r.db.WithContext(ctx).
+		Model(&entity.Image{}).
+		Where("id = ?", id).
+		Update("category", category).Error
+}
+
+// WithTx 启用事务
+func (r *imageRepository) WithTx(tx any) interfaces.ImageRepository {
+	if transaction, ok := tx.(*gorm.DB); ok {
+		return &imageRepository{db: transaction}
+	}
+	return r
+}
+
 // GetByIDs 根据 ID 列表批量获取图片
 func (r *imageRepository) GetByIDs(ctx context.Context, ids []uint) ([]entity.Image, error) {
 	if len(ids) == 0 {
