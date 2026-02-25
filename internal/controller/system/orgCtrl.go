@@ -180,6 +180,8 @@ func entityToOrgItem(org *entity.Org) *resp.OrgItem {
 		Name:        org.Name,
 		Description: org.Description,
 		Code:        org.Code,
+		Avatar:      org.Avatar,
+		AvatarID:    org.AvatarID,
 		OwnerID:     org.OwnerID,
 		CreatedAt:   org.CreatedAt.Format(time.DateTime),
 		UpdatedAt:   org.UpdatedAt.Format(time.DateTime),

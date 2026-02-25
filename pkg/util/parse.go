@@ -57,3 +57,16 @@ func ParseDuration(d string) (time.Duration, error) {
 	// 返回总的持续时间
 	return totalDuration, nil
 }
+
+// ParseUint 将字符串解析为 uint，失败时返回 0。
+func ParseUint(s string) uint {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0
+	}
+	v, err := strconv.ParseUint(s, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return uint(v)
+}

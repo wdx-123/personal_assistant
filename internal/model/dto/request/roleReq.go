@@ -50,3 +50,11 @@ type AssignRoleMenuReq struct {
 	// 菜单ID列表（全量替换），必填
 	MenuIDs []uint `json:"menu_ids" binding:"required"`
 }
+
+// AssignRoleAPIReq 分配角色API权限请求（全量替换）
+type AssignRoleAPIReq struct {
+	// 角色ID，必填
+	RoleID uint `json:"role_id" binding:"required"`
+	// API ID列表（允许空数组，空表示清空角色直绑API权限）
+	APIIDs []uint `json:"api_ids"`
+}

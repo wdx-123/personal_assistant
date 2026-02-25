@@ -4,9 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"personal_assistant/global"
 	"personal_assistant/internal/model/consts"
+	resp "personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/repository/interfaces"
+	bizerrors "personal_assistant/pkg/errors"
+	"personal_assistant/pkg/imageops"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid"
@@ -176,27 +181,71 @@ func (u *UserService) UpdateProfile(
 	userID uint,
 	req *request.UpdateProfileReq,
 ) (*entity.User, error) {
-	// 1. 获取用户
-	user, err := u.userRepo.GetByID(ctx, userID)
-	if err != nil {
-		return nil, errors.New("用户不存在")
-	}
-	if user == nil {
-		return nil, errors.New("用户不存在")
-	}
+	var user *entity.User
+	err := global.DB.Transaction(func(tx *gorm.DB) error {
+		txUserRepo := u.userRepo.WithTx(tx)
+		txImageRepo := u.imageRepo.WithTx(tx)
 
-	// 2. 开启事务
-	err = global.DB.Transaction(func(tx *gorm.DB) error {
-		updated, err := u.applyUserUpdates(ctx, tx, user, req)
-		if err != nil {
-			return err
+		// 1. 获取用户
+		var getErr error
+		user, getErr = txUserRepo.GetByID(ctx, userID)
+		if getErr != nil {
+			return bizerrors.Wrap(bizerrors.CodeDBError, getErr)
+		}
+		if user == nil {
+			return bizerrors.New(bizerrors.CodeUserNotFound)
 		}
 
-		// 3. 保存用户信息
-		if updated {
-			if err := u.userRepo.WithTx(tx).Update(ctx, user); err != nil {
-				global.Log.Error("更新用户信息失败", zap.Uint("userID", userID), zap.Error(err))
-				return errors.New("更新失败，请稍后重试")
+		avatarPatch, parseErr := parseUserAvatarPatch(req.Avatar, req.AvatarID)
+		if parseErr != nil {
+			return parseErr
+		}
+
+		oldAvatarID := uint(0)
+		if user.AvatarID != nil {
+			oldAvatarID = *user.AvatarID
+		}
+
+		updated := false
+		// 更新用户名
+		if req.Username != nil && *req.Username != "" {
+			user.Username = *req.Username
+			updated = true
+		}
+		// 更新签名
+		if req.Signature != nil {
+			user.Signature = *req.Signature
+			updated = true
+		}
+		// 更新头像（avatar 与 avatar_id 成对变更）
+		if avatarPatch.Provided {
+			user.Avatar = avatarPatch.Avatar
+			user.AvatarID = avatarPatch.AvatarID
+			updated = true
+		}
+		if !updated {
+			return nil
+		}
+
+		// 2. 保存用户信息
+		if err := txUserRepo.Update(ctx, user); err != nil {
+			return bizerrors.Wrap(bizerrors.CodeDBError, err)
+		}
+
+		if !avatarPatch.Provided {
+			return nil
+		}
+
+		newAvatarID := uint(0)
+		if user.AvatarID != nil {
+			newAvatarID = *user.AvatarID
+			if err := txImageRepo.UpdateCategoryByID(ctx, newAvatarID, consts.CatAvatar); err != nil {
+				return bizerrors.Wrap(bizerrors.CodeDBError, err)
+			}
+		}
+		if oldAvatarID > 0 && oldAvatarID != newAvatarID {
+			if _, err := imageops.SoftDeleteByIDs(ctx, txImageRepo, []uint{oldAvatarID}); err != nil {
+				return bizerrors.Wrap(bizerrors.CodeDBError, err)
 			}
 		}
 		return nil
@@ -205,43 +254,62 @@ func (u *UserService) UpdateProfile(
 	if err != nil {
 		return nil, err
 	}
-
 	return user, nil
 }
 
-// applyUserUpdates 应用用户更新逻辑
-func (u *UserService) applyUserUpdates(
-	ctx context.Context,
-	tx *gorm.DB,
-	user *entity.User,
-	req *request.UpdateProfileReq,
-) (bool, error) {
-	updated := false
+type userAvatarPatch struct {
+	Provided bool
+	Avatar   string
+	AvatarID *uint
+}
 
-	// 更新用户名
-	if req.Username != nil && *req.Username != "" {
-		user.Username = *req.Username
-		updated = true
+func parseUserAvatarPatch(avatar *string, avatarID *uint) (userAvatarPatch, error) {
+	if avatar == nil && avatarID == nil {
+		return userAvatarPatch{Provided: false}, nil
 	}
-	// 更新签名
-	if req.Signature != nil {
-		user.Signature = *req.Signature
-		updated = true
+	if avatar == nil || avatarID == nil {
+		return userAvatarPatch{}, bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "avatar 与 avatar_id 必须同时传入")
 	}
-	// 更新头像
-	if req.Avatar != nil && *req.Avatar != "" {
-		user.Avatar = *req.Avatar
-		updated = true
 
-		// 如果提供了 AvatarID，同步更新图片分类为"头像"
-		if req.AvatarID != nil && *req.AvatarID > 0 {
-			if err := u.imageRepo.WithTx(tx).UpdateCategoryByID(ctx, *req.AvatarID, consts.CatAvatar); err != nil {
-				global.Log.Warn("更新头像分类失败", zap.Uint("imageID", *req.AvatarID), zap.Error(err))
-				// 不阻断流程
-			}
+	trimmedAvatar := strings.TrimSpace(*avatar)
+	switch {
+	case trimmedAvatar == "":
+		if *avatarID != 0 {
+			return userAvatarPatch{}, bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "清空头像时 avatar_id 必须为 0")
 		}
+		return userAvatarPatch{
+			Provided: true,
+			Avatar:   "",
+			AvatarID: nil,
+		}, nil
+	default:
+		if *avatarID == 0 {
+			return userAvatarPatch{}, bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "设置头像时 avatar_id 必须大于 0")
+		}
+		if err := validateUserAvatarURL(trimmedAvatar); err != nil {
+			return userAvatarPatch{}, err
+		}
+		id := *avatarID
+		return userAvatarPatch{
+			Provided: true,
+			Avatar:   trimmedAvatar,
+			AvatarID: &id,
+		}, nil
 	}
-	return updated, nil
+}
+
+func validateUserAvatarURL(rawURL string) error {
+	parsed, err := url.ParseRequestURI(rawURL)
+	if err != nil {
+		return bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "头像URL格式不合法")
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "头像URL仅支持http或https")
+	}
+	if parsed.Host == "" {
+		return bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "头像URL格式不合法")
+	}
+	return nil
 }
 
 // ChangePhone 换绑手机号

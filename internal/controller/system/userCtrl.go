@@ -199,9 +199,6 @@ func (u *UserCtrl) ChangePassword(c *gin.Context) {
 	response.BizOkWithMessage("密码修改成功，请重新登录", c)
 }
 
-
-
-
 // GetUserList 获取用户列表
 func (u *UserCtrl) GetUserList(c *gin.Context) {
 	var req request.UserListReq
@@ -308,6 +305,7 @@ func entityToUserDetail(user *entity.User) *resp.UserDetailItem {
 		Phone:     util.DesensitizePhone(user.Phone),
 		Email:     user.Email,
 		Avatar:    user.Avatar,
+		AvatarID:  user.AvatarID,
 		Address:   user.Address,
 		Signature: user.Signature,
 		Register:  int(user.Register),

@@ -6,6 +6,8 @@ type OrgItem struct {
 	Name        string `json:"name"`        // 组织名称
 	Description string `json:"description"` // 组织描述
 	Code        string `json:"code"`        // 加入邀请码
+	Avatar      string `json:"avatar"`      // 组织头像URL
+	AvatarID    *uint  `json:"avatar_id"`   // 组织头像图片ID（可空）
 	OwnerID     uint   `json:"owner_id"`    // 创建者/负责人ID
 	CreatedAt   string `json:"created_at"`  // 创建时间
 	UpdatedAt   string `json:"updated_at"`  // 更新时间

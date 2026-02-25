@@ -11,12 +11,14 @@ package system
 
 import (
 	"context"
+	stderrors "errors"
 	"strings"
 	"time"
 
 	"personal_assistant/global"
 	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/dto/request"
+	"personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/interfaces"
@@ -24,19 +26,24 @@ import (
 	"personal_assistant/pkg/redislock"
 
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 // RoleService 角色管理服务
 type RoleService struct {
-	roleRepo interfaces.RoleRepository
-	menuRepo interfaces.MenuRepository
+	roleRepo          interfaces.RoleRepository
+	menuRepo          interfaces.MenuRepository
+	apiRepo           interfaces.APIRepository
+	permissionService *PermissionService
 }
 
 // NewRoleService 创建角色服务实例
-func NewRoleService(repositoryGroup *repository.Group) *RoleService {
+func NewRoleService(repositoryGroup *repository.Group, permissionService *PermissionService) *RoleService {
 	return &RoleService{
-		roleRepo: repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
-		menuRepo: repositoryGroup.SystemRepositorySupplier.GetMenuRepository(),
+		roleRepo:          repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
+		menuRepo:          repositoryGroup.SystemRepositorySupplier.GetMenuRepository(),
+		apiRepo:           repositoryGroup.SystemRepositorySupplier.GetAPIRepository(),
+		permissionService: permissionService,
 	}
 }
 
@@ -182,6 +189,10 @@ func (s *RoleService) DeleteRole(ctx context.Context, id uint) error {
 	if err := s.roleRepo.ClearRoleMenus(ctx, id); err != nil {
 		return errors.Wrap(errors.CodeDBError, err)
 	}
+	// 清空角色直绑API关联
+	if err := s.roleRepo.ClearRoleAPIs(ctx, id); err != nil {
+		return errors.Wrap(errors.CodeDBError, err)
+	}
 
 	// 软删除角色
 	if err := s.roleRepo.Delete(ctx, id); err != nil {
@@ -193,7 +204,11 @@ func (s *RoleService) DeleteRole(ctx context.Context, id uint) error {
 // ==================== 菜单权限分配 ====================
 
 // AssignMenus 分配菜单权限（全量覆盖，使用分布式锁防止并发）
-func (s *RoleService) AssignMenus(ctx context.Context, roleID uint, menuIDs []uint) error {
+func (s *RoleService) AssignMenus(
+	ctx context.Context,
+	roleID uint,
+	menuIDs []uint,
+) error {
 	// 1. 获取分布式锁，防止并发修改同一角色的菜单
 	lockKey := redislock.LockKeyRoleMenuAssign(roleID)
 	lock := redislock.NewRedisLock(ctx, lockKey, 10*time.Second)
@@ -230,10 +245,97 @@ func (s *RoleService) AssignMenus(ctx context.Context, roleID uint, menuIDs []ui
 		return errors.Wrap(errors.CodeDBError, err)
 	}
 
-	// 5. 同步到Casbin（异步或即时）
-	go s.syncRoleMenusToCasbin(role.Code, validMenuIDs)
+	// 5. 同步刷新权限（立即生效）
+	if err := s.permissionService.RefreshAllPermissions(ctx); err != nil {
+		return errors.Wrap(errors.CodeInternalError, err)
+	}
 
 	return nil
+}
+
+// AssignAPIs 分配角色直绑API权限（全量覆盖，使用分布式锁防止并发）
+func (s *RoleService) AssignAPIs(
+	ctx context.Context,
+	roleID uint,
+	apiIDs []uint,
+) error {
+	if roleID == 0 {
+		return errors.New(errors.CodeInvalidParams)
+	}
+
+	lockKey := redislock.LockKeyRoleMenuAssign(roleID)
+	lock := redislock.NewRedisLock(ctx, lockKey, 10*time.Second)
+	if err := lock.Lock(); err != nil {
+		global.Log.Warn("获取角色API分配锁失败", zap.Uint("roleID", roleID), zap.Error(err))
+		return errors.NewWithMsg(errors.CodeTooManyRequests, "操作过于频繁，请稍后重试")
+	}
+	defer func() {
+		if releaseErr := lock.Unlock(); releaseErr != nil {
+			global.Log.Warn("释放角色API分配锁失败", zap.Uint("roleID", roleID), zap.Error(releaseErr))
+		}
+	}()
+
+	role, err := s.roleRepo.GetByID(ctx, roleID)
+	if err != nil {
+		return errors.Wrap(errors.CodeDBError, err)
+	}
+	if role == nil || role.ID == 0 {
+		return errors.New(errors.CodeRoleNotFound)
+	}
+
+	validAPIIDs := make([]uint, 0, len(apiIDs))
+	for _, apiID := range normalizeIDs(apiIDs) {
+		api, getErr := s.apiRepo.GetByID(ctx, apiID)
+		if getErr != nil {
+			if stderrors.Is(getErr, gorm.ErrRecordNotFound) {
+				continue
+			}
+			return errors.Wrap(errors.CodeDBError, getErr)
+		}
+		if api != nil && api.ID > 0 {
+			validAPIIDs = append(validAPIIDs, apiID)
+		}
+	}
+
+	// 全量替换角色直绑API关联
+	if err := s.roleRepo.ReplaceRoleAPIs(ctx, roleID, validAPIIDs); err != nil {
+		return errors.Wrap(errors.CodeDBError, err)
+	}
+
+	// 同步刷新权限（立即生效）
+	if err := s.permissionService.RefreshAllPermissions(ctx); err != nil {
+		return errors.Wrap(errors.CodeInternalError, err)
+	}
+	return nil
+}
+
+// GetRoleMenuAPIMapping 获取角色菜单/API映射（配置态）
+func (s *RoleService) GetRoleMenuAPIMapping(
+	ctx context.Context,
+	roleID uint,
+) (*response.RoleMenuAPIMappingItem, error) {
+	role, err := s.roleRepo.GetByID(ctx, roleID)
+	if err != nil {
+		return nil, errors.Wrap(errors.CodeDBError, err)
+	}
+	if role == nil || role.ID == 0 {
+		return nil, errors.New(errors.CodeRoleNotFound)
+	}
+
+	menuIDs, err := s.roleRepo.GetRoleMenuIDs(ctx, roleID)
+	if err != nil {
+		return nil, errors.Wrap(errors.CodeDBError, err)
+	}
+	apiIDs, err := s.roleRepo.GetRoleAPIIDs(ctx, roleID)
+	if err != nil {
+		return nil, errors.Wrap(errors.CodeDBError, err)
+	}
+
+	return &response.RoleMenuAPIMappingItem{
+		RoleID:  roleID,
+		MenuIDs: menuIDs,
+		APIIDs:  apiIDs,
+	}, nil
 }
 
 // GetRoleMenuIDs 获取角色已分配的菜单ID列表
@@ -256,48 +358,23 @@ func (s *RoleService) GetRoleMenuIDs(ctx context.Context, roleID uint) ([]uint, 
 
 // ==================== 内部方法 ====================
 
-// syncRoleMenusToCasbin 同步角色菜单到Casbin（异步执行）
-func (s *RoleService) syncRoleMenusToCasbin(roleCode string, menuIDs []uint) {
-	// 检查Casbin执行器是否初始化
-	if global.CasbinEnforcer == nil {
-		global.Log.Warn("Casbin执行器未初始化，跳过权限同步")
-		return
+func normalizeIDs(ids []uint) []uint {
+	if len(ids) == 0 {
+		return nil
 	}
-
-	ctx := context.Background()
-
-	// 获取菜单code列表
-	menuCodes := make([]string, 0, len(menuIDs))
-	for _, menuID := range menuIDs {
-		menu, err := s.menuRepo.GetByID(ctx, menuID)
-		if err == nil && menu != nil {
-			menuCodes = append(menuCodes, menu.Code)
+	seen := make(map[uint]struct{}, len(ids))
+	out := make([]uint, 0, len(ids))
+	for _, id := range ids {
+		if id == 0 {
+			continue
 		}
-	}
-
-	// 删除角色的旧策略
-	_, err := global.CasbinEnforcer.RemoveFilteredPolicy(0, roleCode)
-	if err != nil {
-		global.Log.Error("Casbin删除角色策略失败",
-			zap.String("roleCode", roleCode),
-			zap.Error(err))
-		return
-	}
-
-	// 添加新策略
-	for _, menuCode := range menuCodes {
-		_, err := global.CasbinEnforcer.AddPolicy(roleCode, menuCode, "access")
-		if err != nil {
-			global.Log.Warn("Casbin添加策略失败",
-				zap.String("roleCode", roleCode),
-				zap.String("menuCode", menuCode),
-				zap.Error(err))
+		if _, ok := seen[id]; ok {
+			continue
 		}
+		seen[id] = struct{}{}
+		out = append(out, id)
 	}
-
-	global.Log.Info("角色菜单同步到Casbin完成",
-		zap.String("roleCode", roleCode),
-		zap.Int("menuCount", len(menuCodes)))
+	return out
 }
 
 // ==================== 辅助方法 ====================

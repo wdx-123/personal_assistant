@@ -48,6 +48,10 @@ func (p *PermissionService) SyncAllPermissionsToCasbin(ctx context.Context) erro
 	if err := p.SyncMenuAPIsToCasbin(ctx); err != nil {
 		return fmt.Errorf("同步菜单API失败：%w", err)
 	}
+	// 同步角色直绑API权限
+	if err := p.SyncRoleAPIsToCasbin(ctx); err != nil {
+		return fmt.Errorf("同步角色API失败：%w", err)
+	}
 
 	global.Log.Info("权限同步完成")
 	return nil
@@ -138,6 +142,32 @@ func (p *PermissionService) SyncMenuAPIsToCasbin(ctx context.Context) error {
 		}
 	}
 
+	return nil
+}
+
+// SyncRoleAPIsToCasbin 同步角色直绑API权限到Casbin
+func (p *PermissionService) SyncRoleAPIsToCasbin(ctx context.Context) error {
+	roleRepo := p.repositoryGroup.SystemRepositorySupplier.GetRoleRepository()
+
+	relations, err := roleRepo.GetAllRoleAPIRelations(ctx)
+	if err != nil {
+		return fmt.Errorf("获取角色API关系失败: %w", err)
+	}
+
+	for _, relation := range relations {
+		roleCode := fmt.Sprintf("%v", relation["role_code"])
+		apiPath := fmt.Sprintf("%v", relation["path"])
+		apiMethod := fmt.Sprintf("%v", relation["method"])
+		resource := fmt.Sprintf("%s:%s", apiPath, apiMethod)
+
+		_, err = p.casbinSvc.Enforcer.AddPermissionForUser(roleCode, resource, "access")
+		if err != nil {
+			global.Log.Error("添加角色API权限失败",
+				zap.String("roleCode", roleCode),
+				zap.String("resource", resource),
+				zap.Error(err))
+		}
+	}
 	return nil
 }
 

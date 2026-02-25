@@ -237,8 +237,60 @@ func (r *roleRepository) ClearRoleMenus(ctx context.Context, roleID uint) error 
 	return r.db.WithContext(ctx).Exec("DELETE FROM role_menus WHERE role_id = ?", roleID).Error
 }
 
+// ReplaceRoleAPIs 全量替换角色直绑API权限（事务，先删后增）
+func (r *roleRepository) ReplaceRoleAPIs(
+	ctx context.Context,
+	roleID uint,
+	apiIDs []uint,
+) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("DELETE FROM role_apis WHERE role_id = ?", roleID).Error; err != nil {
+			return err
+		}
+		if len(apiIDs) == 0 {
+			return nil
+		}
+
+		var values []string
+		var args []interface{}
+		for _, apiID := range apiIDs {
+			values = append(values, "(?, ?)")
+			args = append(args, roleID, apiID)
+		}
+		sql := "INSERT IGNORE INTO role_apis (role_id, api_id) VALUES " + strings.Join(values, ",")
+		return tx.Exec(sql, args...).Error
+	})
+}
+
+// GetRoleAPIIDs 获取角色直绑API ID列表（仅返回未软删API）
+func (r *roleRepository) GetRoleAPIIDs(
+	ctx context.Context,
+	roleID uint,
+) ([]uint, error) {
+	var apiIDs []uint
+	err := r.db.WithContext(ctx).
+		Table("apis").
+		Joins("JOIN role_apis ON apis.id = role_apis.api_id").
+		Where("role_apis.role_id = ? AND apis.deleted_at IS NULL", roleID).
+		Pluck("apis.id", &apiIDs).Error
+	return apiIDs, err
+}
+
+// ClearRoleAPIs 清空角色的所有API直绑关联
+func (r *roleRepository) ClearRoleAPIs(ctx context.Context, roleID uint) error {
+	return r.db.WithContext(ctx).Exec("DELETE FROM role_apis WHERE role_id = ?", roleID).Error
+}
+
+// RemoveAPIFromAllRoles 从所有角色中移除指定API（删除API前解绑）
+func (r *roleRepository) RemoveAPIFromAllRoles(ctx context.Context, apiID uint) error {
+	return r.db.WithContext(ctx).Exec("DELETE FROM role_apis WHERE api_id = ?", apiID).Error
+}
+
 // GetMenuRoles 获取菜单所属的角色列表
-func (r *roleRepository) GetMenuRoles(ctx context.Context, menuID uint) ([]*entity.Role, error) {
+func (r *roleRepository) GetMenuRoles(
+	ctx context.Context,
+	menuID uint,
+) ([]*entity.Role, error) {
 	var roles []*entity.Role
 	err := r.db.WithContext(ctx).
 		Table("roles").
@@ -341,6 +393,19 @@ func (r *roleRepository) GetAllRoleMenuRelations(ctx context.Context) ([]map[str
 		Joins("JOIN roles ON role_menus.role_id = roles.id").
 		Joins("JOIN menus ON role_menus.menu_id = menus.id").
 		Where("roles.deleted_at IS NULL AND menus.deleted_at IS NULL").
+		Find(&relations).Error
+	return relations, err
+}
+
+// GetAllRoleAPIRelations 获取所有角色与直绑API关联关系（用于Casbin同步）
+func (r *roleRepository) GetAllRoleAPIRelations(ctx context.Context) ([]map[string]interface{}, error) {
+	var relations []map[string]interface{}
+	err := r.db.WithContext(ctx).
+		Table("role_apis").
+		Select("roles.code as role_code, apis.path, apis.method").
+		Joins("JOIN roles ON role_apis.role_id = roles.id").
+		Joins("JOIN apis ON role_apis.api_id = apis.id").
+		Where("roles.deleted_at IS NULL AND apis.deleted_at IS NULL").
 		Find(&relations).Error
 	return relations, err
 }

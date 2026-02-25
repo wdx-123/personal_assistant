@@ -16,6 +16,7 @@ import (
 type ApiService struct {
 	apiRepo  interfaces.APIRepository
 	menuRepo interfaces.MenuRepository
+	roleRepo interfaces.RoleRepository
 }
 
 // NewApiService 创建API服务实例
@@ -23,6 +24,7 @@ func NewApiService(repositoryGroup *repository.Group) *ApiService {
 	return &ApiService{
 		apiRepo:  repositoryGroup.SystemRepositorySupplier.GetAPIRepository(),
 		menuRepo: repositoryGroup.SystemRepositorySupplier.GetMenuRepository(),
+		roleRepo: repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
 	}
 }
 
@@ -133,6 +135,9 @@ func (s *ApiService) DeleteAPI(ctx context.Context, id uint) error {
 	if err := s.menuRepo.RemoveAPIFromAllMenus(ctx, id); err != nil {
 		return errors.Wrap(errors.CodeDBError, err)
 	}
+	if err := s.roleRepo.RemoveAPIFromAllRoles(ctx, id); err != nil {
+		return errors.Wrap(errors.CodeDBError, err)
+	}
 	if err := s.apiRepo.Delete(ctx, id); err != nil {
 		return errors.Wrap(errors.CodeDBError, err)
 	}
@@ -202,11 +207,21 @@ func (s *ApiService) SyncAPI(
 		if pathMethodSet[key] {
 			continue
 		}
+		/*
+		因为 apis 这个主体会被两张关系表引用：
+		1、menu_apis（菜单绑定 API）
+		2、role_apis（角色直绑 API）
+		*/
 		if deleteRemoved {
 			// 物理删除：先解除菜单关联，再删除API
 			if err := s.menuRepo.RemoveAPIFromAllMenus(ctx, api.ID); err != nil {
 				return added, updated, disabled, 0, errors.Wrap(errors.CodeDBError, err)
 			}
+			// 删除API前先解除角色关联，避免外键约束问题
+			if err := s.roleRepo.RemoveAPIFromAllRoles(ctx, api.ID); err != nil {
+				return added, updated, disabled, 0, errors.Wrap(errors.CodeDBError, err)
+			}
+			// 删除API记录
 			if err := s.apiRepo.Delete(ctx, api.ID); err != nil {
 				return added, updated, disabled, 0, errors.Wrap(errors.CodeDBError, err)
 			}
