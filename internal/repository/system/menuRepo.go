@@ -101,6 +101,16 @@ func (m *menuRepository) GetAllMenus(
 	return menus, err
 }
 
+// GetAllMenusWithAPIs 获取所有菜单（预加载关联API）
+func (m *menuRepository) GetAllMenusWithAPIs(ctx context.Context) ([]*entity.Menu, error) {
+	var menus []*entity.Menu
+	err := m.db.WithContext(ctx).
+		Preload("APIs").
+		Order("sort ASC, id ASC").
+		Find(&menus).Error
+	return menus, err
+}
+
 // GetMenuTree 获取菜单树
 func (m *menuRepository) GetMenuTree(
 	ctx context.Context,

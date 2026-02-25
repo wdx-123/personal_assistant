@@ -12,6 +12,7 @@ package system
 import (
 	"context"
 	stderrors "errors"
+	"sort"
 	"strings"
 	"time"
 
@@ -274,7 +275,7 @@ func (s *RoleService) AssignAPIs(
 			global.Log.Warn("释放角色API分配锁失败", zap.Uint("roleID", roleID), zap.Error(releaseErr))
 		}
 	}()
-
+	// 校验角色存在
 	role, err := s.roleRepo.GetByID(ctx, roleID)
 	if err != nil {
 		return errors.Wrap(errors.CodeDBError, err)
@@ -282,7 +283,7 @@ func (s *RoleService) AssignAPIs(
 	if role == nil || role.ID == 0 {
 		return errors.New(errors.CodeRoleNotFound)
 	}
-
+	// 过滤有效的API ID
 	validAPIIDs := make([]uint, 0, len(apiIDs))
 	for _, apiID := range normalizeIDs(apiIDs) {
 		api, getErr := s.apiRepo.GetByID(ctx, apiID)
@@ -309,8 +310,8 @@ func (s *RoleService) AssignAPIs(
 	return nil
 }
 
-// GetRoleMenuAPIMapping 获取角色菜单/API映射（配置态）
-func (s *RoleService) GetRoleMenuAPIMapping(
+// GetRoleMenuAPIMap 获取角色菜单/API映射（一次性渲染大对象）
+func (s *RoleService) GetRoleMenuAPIMap(
 	ctx context.Context,
 	roleID uint,
 ) (*response.RoleMenuAPIMappingItem, error) {
@@ -322,19 +323,13 @@ func (s *RoleService) GetRoleMenuAPIMapping(
 		return nil, errors.New(errors.CodeRoleNotFound)
 	}
 
-	menuIDs, err := s.roleRepo.GetRoleMenuIDs(ctx, roleID)
-	if err != nil {
-		return nil, errors.Wrap(errors.CodeDBError, err)
-	}
-	apiIDs, err := s.roleRepo.GetRoleAPIIDs(ctx, roleID)
+	menus, err := s.menuRepo.GetAllMenusWithAPIs(ctx)
 	if err != nil {
 		return nil, errors.Wrap(errors.CodeDBError, err)
 	}
 
 	return &response.RoleMenuAPIMappingItem{
-		RoleID:  roleID,
-		MenuIDs: menuIDs,
-		APIIDs:  apiIDs,
+		MenuTree: s.buildRoleMenuTree(menus, 0),
 	}, nil
 }
 
@@ -375,6 +370,60 @@ func normalizeIDs(ids []uint) []uint {
 		out = append(out, id)
 	}
 	return out
+}
+
+func (s *RoleService) buildRoleMenuTree(menus []*entity.Menu, parentID uint) []*response.MenuItem {
+	result := make([]*response.MenuItem, 0)
+	for _, m := range menus {
+		if m.ParentID != parentID {
+			continue
+		}
+		item := s.roleMenuEntityToItem(m)
+		item.Children = s.buildRoleMenuTree(menus, m.ID)
+		result = append(result, item)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].Sort == result[j].Sort {
+			return result[i].ID < result[j].ID
+		}
+		return result[i].Sort < result[j].Sort
+	})
+	return result
+}
+
+func (s *RoleService) roleMenuEntityToItem(m *entity.Menu) *response.MenuItem {
+	item := &response.MenuItem{
+		ID:            m.ID,
+		ParentID:      m.ParentID,
+		Name:          m.Name,
+		Code:          m.Code,
+		Type:          m.Type,
+		Icon:          m.Icon,
+		RouteName:     m.RouteName,
+		RoutePath:     m.RoutePath,
+		RouteParam:    m.RouteParam,
+		ComponentPath: m.ComponentPath,
+		Status:        m.Status,
+		Sort:          m.Sort,
+		Desc:          m.Desc,
+		CreatedAt:     m.CreatedAt,
+		UpdatedAt:     m.UpdatedAt,
+	}
+	if len(m.APIs) > 0 {
+		apis := make([]*response.APIItemSimple, 0, len(m.APIs))
+		for _, api := range m.APIs {
+			apis = append(apis, &response.APIItemSimple{
+				ID:     api.ID,
+				Path:   api.Path,
+				Method: api.Method,
+			})
+		}
+		sort.Slice(apis, func(i, j int) bool {
+			return apis[i].ID < apis[j].ID
+		})
+		item.APIs = apis
+	}
+	return item
 }
 
 // ==================== 辅助方法 ====================

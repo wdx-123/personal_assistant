@@ -23,6 +23,8 @@ type MenuRepository interface {
 	GetMenuList(ctx context.Context, filter *request.MenuListFilter) ([]*entity.Menu, int64, error)
 	// GetAllMenus 获取所有菜单
 	GetAllMenus(ctx context.Context) ([]*entity.Menu, error)
+	// GetAllMenusWithAPIs 获取所有菜单（预加载关联API）
+	GetAllMenusWithAPIs(ctx context.Context) ([]*entity.Menu, error)
 	// GetMenuChildren 获取指定菜单的直接子菜单
 	GetMenuChildren(ctx context.Context, parentID uint) ([]*entity.Menu, error)
 	// HasChildren 检查菜单是否有子菜单

@@ -53,7 +53,5 @@ type RoleSimpleItem struct {
 
 // RoleMenuAPIMappingItem 角色菜单/API映射（配置态）
 type RoleMenuAPIMappingItem struct {
-	RoleID  uint   `json:"role_id"`  // 角色ID
-	MenuIDs []uint `json:"menu_ids"` // 角色菜单授权ID集合
-	APIIDs  []uint `json:"api_ids"`  // 角色直绑API ID集合
+	MenuTree []*MenuItem `json:"menu_tree"` // 全量菜单树（节点包含已绑定APIs）
 }
