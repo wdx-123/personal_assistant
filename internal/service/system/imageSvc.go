@@ -24,6 +24,7 @@ import (
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/interfaces"
 	"personal_assistant/pkg/errors"
+	"personal_assistant/pkg/imageops"
 	"personal_assistant/pkg/storage"
 	"personal_assistant/pkg/util"
 
@@ -33,7 +34,7 @@ import (
 // ImageService 图片管理服务
 type ImageService struct {
 	imageRepo   interfaces.ImageRepository
-	uploadSem   chan struct{}    // 并发上传信号量，控制同时进行的上传数量
+	uploadSem   chan struct{}   // 并发上传信号量，控制同时进行的上传数量
 	allowedMIME map[string]bool // 缓存的 MIME 白名单，启动时构建，运行期只读
 }
 
@@ -136,7 +137,7 @@ func (s *ImageService) SaveGeneratedImage(
 
 // Delete 软删除图片记录，物理文件由定时任务 CleanOrphanFiles 异步清理
 func (s *ImageService) Delete(ctx context.Context, ids []uint) error {
-	if err := s.imageRepo.Delete(ctx, ids); err != nil {
+	if _, err := imageops.SoftDeleteByIDs(ctx, s.imageRepo, ids); err != nil {
 		return errors.Wrap(errors.CodeDBError, err)
 	}
 	return nil
@@ -145,41 +146,20 @@ func (s *ImageService) Delete(ctx context.Context, ids []uint) error {
 // CleanOrphanFiles 清理孤儿物理文件（由定时任务调用）
 // 流程：查找孤儿 key → 逐个删除物理文件 → 清理已软删除的 DB 记录
 func (s *ImageService) CleanOrphanFiles(ctx context.Context) error {
-	keys, drivers, err := s.imageRepo.FindOrphanKeys(ctx)
+	result, err := imageops.CleanOrphanFiles(
+		ctx,
+		s.imageRepo,
+		storage.DriverFromName,
+		storage.CurrentDriver,
+	)
 	if err != nil {
 		return errors.Wrap(errors.CodeDBError, err)
 	}
-	if len(keys) == 0 {
-		return nil
+	for _, key := range result.NoDriverKeys {
+		global.Log.Warn("清理孤儿文件跳过：无可用存储驱动", zap.String("key", key))
 	}
-
-	// 逐个删除物理文件，收集成功的 key
-	successKeys := make([]string, 0, len(keys))
-	for i, key := range keys {
-		drv := storage.DriverFromName(drivers[i])
-		if drv == nil {
-			drv = storage.CurrentDriver()
-		}
-		if drv == nil {
-			global.Log.Warn("清理孤儿文件跳过：无可用存储驱动",
-				zap.String("key", key), zap.String("driver", drivers[i]))
-			continue
-		}
-		if delErr := drv.Delete(ctx, key); delErr != nil {
-			global.Log.Warn("清理孤儿物理文件失败",
-				zap.String("driver", drv.Name()),
-				zap.String("key", key),
-				zap.Error(delErr))
-			continue
-		}
-		successKeys = append(successKeys, key)
-	}
-
-	// 物理文件删除成功后，清理对应的软删除 DB 记录
-	if len(successKeys) > 0 {
-		if err := s.imageRepo.HardDeleteByKeys(ctx, successKeys); err != nil {
-			return errors.Wrap(errors.CodeDBError, err)
-		}
+	for _, key := range result.FailedKeys {
+		global.Log.Warn("清理孤儿物理文件失败", zap.String("key", key))
 	}
 	return nil
 }

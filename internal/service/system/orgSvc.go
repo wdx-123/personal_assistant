@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"net/url"
 	"strings"
 
 	"personal_assistant/global"
@@ -12,23 +13,26 @@ import (
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/interfaces"
 	"personal_assistant/pkg/errors"
+	"personal_assistant/pkg/imageops"
 
 	"gorm.io/gorm"
 )
 
 // OrgService 组织管理服务
 type OrgService struct {
-	orgRepo  interfaces.OrgRepository
-	userRepo interfaces.UserRepository
-	roleRepo interfaces.RoleRepository
+	orgRepo   interfaces.OrgRepository
+	userRepo  interfaces.UserRepository
+	roleRepo  interfaces.RoleRepository
+	imageRepo interfaces.ImageRepository
 }
 
 // NewOrgService 创建组织服务实例
 func NewOrgService(repositoryGroup *repository.Group) *OrgService {
 	return &OrgService{
-		orgRepo:  repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
-		userRepo: repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
-		roleRepo: repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
+		orgRepo:   repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
+		userRepo:  repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
+		roleRepo:  repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
+		imageRepo: repositoryGroup.SystemRepositorySupplier.GetImageRepository(),
 	}
 }
 
@@ -140,6 +144,17 @@ func (s *OrgService) CreateOrg(
 	if name == "" {
 		return errors.New(errors.CodeInvalidParams)
 	}
+	avatar := strings.TrimSpace(req.Avatar)
+	if avatar != "" {
+		if err := validateAvatarURL(avatar); err != nil {
+			return err
+		}
+	}
+	var avatarID *uint
+	if avatar != "" && req.AvatarID != nil && *req.AvatarID > 0 {
+		id := *req.AvatarID
+		avatarID = &id
+	}
 
 	// 校验名称唯一性
 	exists, err := s.orgRepo.ExistsByName(ctx, name)
@@ -157,6 +172,8 @@ func (s *OrgService) CreateOrg(
 			Name:        name,
 			Description: strings.TrimSpace(req.Description),
 			Code:        strings.TrimSpace(req.Code),
+			Avatar:      avatar,
+			AvatarID:    avatarID,
 			OwnerID:     userID,
 		}
 		// 使用 Repository 的事务方法
@@ -177,49 +194,193 @@ func (s *OrgService) CreateOrg(
 		if err := s.userRepo.WithTx(tx).UpdateCurrentOrgID(ctx, userID, &org.ID); err != nil {
 			return errors.Wrap(errors.CodeDBError, err)
 		}
+		if avatarID != nil {
+			if err := s.imageRepo.WithTx(tx).UpdateCategoryByID(ctx, *avatarID, consts.CatAvatar); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
 
 		return nil
 	})
 }
-
 // UpdateOrg 更新组织信息（仅组织所有者可操作）
-func (s *OrgService) UpdateOrg(ctx context.Context, userID, orgID uint, req *request.UpdateOrgReq) error {
-	org, err := s.orgRepo.GetByID(ctx, orgID)
-	if err != nil {
-		return errors.Wrap(errors.CodeOrgNotFound, err)
-	}
+// 设计要点：使用事务保证“组织更新 + 头像分类更新 + 旧头像软删除”要么全部成功，要么全部回滚。
+func (s *OrgService) UpdateOrg(
+	ctx context.Context, // 请求上下文（用于超时/取消/链路追踪）
+	userID, orgID uint,  // 当前用户ID、目标组织ID
+	req *request.UpdateOrgReq, // 更新参数（支持部分更新/可选字段）
+) error {
+	// 开启事务：回调返回 nil -> commit；返回 error -> rollback。
+	return global.DB.Transaction(func(tx *gorm.DB) error {
+		// 使用同一事务句柄创建仓储实例，确保所有写操作落在同一事务中。
+		txOrgRepo := s.orgRepo.WithTx(tx)
+		txImageRepo := s.imageRepo.WithTx(tx)
 
-	// 校验权限：仅 owner 可操作
-	if org.OwnerID != userID {
-		return errors.New(errors.CodeOrgOwnerOnly)
-	}
+		// 读取组织信息（不存在则返回“组织不存在”）。
+		org, err := txOrgRepo.GetByID(ctx, orgID)
+		if err != nil {
+			return errors.Wrap(errors.CodeOrgNotFound, err)
+		}
 
-	// 部分更新
-	if req.Name != nil {
-		name := strings.TrimSpace(*req.Name)
-		if name != "" && name != org.Name {
-			// 校验新名称唯一性
-			exists, err := s.orgRepo.ExistsByName(ctx, name)
-			if err != nil {
+		// 权限校验：仅组织 owner 可更新。
+		if org.OwnerID != userID {
+			return errors.New(errors.CodeOrgOwnerOnly)
+		}
+
+		// 记录旧头像ID（后续若更换头像，用于软删除旧头像资源）。
+		oldAvatarID := uint(0)
+		if org.AvatarID != nil {
+			oldAvatarID = *org.AvatarID
+		}
+
+		// 解析并校验头像参数对（avatar 与 avatar_id 必须同时传入；支持清空/设置两种语义）。
+		avatarPair, err := parseOrgAvatarPair(req.Avatar, req.AvatarID)
+		if err != nil {
+			return err
+		}
+
+		// ---- 部分更新（仅更新客户端明确传入的字段） ----
+
+		// 更新 Name：去空格；非空且变更时校验唯一性。
+		if req.Name != nil {
+			name := strings.TrimSpace(*req.Name)
+			if name != "" && name != org.Name {
+				// 校验新名称是否已存在（避免重名）。
+				exists, checkErr := txOrgRepo.ExistsByName(ctx, name)
+				if checkErr != nil {
+					return errors.Wrap(errors.CodeDBError, checkErr)
+				}
+				if exists {
+					return errors.New(errors.CodeOrgNameDuplicate)
+				}
+				org.Name = name
+			}
+		}
+
+		// 更新 Description：允许为空字符串（表示清空）；仅在字段被提供时才更新。
+		if req.Description != nil {
+			org.Description = strings.TrimSpace(*req.Description)
+		}
+
+		// 更新 Code：允许为空字符串（表示清空）；仅在字段被提供时才更新。
+		if req.Code != nil {
+			org.Code = strings.TrimSpace(*req.Code)
+		}
+
+		// 更新 Avatar/AvatarID：仅在客户端“提供了头像字段对”时才更新（避免误清空）。
+		if avatarPair.Provided {
+			org.Avatar = avatarPair.Avatar
+			org.AvatarID = avatarPair.AvatarID
+		}
+
+		// 落库更新组织信息（事务内）。
+		if err := txOrgRepo.Update(ctx, org); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+
+		// 若本次请求未包含头像字段对，则不触发头像分类/旧头像清理逻辑，直接提交事务。
+		if !avatarPair.Provided {
+			return nil
+		}
+
+		// 计算新头像ID（可能为 0：表示清空头像）。
+		newAvatarID := uint(0)
+		if org.AvatarID != nil {
+			newAvatarID = *org.AvatarID
+			// 将新头像图片标记为头像分类（用于后续管理/策略）。
+			if err := txImageRepo.UpdateCategoryByID(ctx, newAvatarID, consts.CatAvatar); err != nil {
 				return errors.Wrap(errors.CodeDBError, err)
 			}
-			if exists {
-				return errors.New(errors.CodeOrgNameDuplicate)
-			}
-			org.Name = name
 		}
-	}
-	if req.Description != nil {
-		org.Description = strings.TrimSpace(*req.Description)
-	}
-	if req.Code != nil {
-		org.Code = strings.TrimSpace(*req.Code)
+
+		// 若旧头像存在且与新头像不同，则软删除旧头像图片记录（避免垃圾资源堆积）。
+		if oldAvatarID > 0 && oldAvatarID != newAvatarID {
+			if _, err := imageops.SoftDeleteByIDs(ctx, txImageRepo, []uint{oldAvatarID}); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
+
+		// 回调返回 nil 表示事务提交。
+		return nil
+	})
+}
+
+// orgAvatarPair 表达一次头像参数解析后的语义结果：是否提供、最终 avatar 字符串、最终 avatarID（可空）。
+type orgAvatarPair struct {
+	Provided bool  // 是否显式提供了头像字段对（用于区分“未修改头像”和“清空头像/设置头像”）
+	Avatar   string // 头像URL（空串表示清空）
+	AvatarID *uint  // 头像图片ID（nil 表示无头像）
+}
+
+// parseOrgAvatarPair 解析并校验 avatar 与 avatar_id 的组合语义：
+// - 两者都不传：Provided=false（不修改头像）
+// - 两者必须同时传：否则参数错误
+// - avatar 为空串：表示清空头像，此时 avatar_id 必须为 0
+// - avatar 非空：表示设置头像，此时 avatar_id 必须 > 0，且 avatar 必须是合法 http(s) URL
+func parseOrgAvatarPair(avatar *string, avatarID *uint) (orgAvatarPair, error) {
+	// 两者都未提供：不修改头像。
+	if avatar == nil && avatarID == nil {
+		return orgAvatarPair{Provided: false}, nil
 	}
 
-	if err := s.orgRepo.Update(ctx, org); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
+	// 只提供其一：拒绝（避免头像URL与图片ID失配）。
+	if avatar == nil || avatarID == nil {
+		return orgAvatarPair{}, errors.NewWithMsg(errors.CodeInvalidParams, "avatar 与 avatar_id 必须同时传入")
 	}
-	return nil
+
+	// 清洗 avatar（去掉两端空格）。
+	trimmedAvatar := strings.TrimSpace(*avatar)
+
+	switch {
+	// avatar 为空：语义为“清空头像”。
+	case trimmedAvatar == "":
+		// 清空头像时 avatar_id 必须为 0（避免传入无效/脏ID）。
+		if *avatarID != 0 {
+			return orgAvatarPair{}, errors.NewWithMsg(errors.CodeInvalidParams, "清空头像时 avatar_id 必须为 0")
+		}
+		// 返回清空结果：avatar 置空，avatarID 置 nil。
+		return orgAvatarPair{
+			Provided: true,
+			Avatar:   "",
+			AvatarID: nil,
+		}, nil
+
+	// avatar 非空：语义为“设置头像”。
+	default:
+		// 设置头像时 avatar_id 必须 > 0（需要绑定到有效图片记录）。
+		if *avatarID == 0 {
+			return orgAvatarPair{}, errors.NewWithMsg(errors.CodeInvalidParams, "设置头像时 avatar_id 必须大于 0")
+		}
+		// 校验头像URL必须为合法 http(s) URL。
+		if err := validateAvatarURL(trimmedAvatar); err != nil {
+			return orgAvatarPair{}, err
+		}
+		// 复制一份ID到局部变量，返回其地址（避免直接复用外部指针带来的可变性/歧义）。
+		id := *avatarID
+		return orgAvatarPair{
+			Provided: true,
+			Avatar:   trimmedAvatar,
+			AvatarID: &id,
+		}, nil
+	}
+}
+
+// validateAvatarURL 校验头像URL：必须是合法URI、协议为 http/https、且 Host 非空。
+func validateAvatarURL(rawURL string) error {
+	// 解析并校验 URI 格式（更严格，拒绝相对路径等不符合请求URI的形式）。
+	parsed, err := url.ParseRequestURI(rawURL)
+	if err != nil {
+		return errors.NewWithMsg(errors.CodeInvalidParams, "头像URL格式不合法")
+	}
+	// 限制协议，禁止 file:// 等潜在风险协议。
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return errors.NewWithMsg(errors.CodeInvalidParams, "头像URL仅支持http或https")
+	}
+	// Host 必须存在（保证是完整的网络地址）。
+	if parsed.Host == "" {
+		return errors.NewWithMsg(errors.CodeInvalidParams, "头像URL格式不合法")
+	}
+	return nil // 校验通过
 }
 
 // DeleteOrg 删除组织（仅组织所有者可操作）

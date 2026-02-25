@@ -16,6 +16,7 @@ type User struct {
 	Email    string    `json:"email" gorm:"type:varchar(100);index;comment:'用户邮箱地址'"`        // 用户邮箱地址，用于登录和通知
 	Openid   string    `json:"openid" gorm:"type:varchar(100);index;comment:'第三方登录OpenID'"`  // 第三方平台（如微信、QQ）的OpenID
 	Avatar   string    `json:"avatar" gorm:"type:varchar(255);default:'';comment:'用户头像URL'"` // 用户头像图片的URL地址
+	AvatarID *uint     `json:"avatar_id,omitempty" gorm:"index;comment:'用户头像图片ID（可空）'"`      // 用户头像图片ID，空表示未绑定站内图片
 	Address  string    `json:"address" gorm:"type:varchar(200);default:'';comment:'用户地址信息'"` // 用户的地理位置或地址信息
 	// 用户的个性签名或简介
 	Signature string          `json:"signature" gorm:"type:varchar(500);default:'签名是空白的，这位用户似乎比较低调。';comment:'用户个性签名'"`

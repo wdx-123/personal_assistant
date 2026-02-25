@@ -22,8 +22,8 @@ type LoginReq struct {
 type UpdateProfileReq struct {
 	Username  *string `json:"username" binding:"omitempty,max=20"`
 	Signature *string `json:"signature" binding:"omitempty,max=100"`
-	Avatar    *string `json:"avatar" binding:"omitempty,url"`
-	AvatarID  *uint   `json:"avatar_id" binding:"omitempty"`
+	Avatar    *string `json:"avatar" binding:"omitempty,max=255"` // 与 AvatarID 成对更新；传空字符串表示清空头像
+	AvatarID  *uint   `json:"avatar_id" binding:"omitempty"`      // 与 Avatar 成对更新；传 0 表示清空头像
 }
 
 // ChangePhoneReq 换绑手机号

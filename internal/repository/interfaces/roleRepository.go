@@ -48,6 +48,14 @@ type RoleRepository interface {
 	GetMenuRoles(ctx context.Context, menuID uint) ([]*entity.Role, error)
 	// ClearRoleMenus 清空角色的所有菜单关联
 	ClearRoleMenus(ctx context.Context, roleID uint) error
+	// ReplaceRoleAPIs 全量替换角色直绑API权限（事务）
+	ReplaceRoleAPIs(ctx context.Context, roleID uint, apiIDs []uint) error
+	// GetRoleAPIIDs 获取角色直绑的API ID列表
+	GetRoleAPIIDs(ctx context.Context, roleID uint) ([]uint, error)
+	// ClearRoleAPIs 清空角色的所有API直绑关联
+	ClearRoleAPIs(ctx context.Context, roleID uint) error
+	// RemoveAPIFromAllRoles 从所有角色中移除指定API（删除API前解绑）
+	RemoveAPIFromAllRoles(ctx context.Context, apiID uint) error
 
 	// AssignRoleToUserInOrg 为用户在组织中分配角色
 	AssignRoleToUserInOrg(ctx context.Context, userID, orgID, roleID uint) error
@@ -64,6 +72,8 @@ type RoleRepository interface {
 
 	// GetAllRoleMenuRelations 获取所有角色与菜单的关联关系（用于Casbin同步）
 	GetAllRoleMenuRelations(ctx context.Context) ([]map[string]interface{}, error)
+	// GetAllRoleAPIRelations 获取所有角色与直绑API关联关系（用于Casbin同步）
+	GetAllRoleAPIRelations(ctx context.Context) ([]map[string]interface{}, error)
 	// GetAllUserOrgRoleRelations 获取所有用户在组织中的角色关联关系（用于Casbin同步）
 	GetAllUserOrgRoleRelations(ctx context.Context) ([]map[string]interface{}, error)
 

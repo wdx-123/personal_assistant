@@ -25,7 +25,7 @@ func SetUp(repositoryGroup *repository.Group) Supplier {
 	ss.ojService = NewOJService(repositoryGroup)
 	ss.apiService = NewApiService(repositoryGroup)
 	ss.menuService = NewMenuService(repositoryGroup)
-	ss.roleService = NewRoleService(repositoryGroup)
+	ss.roleService = NewRoleService(repositoryGroup, ss.permissionService)
 	ss.imageService = NewImageService(repositoryGroup)
 
 	// UserService 需要依赖 PermissionService，所以在 permissionService 初始化后创建

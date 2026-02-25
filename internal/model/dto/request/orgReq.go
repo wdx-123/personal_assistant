@@ -9,16 +9,20 @@ type OrgListReq struct {
 
 // CreateOrgReq 创建组织请求
 type CreateOrgReq struct {
-	Name        string `json:"name" binding:"required,max=100"`        // 组织名称，必填
+	Name        string `json:"name" binding:"required,max=100"`         // 组织名称，必填
 	Description string `json:"description" binding:"omitempty,max=255"` // 组织描述，可选
-	Code        string `json:"code" binding:"omitempty,max=20"`        // 加入邀请码，可选
+	Code        string `json:"code" binding:"omitempty,max=20"`         // 加入邀请码，可选
+	Avatar      string `json:"avatar" binding:"omitempty,max=255"`      // 组织头像URL，可选
+	AvatarID    *uint  `json:"avatar_id" binding:"omitempty"`           // 组织头像图片ID，可选（用于分类归档）
 }
 
 // UpdateOrgReq 更新组织请求（全部可选，支持部分更新）
 type UpdateOrgReq struct {
 	Name        *string `json:"name" binding:"omitempty,max=100"`        // 组织名称
 	Description *string `json:"description" binding:"omitempty,max=255"` // 组织描述
-	Code        *string `json:"code" binding:"omitempty,max=20"`        // 加入邀请码
+	Code        *string `json:"code" binding:"omitempty,max=20"`         // 加入邀请码
+	Avatar      *string `json:"avatar" binding:"omitempty,max=255"`      // 组织头像URL（与 AvatarID 成对更新；传空字符串表示清空）
+	AvatarID    *uint   `json:"avatar_id" binding:"omitempty"`           // 组织头像图片ID（与 Avatar 成对更新；传 0 表示清空）
 }
 
 // SetCurrentOrgReq 切换当前组织请求

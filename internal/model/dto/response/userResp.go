@@ -8,6 +8,7 @@ type UserDetailItem struct {
 	Phone     string `json:"phone"`
 	Email     string `json:"email"`
 	Avatar    string `json:"avatar"`
+	AvatarID  *uint  `json:"avatar_id"`
 	Address   string `json:"address"`
 	Signature string `json:"signature"`
 	Register  int    `json:"register"`
@@ -39,4 +40,12 @@ type UserListItem struct {
 		ID   uint   `json:"id"`
 		Name string `json:"name"`
 	} `json:"roles"`
+}
+
+// PageDataUser 用户列表分页响应
+type PageDataUser struct {
+	List     []*UserListItem `json:"list"`
+	Total    int64           `json:"total"`
+	Page     int             `json:"page"`
+	PageSize int             `json:"page_size"`
 }
