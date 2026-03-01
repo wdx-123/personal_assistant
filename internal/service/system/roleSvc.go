@@ -328,8 +328,26 @@ func (s *RoleService) GetRoleMenuAPIMap(
 		return nil, errors.Wrap(errors.CodeDBError, err)
 	}
 
+	// 获取角色已分配的菜单ID列表
+	assignedMenuIDs, err := s.roleRepo.GetRoleMenuIDs(ctx, roleID)
+	if err != nil {
+		return nil, errors.Wrap(errors.CodeDBError, err)
+	}
+	// 获取角色已分配的API ID列表（包含菜单关联和直绑）
+	assignedAPIIDs, err := s.menuRepo.GetAPIIDsByMenuIDs(ctx, assignedMenuIDs)
+	if err != nil {
+		return nil, errors.Wrap(errors.CodeDBError, err)
+	}
+
+	assignedMenuIDs = normalizeIDs(assignedMenuIDs)
+	assignedAPIIDs = normalizeIDs(assignedAPIIDs)
+	sort.Slice(assignedMenuIDs, func(i, j int) bool { return assignedMenuIDs[i] < assignedMenuIDs[j] })
+	sort.Slice(assignedAPIIDs, func(i, j int) bool { return assignedAPIIDs[i] < assignedAPIIDs[j] })
+
 	return &response.RoleMenuAPIMappingItem{
-		MenuTree: s.buildRoleMenuTree(menus, 0),
+		MenuTree:        s.buildRoleMenuTree(menus, 0),
+		AssignedMenuIDs: assignedMenuIDs,
+		AssignedAPIIDs:  assignedAPIIDs,
 	}, nil
 }
 

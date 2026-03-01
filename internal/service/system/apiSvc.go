@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	stderrors "errors"
 	"strings"
 
 	"personal_assistant/global"
@@ -10,26 +11,33 @@ import (
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/interfaces"
 	"personal_assistant/pkg/errors"
+
+	"gorm.io/gorm"
 )
 
 // ApiService API接口管理服务
 type ApiService struct {
-	apiRepo  interfaces.APIRepository
-	menuRepo interfaces.MenuRepository
-	roleRepo interfaces.RoleRepository
+	apiRepo           interfaces.APIRepository
+	menuRepo          interfaces.MenuRepository
+	roleRepo          interfaces.RoleRepository
+	permissionService *PermissionService
 }
 
 // NewApiService 创建API服务实例
-func NewApiService(repositoryGroup *repository.Group) *ApiService {
+func NewApiService(repositoryGroup *repository.Group, permissionService *PermissionService) *ApiService {
 	return &ApiService{
-		apiRepo:  repositoryGroup.SystemRepositorySupplier.GetAPIRepository(),
-		menuRepo: repositoryGroup.SystemRepositorySupplier.GetMenuRepository(),
-		roleRepo: repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
+		apiRepo:           repositoryGroup.SystemRepositorySupplier.GetAPIRepository(),
+		menuRepo:          repositoryGroup.SystemRepositorySupplier.GetMenuRepository(),
+		roleRepo:          repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
+		permissionService: permissionService,
 	}
 }
 
 // GetAPIList 获取API列表（分页，支持过滤）
-func (s *ApiService) GetAPIList(ctx context.Context, filter *request.ApiListFilter) ([]*entity.API, int64, error) {
+func (s *ApiService) GetAPIList(
+	ctx context.Context,
+	filter *request.ApiListFilter,
+) ([]*entity.API, map[uint]*entity.Menu, int64, error) {
 	if filter == nil {
 		filter = &request.ApiListFilter{}
 	}
@@ -41,32 +49,55 @@ func (s *ApiService) GetAPIList(ctx context.Context, filter *request.ApiListFilt
 	}
 	filter.Method = strings.TrimSpace(filter.Method)
 	filter.Keyword = strings.TrimSpace(filter.Keyword)
-	return s.apiRepo.GetAPIList(ctx, filter)
+
+	list, total, err := s.apiRepo.GetAPIList(ctx, filter)
+	if err != nil {
+		return nil, nil, 0, errors.Wrap(errors.CodeDBError, err)
+	}
+
+	menuMap, err := s.apiRepo.GetMenusByAPIIDs(ctx, collectAPIIDs(list))
+	if err != nil {
+		return nil, nil, 0, errors.Wrap(errors.CodeDBError, err)
+	}
+	return list, menuMap, total, nil
 }
 
 // GetAPIByID 根据ID获取API详情
-func (s *ApiService) GetAPIByID(ctx context.Context, id uint) (*entity.API, error) {
+func (s *ApiService) GetAPIByID(ctx context.Context, id uint) (*entity.API, *entity.Menu, error) {
 	api, err := s.apiRepo.GetByID(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, nil, errors.Wrap(errors.CodeDBError, err)
 	}
 	if api == nil {
-		return nil, errors.New(errors.CodeAPINotFound)
+		return nil, nil, errors.New(errors.CodeAPINotFound)
 	}
-	return api, nil
+
+	menu, err := s.apiRepo.GetMenuByAPIID(ctx, id)
+	if err != nil {
+		return nil, nil, errors.Wrap(errors.CodeDBError, err)
+	}
+	return api, menu, nil
 }
 
 // CreateAPI 创建API
-func (s *ApiService) CreateAPI(ctx context.Context, req *entity.API) error {
+func (s *ApiService) CreateAPI(ctx context.Context, req *request.CreateApiReq) error {
 	path := strings.TrimSpace(req.Path)
 	method := strings.TrimSpace(strings.ToUpper(req.Method))
-	if path == "" || method == "" {
+	if path == "" || method == "" || req.MenuID == 0 {
 		return errors.New(errors.CodeInvalidParams)
 	}
-	req.Path = path
-	req.Method = method
-	if req.Status == 0 {
-		req.Status = 1
+
+	menu, err := s.menuRepo.GetByID(ctx, req.MenuID)
+	if err != nil {
+		return errors.Wrap(errors.CodeDBError, err)
+	}
+	if menu == nil || menu.ID == 0 {
+		return errors.New(errors.CodeMenuNotFound)
+	}
+
+	status := req.Status
+	if status == 0 {
+		status = 1
 	}
 
 	exists, err := s.apiRepo.ExistsByPathAndMethod(ctx, path, method)
@@ -76,21 +107,24 @@ func (s *ApiService) CreateAPI(ctx context.Context, req *entity.API) error {
 	if exists {
 		return errors.New(errors.CodeAPIAlreadyExists)
 	}
-	if err := s.apiRepo.Create(ctx, req); err != nil {
+
+	api := &entity.API{
+		Path:   path,
+		Method: method,
+		Detail: req.Detail,
+		Status: status,
+	}
+	if err := s.apiRepo.CreateWithMenu(ctx, api, req.MenuID); err != nil {
 		return errors.Wrap(errors.CodeDBError, err)
+	}
+	if err := s.permissionService.RefreshAllPermissions(ctx); err != nil {
+		return errors.Wrap(errors.CodeInternalError, err)
 	}
 	return nil
 }
 
 // UpdateAPI 更新API（支持部分更新）
-func (s *ApiService) UpdateAPI(
-	ctx context.Context,
-	id uint,
-	path *string,
-	method *string,
-	detail *string,
-	status *int,
-) error {
+func (s *ApiService) UpdateAPI(ctx context.Context, id uint, req *request.UpdateApiReq) error {
 	api, err := s.apiRepo.GetByID(ctx, id)
 	if err != nil {
 		return errors.Wrap(errors.CodeDBError, err)
@@ -98,27 +132,43 @@ func (s *ApiService) UpdateAPI(
 	if api == nil {
 		return errors.New(errors.CodeAPINotFound)
 	}
-	if path != nil {
-		api.Path = strings.TrimSpace(*path)
+	if req.Path != nil {
+		api.Path = strings.TrimSpace(*req.Path)
 	}
-	if method != nil {
-		api.Method = strings.TrimSpace(strings.ToUpper(*method))
+	if req.Method != nil {
+		api.Method = strings.TrimSpace(strings.ToUpper(*req.Method))
 	}
-	if detail != nil {
-		api.Detail = *detail
+	if req.Detail != nil {
+		api.Detail = *req.Detail
 	}
-	if status != nil {
-		api.Status = *status
+	if req.Status != nil {
+		api.Status = *req.Status
+	}
+	if req.MenuID != nil && *req.MenuID > 0 {
+		menu, getErr := s.menuRepo.GetByID(ctx, *req.MenuID)
+		if getErr != nil {
+			return errors.Wrap(errors.CodeDBError, getErr)
+		}
+		if menu == nil || menu.ID == 0 {
+			return errors.New(errors.CodeMenuNotFound)
+		}
 	}
 	if api.Path == "" || api.Method == "" {
 		return errors.New(errors.CodeInvalidParams)
 	}
+
 	existAPI, getErr := s.apiRepo.GetByPathAndMethod(ctx, api.Path, api.Method)
+	if getErr != nil && !stderrors.Is(getErr, gorm.ErrRecordNotFound) {
+		return errors.Wrap(errors.CodeDBError, getErr)
+	}
 	if getErr == nil && existAPI != nil && existAPI.ID != id {
 		return errors.New(errors.CodeAPIAlreadyExists)
 	}
-	if err := s.apiRepo.Update(ctx, api); err != nil {
+	if err := s.apiRepo.UpdateWithMenu(ctx, api, req.MenuID); err != nil {
 		return errors.Wrap(errors.CodeDBError, err)
+	}
+	if err := s.permissionService.RefreshAllPermissions(ctx); err != nil {
+		return errors.Wrap(errors.CodeInternalError, err)
 	}
 	return nil
 }
@@ -208,9 +258,9 @@ func (s *ApiService) SyncAPI(
 			continue
 		}
 		/*
-		因为 apis 这个主体会被两张关系表引用：
-		1、menu_apis（菜单绑定 API）
-		2、role_apis（角色直绑 API）
+			因为 apis 这个主体会被两张关系表引用：
+			1、menu_apis（菜单绑定 API）
+			2、role_apis（角色直绑 API）
 		*/
 		if deleteRemoved {
 			// 物理删除：先解除菜单关联，再删除API
@@ -239,4 +289,12 @@ func (s *ApiService) SyncAPI(
 	allAPIs, _ = s.apiRepo.GetAllAPIs(ctx)
 	total = len(allAPIs)
 	return added, updated, disabled, total, nil
+}
+
+func collectAPIIDs(apis []*entity.API) []uint {
+	apiIDs := make([]uint, 0, len(apis))
+	for _, api := range apis {
+		apiIDs = append(apiIDs, api.ID)
+	}
+	return apiIDs
 }

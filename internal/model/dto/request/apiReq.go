@@ -25,6 +25,7 @@ type CreateApiReq struct {
 	Method string `json:"method" binding:"required,oneof=GET POST PUT DELETE PATCH"` // 请求方法
 	Detail string `json:"detail"`                                                    // API描述
 	Status int    `json:"status"`                                                    // 状态：1启用 0禁用，默认1
+	MenuID uint   `json:"menu_id" binding:"required,min=1"`                          // 归属菜单ID（必填）
 }
 
 // UpdateApiReq 更新API请求
@@ -33,6 +34,11 @@ type UpdateApiReq struct {
 	Method *string `json:"method"` // 请求方法：GET/POST/PUT/DELETE/PATCH
 	Detail *string `json:"detail"` // API描述
 	Status *int    `json:"status"` // 状态：1启用 0禁用
+	// MenuID 三态语义：
+	// - nil: 不变更当前菜单绑定
+	// - 0: 清空菜单绑定
+	// - >0: 将API迁移并绑定到指定菜单
+	MenuID *uint `json:"menu_id"`
 }
 
 // SyncApiReq 同步路由到API表请求

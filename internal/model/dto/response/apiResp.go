@@ -9,6 +9,8 @@ type ApiItem struct {
 	Method    string    `json:"method"`     // 请求方法
 	Detail    string    `json:"detail"`     // API描述
 	Status    int       `json:"status"`     // 状态：1启用 0禁用
+	MenuID    *uint     `json:"menu_id"`    // 归属菜单ID，未绑定时为null
+	MenuName  string    `json:"menu_name"`  // 归属菜单名称，未绑定时为空字符串
 	CreatedAt time.Time `json:"created_at"` // 创建时间
 	UpdatedAt time.Time `json:"updated_at"` // 更新时间
 }

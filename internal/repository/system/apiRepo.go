@@ -3,10 +3,11 @@ package system
 import (
 	"context"
 
-	"gorm.io/gorm"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository/interfaces"
+
+	"gorm.io/gorm"
 )
 
 type apiRepository struct {
@@ -40,8 +41,50 @@ func (a *apiRepository) Create(ctx context.Context, api *entity.API) error {
 	return a.db.WithContext(ctx).Create(api).Error
 }
 
+// CreateWithMenu 创建API并绑定菜单（事务）
+func (a *apiRepository) CreateWithMenu(ctx context.Context, api *entity.API, menuID uint) error {
+	return a.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(api).Error; err != nil {
+			return err
+		}
+		return tx.Exec("INSERT INTO menu_apis (menu_id, api_id) VALUES (?, ?)", menuID, api.ID).Error
+	})
+}
+
 func (a *apiRepository) Update(ctx context.Context, api *entity.API) error {
 	return a.db.WithContext(ctx).Save(api).Error
+}
+
+// UpdateWithMenu 更新API并按三态更新菜单绑定（事务）
+func (a *apiRepository) UpdateWithMenu(
+	ctx context.Context,
+	api *entity.API,
+	menuID *uint,
+) error {
+	return a.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// 先更新API基本信息
+		if err := tx.Save(api).Error; err != nil {
+			return err
+		}
+
+		// nil 表示不改菜单绑定
+		if menuID == nil {
+			return nil
+		}
+
+		// 先清空当前API在 menu_apis 上的历史绑定
+		if err := tx.Exec("DELETE FROM menu_apis WHERE api_id = ?", api.ID).Error; err != nil {
+			return err
+		}
+
+		// 0 表示清空绑定，不插入新关系
+		if *menuID == 0 {
+			return nil
+		}
+
+		// >0 表示迁移并绑定到指定菜单
+		return tx.Exec("INSERT INTO menu_apis (menu_id, api_id) VALUES (?, ?)", *menuID, api.ID).Error
+	})
 }
 
 func (a *apiRepository) Delete(ctx context.Context, id uint) error {
@@ -104,6 +147,62 @@ func (a *apiRepository) ExistsByPathAndMethod(ctx context.Context, path, method 
 	var count int64
 	err := a.db.WithContext(ctx).Model(&entity.API{}).Where("path = ? AND method = ?", path, method).Count(&count).Error
 	return count > 0, err
+}
+
+// GetMenuByAPIID 获取API归属菜单
+func (a *apiRepository) GetMenuByAPIID(ctx context.Context, apiID uint) (*entity.Menu, error) {
+	var menu entity.Menu
+	err := a.db.WithContext(ctx).
+		Table("menus").
+		Select("menus.*").
+		Joins("JOIN menu_apis ON menus.id = menu_apis.menu_id").
+		Where("menu_apis.api_id = ? AND menus.deleted_at IS NULL", apiID).
+		Limit(1).
+		Find(&menu).Error
+	if err != nil {
+		return nil, err
+	}
+	if menu.ID == 0 {
+		return nil, nil
+	}
+	return &menu, nil
+}
+
+// GetMenusByAPIIDs 批量获取API归属菜单（key: api_id）
+func (a *apiRepository) GetMenusByAPIIDs(
+	ctx context.Context,
+	apiIDs []uint,
+) (map[uint]*entity.Menu, error) {
+	result := make(map[uint]*entity.Menu)
+	if len(apiIDs) == 0 {
+		return result, nil
+	}
+
+	type row struct {
+		APIID    uint   `gorm:"column:api_id"`
+		MenuID   uint   `gorm:"column:menu_id"`
+		MenuName string `gorm:"column:menu_name"`
+	}
+
+	var rows []row
+	err := a.db.WithContext(ctx).
+		Table("menu_apis").
+		Select("menu_apis.api_id, menus.id AS menu_id, menus.name AS menu_name").
+		Joins("JOIN menus ON menu_apis.menu_id = menus.id").
+		Where("menu_apis.api_id IN ? AND menus.deleted_at IS NULL", apiIDs).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	for _, r := range rows {
+		menu := &entity.Menu{
+			Name: r.MenuName,
+		}
+		menu.ID = r.MenuID
+		result[r.APIID] = menu
+	}
+	return result, nil
 }
 
 // 权限查询

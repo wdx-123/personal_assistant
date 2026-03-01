@@ -23,8 +23,8 @@ func SetUp(repositoryGroup *repository.Group) Supplier {
 	ss.baseService = NewBaseService()
 	ss.orgService = NewOrgService(repositoryGroup)
 	ss.ojService = NewOJService(repositoryGroup)
-	ss.apiService = NewApiService(repositoryGroup)
-	ss.menuService = NewMenuService(repositoryGroup)
+	ss.apiService = NewApiService(repositoryGroup, ss.permissionService)
+	ss.menuService = NewMenuService(repositoryGroup, ss.permissionService)
 	ss.roleService = NewRoleService(repositoryGroup, ss.permissionService)
 	ss.imageService = NewImageService(repositoryGroup)
 

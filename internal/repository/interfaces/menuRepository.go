@@ -44,10 +44,15 @@ type MenuRepository interface {
 	RemoveAPIFromAllMenus(ctx context.Context, apiID uint) error
 	// ClearMenuAPIs 清空菜单的所有API绑定（bind_api 覆盖前调用）
 	ClearMenuAPIs(ctx context.Context, menuID uint) error
+	// ReplaceMenuAPIsSingleBinding 覆盖菜单绑定（单菜单语义）
+	// 会先清空当前菜单旧绑定，再把 apiIDs 迁移并绑定到当前菜单。
+	ReplaceMenuAPIsSingleBinding(ctx context.Context, menuID uint, apiIDs []uint) error
 	// GetMenuAPIs 获取菜单关联的API列表
 	GetMenuAPIs(ctx context.Context, menuID uint) ([]*entity.API, error)
 	// GetAPIMenus 获取API所属的菜单列表
 	GetAPIMenus(ctx context.Context, apiID uint) ([]*entity.Menu, error)
+	// GetAPIIDsByMenuIDs 按菜单ID集合查询绑定的API ID集合（去重）
+	GetAPIIDsByMenuIDs(ctx context.Context, menuIDs []uint) ([]uint, error)
 
 	// GetMenusByRoleID 获取角色的菜单列表
 	GetMenusByRoleID(ctx context.Context, roleID uint) ([]*entity.Menu, error)

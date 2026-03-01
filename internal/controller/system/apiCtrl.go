@@ -41,7 +41,7 @@ func (c *ApiCtrl) GetAPIList(ctx *gin.Context) {
 		Keyword:  req.Keyword,
 	}
 
-	list, total, err := c.apiService.GetAPIList(ctx.Request.Context(), filter)
+	list, menuMap, total, err := c.apiService.GetAPIList(ctx.Request.Context(), filter)
 	if err != nil {
 		global.Log.Error("获取API列表失败", zap.Error(err))
 		response.BizFailWithError(err, ctx)
@@ -50,7 +50,7 @@ func (c *ApiCtrl) GetAPIList(ctx *gin.Context) {
 
 	items := make([]*resp.ApiItem, 0, len(list))
 	for _, api := range list {
-		items = append(items, entityToApiItem(api))
+		items = append(items, entityToApiItem(api, menuMap[api.ID]))
 	}
 	response.BizOkWithPage(items, total, filter.Page, filter.PageSize, ctx)
 }
@@ -63,13 +63,13 @@ func (c *ApiCtrl) GetAPIByID(ctx *gin.Context) {
 		response.BizFailWithMessage("ID格式错误", ctx)
 		return
 	}
-	api, err := c.apiService.GetAPIByID(ctx.Request.Context(), uint(id))
+	api, menu, err := c.apiService.GetAPIByID(ctx.Request.Context(), uint(id))
 	if err != nil {
 		global.Log.Error("获取API详情失败", zap.Uint64("id", id), zap.Error(err))
 		response.BizFailWithError(err, ctx)
 		return
 	}
-	response.BizOkWithData(entityToApiItem(api), ctx)
+	response.BizOkWithData(entityToApiItem(api, menu), ctx)
 }
 
 // CreateAPI 创建API
@@ -80,16 +80,7 @@ func (c *ApiCtrl) CreateAPI(ctx *gin.Context) {
 		response.BizFailWithMessage("参数错误", ctx)
 		return
 	}
-	api := &entity.API{
-		Path:   req.Path,
-		Method: req.Method,
-		Detail: req.Detail,
-		Status: req.Status,
-	}
-	if api.Status == 0 {
-		api.Status = 1
-	}
-	if err := c.apiService.CreateAPI(ctx.Request.Context(), api); err != nil {
+	if err := c.apiService.CreateAPI(ctx.Request.Context(), &req); err != nil {
 		global.Log.Error("创建API失败", zap.Error(err))
 		response.BizFailWithError(err, ctx)
 		return
@@ -111,7 +102,7 @@ func (c *ApiCtrl) UpdateAPI(ctx *gin.Context) {
 		response.BizFailWithMessage("参数错误", ctx)
 		return
 	}
-	if err := c.apiService.UpdateAPI(ctx.Request.Context(), uint(id), req.Path, req.Method, req.Detail, req.Status); err != nil {
+	if err := c.apiService.UpdateAPI(ctx.Request.Context(), uint(id), &req); err != nil {
 		global.Log.Error("更新API失败", zap.Uint64("id", id), zap.Error(err))
 		response.BizFailWithError(err, ctx)
 		return
@@ -154,9 +145,16 @@ func (c *ApiCtrl) SyncAPI(ctx *gin.Context) {
 }
 
 // entityToApiItem 将 entity.API 转为 response.ApiItem
-func entityToApiItem(api *entity.API) *resp.ApiItem {
+func entityToApiItem(api *entity.API, menu *entity.Menu) *resp.ApiItem {
 	if api == nil {
 		return nil
+	}
+	var menuID *uint
+	menuName := ""
+	if menu != nil && menu.ID > 0 {
+		menuIDValue := menu.ID
+		menuID = &menuIDValue
+		menuName = menu.Name
 	}
 	return &resp.ApiItem{
 		ID:        api.ID,
@@ -164,6 +162,8 @@ func entityToApiItem(api *entity.API) *resp.ApiItem {
 		Method:    api.Method,
 		Detail:    api.Detail,
 		Status:    api.Status,
+		MenuID:    menuID,
+		MenuName:  menuName,
 		CreatedAt: api.CreatedAt,
 		UpdatedAt: api.UpdatedAt,
 	}
