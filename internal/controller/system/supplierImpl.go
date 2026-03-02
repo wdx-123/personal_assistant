@@ -3,6 +3,7 @@ package system
 type controllerSupplier struct {
 	refreshTokenCtrl *RefreshTokenCtrl
 	baseCtrl         *BaseCtrl
+	healthCtrl       *HealthCtrl
 	userCtrl         *UserCtrl
 	orgCtrl          *OrgCtrl
 	ojCtrl           *OJCtrl
@@ -17,6 +18,9 @@ func (c *controllerSupplier) GetRefreshTokenCtrl() *RefreshTokenCtrl {
 }
 func (c *controllerSupplier) GetBaseCtrl() *BaseCtrl {
 	return c.baseCtrl
+}
+func (c *controllerSupplier) GetHealthCtrl() *HealthCtrl {
+	return c.healthCtrl
 }
 func (c *controllerSupplier) GetUserCtrl() *UserCtrl {
 	return c.userCtrl

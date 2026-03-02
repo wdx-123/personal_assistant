@@ -7,6 +7,7 @@ import (
 type Supplier interface {
 	GetRefreshTokenCtrl() *RefreshTokenCtrl
 	GetBaseCtrl() *BaseCtrl
+	GetHealthCtrl() *HealthCtrl
 	GetUserCtrl() *UserCtrl
 	GetOrgCtrl() *OrgCtrl
 	GetOJCtrl() *OJCtrl
@@ -24,6 +25,9 @@ func SetUp(service *service.Group) Supplier {
 	}
 	cs.baseCtrl = &BaseCtrl{
 		baseService: service.SystemServiceSupplier.GetBaseSvc(),
+	}
+	cs.healthCtrl = &HealthCtrl{
+		healthService: service.SystemServiceSupplier.GetHealthSvc(),
 	}
 	cs.userCtrl = &UserCtrl{
 		userService: service.SystemServiceSupplier.GetUserSvc(),

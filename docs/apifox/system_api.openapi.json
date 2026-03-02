@@ -1,0 +1,1092 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "personal_assistant - 系统API管理接口",
+    "description": "用于系统中 API 资源的查询、创建、更新、删除与路由同步。\n\n说明：\n1. 这些接口均位于受保护路由，需携带 JWT Bearer Token。\n2. 返回体采用统一 BizResponse 结构：code/success/message/data/timestamp。\n3. `PUT /system/api/{id}` 的 `menu_id` 是三态字段：\n   - 不传：保持当前菜单绑定不变\n   - 传 0：清空菜单绑定\n   - 传 >0：迁移并绑定到目标菜单",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:9000",
+      "description": "本地开发环境（请按实际服务地址修改）"
+    }
+  ],
+  "tags": [
+    {
+      "name": "系统-API管理",
+      "description": "对应 internal/router/system/apiRouter.go 中的接口"
+    },
+    {
+      "name": "系统-健康检查",
+      "description": "对应 internal/router/system/healthRouter.go 中的接口"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "tags": [
+          "系统-健康检查"
+        ],
+        "summary": "健康检查",
+        "description": "用于发布后验活，返回服务状态与时间戳。",
+        "operationId": "Health",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "健康检查结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseHealthResp"
+                },
+                "example": {
+                  "code": 0,
+                  "success": true,
+                  "message": "服务健康",
+                  "data": {
+                    "status": "UP",
+                    "db": "UP",
+                    "redis": "UP"
+                  },
+                  "timestamp": 1772320800000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/ping": {
+      "get": {
+        "tags": [
+          "系统-健康检查"
+        ],
+        "summary": "轻量探活",
+        "description": "返回固定 pong，用于快速探活。",
+        "operationId": "Ping",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "探活结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponsePingResp"
+                },
+                "example": {
+                  "code": 0,
+                  "success": true,
+                  "message": "pong",
+                  "data": {
+                    "message": "pong"
+                  },
+                  "timestamp": 1772320800000
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/api/list": {
+      "get": {
+        "tags": [
+          "系统-API管理"
+        ],
+        "summary": "获取 API 列表",
+        "description": "分页查询系统 API。支持按状态、请求方法、关键词过滤。\n\n返回字段中包含 `menu_id` 与 `menu_name`，便于前端直接回显 API 归属菜单。",
+        "operationId": "GetAPIList",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "description": "页码，默认 1",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1
+            },
+            "example": 1
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "description": "每页数量，默认 10",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 10
+            },
+            "example": 10
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "状态过滤：1 启用，0 禁用",
+            "schema": {
+              "type": "integer",
+              "enum": [
+                0,
+                1
+              ]
+            },
+            "example": 1
+          },
+          {
+            "name": "method",
+            "in": "query",
+            "description": "请求方法过滤",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "GET",
+                "POST",
+                "PUT",
+                "DELETE",
+                "PATCH"
+              ]
+            },
+            "example": "GET"
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "description": "关键词（按 path/detail 模糊搜索）",
+            "schema": {
+              "type": "string"
+            },
+            "example": "system/api"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功/业务失败均返回 HTTP 200，具体以 code 判断",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponsePageApiItem"
+                },
+                "examples": {
+                  "查询成功": {
+                    "summary": "分页查询成功",
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "获取成功",
+                      "data": {
+                        "list": [
+                          {
+                            "id": 12,
+                            "path": "/system/api/list",
+                            "method": "GET",
+                            "detail": "获取API列表",
+                            "status": 1,
+                            "menu_id": 5,
+                            "menu_name": "接口管理",
+                            "created_at": "2026-03-01T10:00:00+08:00",
+                            "updated_at": "2026-03-01T10:10:00+08:00"
+                          },
+                          {
+                            "id": 13,
+                            "path": "/system/api/sync",
+                            "method": "POST",
+                            "detail": "同步路由到API表",
+                            "status": 1,
+                            "menu_id": null,
+                            "menu_name": "",
+                            "created_at": "2026-03-01T10:00:00+08:00",
+                            "updated_at": "2026-03-01T10:10:00+08:00"
+                          }
+                        ],
+                        "total": 28,
+                        "page": 1,
+                        "page_size": 10
+                      },
+                      "timestamp": 1772320800000
+                    }
+                  },
+                  "参数错误": {
+                    "summary": "查询参数格式错误示例",
+                    "value": {
+                      "code": 10004,
+                      "success": false,
+                      "message": "参数错误",
+                      "data": null,
+                      "timestamp": 1772320800123
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或 Token 无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseError"
+                },
+                "example": {
+                  "code": 11000,
+                  "success": false,
+                  "message": "未授权访问",
+                  "data": null,
+                  "timestamp": 1772320800999
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/api/sync": {
+      "post": {
+        "tags": [
+          "系统-API管理"
+        ],
+        "summary": "同步路由到 API 表",
+        "description": "扫描 Gin 注册路由并同步到 `apis` 表。\n\n- `delete_removed=false`：仅禁用已不存在路由\n- `delete_removed=true`：删除已不存在路由（会先解绑 menu_apis 与 role_apis）",
+        "operationId": "SyncAPI",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SyncApiReq"
+              },
+              "examples": {
+                "仅禁用移除路由": {
+                  "value": {
+                    "delete_removed": false
+                  }
+                },
+                "直接删除移除路由": {
+                  "value": {
+                    "delete_removed": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "同步结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseSyncApi"
+                },
+                "examples": {
+                  "同步成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "同步成功",
+                      "data": {
+                        "added": 3,
+                        "updated": 0,
+                        "disabled": 2,
+                        "total": 76
+                      },
+                      "timestamp": 1772320900000
+                    }
+                  },
+                  "内部错误": {
+                    "value": {
+                      "code": 10004,
+                      "success": false,
+                      "message": "服务器内部错误",
+                      "data": null,
+                      "timestamp": 1772320900456
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/api": {
+      "post": {
+        "tags": [
+          "系统-API管理"
+        ],
+        "summary": "创建 API",
+        "description": "创建 API 并绑定归属菜单（单菜单归属）。\n\n业务规则：\n1. `path + method` 不能重复。\n2. `menu_id` 必须是有效菜单 ID。\n3. 创建成功后自动刷新权限策略。",
+        "operationId": "CreateAPI",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateApiReq"
+              },
+              "examples": {
+                "创建启用API": {
+                  "value": {
+                    "path": "/system/role/{id}/menu_api_map",
+                    "method": "GET",
+                    "detail": "获取角色菜单与API映射",
+                    "status": 1,
+                    "menu_id": 8
+                  }
+                },
+                "创建禁用API": {
+                  "value": {
+                    "path": "/system/demo/readonly",
+                    "method": "GET",
+                    "detail": "示例只读接口",
+                    "status": 0,
+                    "menu_id": 8
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "创建结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseNull"
+                },
+                "examples": {
+                  "创建成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "创建成功",
+                      "data": null,
+                      "timestamp": 1772321000000
+                    }
+                  },
+                  "菜单不存在": {
+                    "value": {
+                      "code": 30201,
+                      "success": false,
+                      "message": "菜单不存在",
+                      "data": null,
+                      "timestamp": 1772321000123
+                    }
+                  },
+                  "API重复": {
+                    "value": {
+                      "code": 30302,
+                      "success": false,
+                      "message": "API已存在（路径与方法组合重复）",
+                      "data": null,
+                      "timestamp": 1772321000456
+                    }
+                  },
+                  "缺少menu_id": {
+                    "value": {
+                      "code": 10004,
+                      "success": false,
+                      "message": "参数错误",
+                      "data": null,
+                      "timestamp": 1772321000999
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/api/{id}": {
+      "get": {
+        "tags": [
+          "系统-API管理"
+        ],
+        "summary": "获取 API 详情",
+        "description": "根据 API ID 获取详情，包含归属菜单信息。",
+        "operationId": "GetAPIByID",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "API ID",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "example": 12
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseApiItem"
+                },
+                "examples": {
+                  "查询成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "id": 12,
+                        "path": "/system/api/list",
+                        "method": "GET",
+                        "detail": "获取API列表",
+                        "status": 1,
+                        "menu_id": 5,
+                        "menu_name": "接口管理",
+                        "created_at": "2026-03-01T10:00:00+08:00",
+                        "updated_at": "2026-03-01T10:10:00+08:00"
+                      },
+                      "timestamp": 1772321100000
+                    }
+                  },
+                  "ID不存在": {
+                    "value": {
+                      "code": 30301,
+                      "success": false,
+                      "message": "API不存在",
+                      "data": null,
+                      "timestamp": 1772321100888
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "系统-API管理"
+        ],
+        "summary": "更新 API",
+        "description": "按 ID 更新 API。支持部分更新。\n\n`menu_id` 三态规则：\n- 不传：保持当前菜单绑定\n- 传 0：清空菜单绑定\n- 传 >0：迁移并绑定到目标菜单",
+        "operationId": "UpdateAPI",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "API ID",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "example": 12
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateApiReq"
+              },
+              "examples": {
+                "迁移到新菜单": {
+                  "summary": "修改描述并迁移菜单",
+                  "value": {
+                    "detail": "获取API列表（含菜单归属）",
+                    "menu_id": 9
+                  }
+                },
+                "清空菜单绑定": {
+                  "summary": "仅解绑菜单",
+                  "value": {
+                    "menu_id": 0
+                  }
+                },
+                "仅更新状态": {
+                  "summary": "不改菜单",
+                  "value": {
+                    "status": 0
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseNull"
+                },
+                "examples": {
+                  "更新成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "更新成功",
+                      "data": null,
+                      "timestamp": 1772321200000
+                    }
+                  },
+                  "菜单不存在": {
+                    "value": {
+                      "code": 30201,
+                      "success": false,
+                      "message": "菜单不存在",
+                      "data": null,
+                      "timestamp": 1772321200222
+                    }
+                  },
+                  "API冲突": {
+                    "value": {
+                      "code": 30302,
+                      "success": false,
+                      "message": "API已存在（路径与方法组合重复）",
+                      "data": null,
+                      "timestamp": 1772321200666
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "系统-API管理"
+        ],
+        "summary": "删除 API",
+        "description": "删除指定 API。服务端会先解绑 `menu_apis` 与 `role_apis` 再删除主记录。",
+        "operationId": "DeleteAPI",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "API ID",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "example": 12
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseNull"
+                },
+                "examples": {
+                  "删除成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "删除成功",
+                      "data": null,
+                      "timestamp": 1772321300000
+                    }
+                  },
+                  "ID不存在": {
+                    "value": {
+                      "code": 30301,
+                      "success": false,
+                      "message": "API不存在",
+                      "data": null,
+                      "timestamp": 1772321300444
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "在请求头携带：Authorization: Bearer <token>"
+      }
+    },
+    "schemas": {
+      "ApiItem": {
+        "type": "object",
+        "description": "API 详情对象（列表项与详情共用）",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "description": "API ID"
+          },
+          "path": {
+            "type": "string",
+            "description": "API 路径"
+          },
+          "method": {
+            "type": "string",
+            "description": "HTTP 请求方法",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "DELETE",
+              "PATCH"
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "description": "API 描述"
+          },
+          "status": {
+            "type": "integer",
+            "description": "状态：1 启用，0 禁用",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "menu_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "归属菜单 ID；未绑定时为 null"
+          },
+          "menu_name": {
+            "type": "string",
+            "description": "归属菜单名称；未绑定时为空字符串"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "创建时间"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "更新时间"
+          }
+        },
+        "required": [
+          "id",
+          "path",
+          "method",
+          "detail",
+          "status",
+          "menu_name",
+          "created_at",
+          "updated_at"
+        ]
+      },
+      "HealthResp": {
+        "type": "object",
+        "description": "健康检查响应数据",
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "UP"
+          },
+          "db": {
+            "type": "string",
+            "example": "UP"
+          },
+          "redis": {
+            "type": "string",
+            "example": "UP"
+          }
+        },
+        "required": [
+          "status",
+          "db",
+          "redis"
+        ]
+      },
+      "PingResp": {
+        "type": "object",
+        "description": "轻量探活响应数据",
+        "properties": {
+          "message": {
+            "type": "string",
+            "example": "pong"
+          }
+        },
+        "required": [
+          "message"
+        ]
+      },
+      "SyncApiReq": {
+        "type": "object",
+        "description": "同步路由到 API 表请求",
+        "properties": {
+          "delete_removed": {
+            "type": "boolean",
+            "default": false,
+            "description": "是否删除已不存在的路由。false=仅禁用，true=直接删除"
+          }
+        }
+      },
+      "CreateApiReq": {
+        "type": "object",
+        "description": "创建 API 请求",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "API 路径，例如 /system/api/list"
+          },
+          "method": {
+            "type": "string",
+            "description": "HTTP 请求方法",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "DELETE",
+              "PATCH"
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "description": "API 描述"
+          },
+          "status": {
+            "type": "integer",
+            "description": "状态：1 启用，0 禁用；服务端默认启用",
+            "enum": [
+              0,
+              1
+            ],
+            "default": 1
+          },
+          "menu_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "归属菜单 ID（必填）"
+          }
+        },
+        "required": [
+          "path",
+          "method",
+          "menu_id"
+        ]
+      },
+      "UpdateApiReq": {
+        "type": "object",
+        "description": "更新 API 请求（全部字段可选）",
+        "properties": {
+          "path": {
+            "type": "string",
+            "description": "API 路径"
+          },
+          "method": {
+            "type": "string",
+            "description": "HTTP 请求方法",
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "DELETE",
+              "PATCH"
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "description": "API 描述"
+          },
+          "status": {
+            "type": "integer",
+            "description": "状态：1 启用，0 禁用",
+            "enum": [
+              0,
+              1
+            ]
+          },
+          "menu_id": {
+            "type": "integer",
+            "nullable": true,
+            "description": "三态字段：不传=不变更；0=解绑；>0=迁移并绑定到目标菜单"
+          }
+        }
+      },
+      "SyncApiResp": {
+        "type": "object",
+        "description": "同步结果",
+        "properties": {
+          "added": {
+            "type": "integer",
+            "description": "新增 API 数量"
+          },
+          "updated": {
+            "type": "integer",
+            "description": "更新数量（当前实现通常为 0）"
+          },
+          "disabled": {
+            "type": "integer",
+            "description": "禁用 API 数量"
+          },
+          "total": {
+            "type": "integer",
+            "description": "当前 API 总数"
+          }
+        },
+        "required": [
+          "added",
+          "updated",
+          "disabled",
+          "total"
+        ]
+      },
+      "PageApiItem": {
+        "type": "object",
+        "properties": {
+          "list": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApiItem"
+            },
+            "description": "分页数据列表"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "总记录数"
+          },
+          "page": {
+            "type": "integer",
+            "description": "当前页码"
+          },
+          "page_size": {
+            "type": "integer",
+            "description": "每页大小"
+          }
+        },
+        "required": [
+          "list",
+          "total",
+          "page",
+          "page_size"
+        ]
+      },
+      "BizResponseNull": {
+        "type": "object",
+        "description": "统一响应（data 为 null）",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "业务码：0 成功，非 0 失败"
+          },
+          "success": {
+            "type": "boolean",
+            "description": "是否成功"
+          },
+          "message": {
+            "type": "string",
+            "description": "提示消息"
+          },
+          "data": {
+            "nullable": true,
+            "description": "响应数据"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "毫秒时间戳"
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizResponseApiItem": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/ApiItem"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizResponsePageApiItem": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PageApiItem"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizResponseSyncApi": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SyncApiResp"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizResponseError": {
+        "type": "object",
+        "description": "统一错误响应",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "错误码"
+          },
+          "success": {
+            "type": "boolean",
+            "enum": [
+              false
+            ]
+          },
+          "message": {
+            "type": "string",
+            "description": "错误信息"
+          },
+          "data": {
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizResponseHealthResp": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/HealthResp"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizResponsePingResp": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": "string"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PingResp"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      }
+    }
+  }
+}

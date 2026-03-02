@@ -37,6 +37,8 @@ func InitRouter() *gin.Engine {
 
 	PublicGroup := Router.Group("")
 	{
+		// 健康检查路由
+		systemRouter.InitHealthRouter(PublicGroup)
 		// 刷新Token路由
 		systemRouter.InitRefreshTokenRouter(PublicGroup)
 		// 基础登录服务 - 获取验证码
