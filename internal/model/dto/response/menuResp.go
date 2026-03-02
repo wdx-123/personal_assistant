@@ -8,13 +8,13 @@ type MenuItem struct {
 	ParentID      uint             `json:"parent_id"`
 	Name          string           `json:"name"`
 	Code          string           `json:"code"`
-	Type          int              `json:"type"`           // 1:目录 2:菜单 3:按钮
+	Type          int              `json:"type"` // 1:目录 2:菜单 3:按钮
 	Icon          string           `json:"icon"`
 	RouteName     string           `json:"route_name"`
 	RoutePath     string           `json:"route_path"`
 	RouteParam    string           `json:"route_param"`
 	ComponentPath string           `json:"component_path"`
-	Status        int              `json:"status"`         // 1:显示 0:隐藏
+	Status        int              `json:"status"` // 1:显示 0:隐藏
 	Sort          int              `json:"sort"`
 	Desc          string           `json:"desc"`
 	CreatedAt     time.Time        `json:"created_at"`

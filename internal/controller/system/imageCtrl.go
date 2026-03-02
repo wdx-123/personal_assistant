@@ -128,5 +128,3 @@ func (ctrl *ImageCtrl) List(c *gin.Context) {
 
 	response.BizOkWithPage(items, total, req.Page, req.PageSize, c)
 }
-
-

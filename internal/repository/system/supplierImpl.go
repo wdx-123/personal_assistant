@@ -10,14 +10,14 @@ type RepositorySupplier struct {
 	apiRepository  interfaces.APIRepository
 	orgRepository  interfaces.OrgRepository
 
-	leetcodeUserDetailRepository interfaces.LeetcodeUserDetailRepository
-	luoguUserDetailRepository    interfaces.LuoguUserDetailRepository
+	leetcodeUserDetailRepository   interfaces.LeetcodeUserDetailRepository
+	luoguUserDetailRepository      interfaces.LuoguUserDetailRepository
 	leetcodeQuestionBankRepository interfaces.LeetcodeQuestionBankRepository
-	luoguQuestionBankRepository  interfaces.LuoguQuestionBankRepository
+	luoguQuestionBankRepository    interfaces.LuoguQuestionBankRepository
 	leetcodeUserQuestionRepository interfaces.LeetcodeUserQuestionRepository
-	luoguUserQuestionRepository  interfaces.LuoguUserQuestionRepository
-	outboxRepository             interfaces.OutboxRepository
-	imageRepository              interfaces.ImageRepository
+	luoguUserQuestionRepository    interfaces.LuoguUserQuestionRepository
+	outboxRepository               interfaces.OutboxRepository
+	imageRepository                interfaces.ImageRepository
 }
 
 func (r *RepositorySupplier) GetUserRepository() interfaces.UserRepository {

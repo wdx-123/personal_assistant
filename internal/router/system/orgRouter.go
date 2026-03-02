@@ -42,7 +42,7 @@ func (r *OrgRouter) InitOrgBusinessRouter(router *gin.RouterGroup) {
 	orgGroup := router.Group("system/org")
 	orgCtrl := controller.ApiGroupApp.SystemApiGroup.GetOrgCtrl()
 	{
-		orgGroup.GET("my", orgCtrl.GetMyOrgs)        // 获取我的组织
+		orgGroup.GET("my", orgCtrl.GetMyOrgs)          // 获取我的组织
 		orgGroup.PUT("current", orgCtrl.SetCurrentOrg) // 切换当前组织
 	}
 }

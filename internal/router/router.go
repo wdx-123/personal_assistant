@@ -3,12 +3,13 @@ package router
 import (
 	"net/http"
 	"os"
+	"strings"
+	"time"
+
 	"personal_assistant/global"
 	"personal_assistant/internal/middleware"
 	"personal_assistant/internal/router/system"
 	"personal_assistant/internal/service"
-	"strings"
-	"time"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
@@ -37,6 +38,8 @@ func InitRouter() *gin.Engine {
 
 	PublicGroup := Router.Group("")
 	{
+		// 健康检查路由
+		systemRouter.InitHealthRouter(PublicGroup)
 		// 刷新Token路由
 		systemRouter.InitRefreshTokenRouter(PublicGroup)
 		// 基础登录服务 - 获取验证码

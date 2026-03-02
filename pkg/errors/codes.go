@@ -61,10 +61,10 @@ const (
 	CodeOrgOwnerOnly      BizCode = 30006 // 仅组织所有者可操作
 	CodeRoleNotFound      BizCode = 30101 // 角色不存在
 	CodeRoleAlreadyExists BizCode = 30102 // 角色已存在
-	CodeMenuNotFound       BizCode = 30201 // 菜单不存在
-	CodeMenuCodeDuplicate  BizCode = 30202 // 菜单code重复
-	CodeMenuHasChildren    BizCode = 30203 // 菜单存在子菜单，无法删除
-	CodeAPINotFound        BizCode = 30301 // API不存在
+	CodeMenuNotFound      BizCode = 30201 // 菜单不存在
+	CodeMenuCodeDuplicate BizCode = 30202 // 菜单code重复
+	CodeMenuHasChildren   BizCode = 30203 // 菜单存在子菜单，无法删除
+	CodeAPINotFound       BizCode = 30301 // API不存在
 	CodeAPIAlreadyExists  BizCode = 30302 // API已存在（path+method重复）
 
 	// ==================== OJ模块 4xxxx ====================
@@ -122,10 +122,10 @@ var codeMessages = map[BizCode]string{
 	CodeOrgOwnerOnly:      "仅组织所有者可操作",
 	CodeRoleNotFound:      "角色不存在",
 	CodeRoleAlreadyExists: "角色已存在",
-	CodeMenuNotFound:       "菜单不存在",
-	CodeMenuCodeDuplicate:  "菜单权限标识已存在",
-	CodeMenuHasChildren:    "该菜单下存在子菜单，无法删除",
-	CodeAPINotFound:        "API不存在",
+	CodeMenuNotFound:      "菜单不存在",
+	CodeMenuCodeDuplicate: "菜单权限标识已存在",
+	CodeMenuHasChildren:   "该菜单下存在子菜单，无法删除",
+	CodeAPINotFound:       "API不存在",
 	CodeAPIAlreadyExists:  "API已存在（路径与方法组合重复）",
 
 	// OJ模块

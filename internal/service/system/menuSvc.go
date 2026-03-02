@@ -5,7 +5,6 @@ import (
 	"sort"
 	"strings"
 
-	"personal_assistant/global"
 	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/dto/response"
@@ -13,25 +12,28 @@ import (
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/interfaces"
 	"personal_assistant/pkg/errors"
-
-	"gorm.io/gorm"
 )
 
 // MenuService 菜单管理服务
 type MenuService struct {
-	menuRepo interfaces.MenuRepository
-	apiRepo  interfaces.APIRepository
-	roleRepo interfaces.RoleRepository
-	orgRepo  interfaces.OrgRepository
+	menuRepo          interfaces.MenuRepository
+	apiRepo           interfaces.APIRepository
+	roleRepo          interfaces.RoleRepository
+	orgRepo           interfaces.OrgRepository
+	permissionService *PermissionService
 }
 
 // NewMenuService 创建菜单服务实例
-func NewMenuService(repositoryGroup *repository.Group) *MenuService {
+func NewMenuService(
+	repositoryGroup *repository.Group,
+	permissionService *PermissionService,
+) *MenuService {
 	return &MenuService{
-		menuRepo: repositoryGroup.SystemRepositorySupplier.GetMenuRepository(),
-		apiRepo:  repositoryGroup.SystemRepositorySupplier.GetAPIRepository(),
-		roleRepo: repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
-		orgRepo:  repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
+		menuRepo:          repositoryGroup.SystemRepositorySupplier.GetMenuRepository(),
+		apiRepo:           repositoryGroup.SystemRepositorySupplier.GetAPIRepository(),
+		roleRepo:          repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
+		orgRepo:           repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
+		permissionService: permissionService,
 	}
 }
 
@@ -285,31 +287,29 @@ func (s *MenuService) BindAPIs(ctx context.Context, menuID uint, apiIDs []uint) 
 		return errors.New(errors.CodeMenuNotFound)
 	}
 
-	// 过滤有效的 API ID（先查询存在的）
-	var validAPIIDs []uint
+	// 过滤有效的 API ID（去重）
+	validAPIIDs := make([]uint, 0, len(apiIDs))
+	seen := make(map[uint]struct{}, len(apiIDs))
 	for _, apiID := range apiIDs {
+		if apiID == 0 {
+			continue
+		}
+		if _, ok := seen[apiID]; ok {
+			continue
+		}
+		seen[apiID] = struct{}{}
+
 		api, err := s.apiRepo.GetByID(ctx, apiID)
 		if err == nil && api != nil && api.ID > 0 {
 			validAPIIDs = append(validAPIIDs, apiID)
 		}
 	}
 
-	// 使用事务保证原子性：先删后增
-	err = global.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// 清空原有绑定
-		if err := tx.Exec("DELETE FROM menu_apis WHERE menu_id = ?", menuID).Error; err != nil {
-			return err
-		}
-		// 批量插入新绑定
-		for _, apiID := range validAPIIDs {
-			if err := tx.Exec("INSERT IGNORE INTO menu_apis (menu_id, api_id) VALUES (?, ?)", menuID, apiID).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	if err != nil {
+	if err := s.menuRepo.ReplaceMenuAPIsSingleBinding(ctx, menuID, validAPIIDs); err != nil {
 		return errors.Wrap(errors.CodeDBError, err)
+	}
+	if err := s.permissionService.RefreshAllPermissions(ctx); err != nil {
+		return errors.Wrap(errors.CodeInternalError, err)
 	}
 	return nil
 }

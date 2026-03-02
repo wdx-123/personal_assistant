@@ -203,11 +203,12 @@ func (s *OrgService) CreateOrg(
 		return nil
 	})
 }
+
 // UpdateOrg 更新组织信息（仅组织所有者可操作）
 // 设计要点：使用事务保证“组织更新 + 头像分类更新 + 旧头像软删除”要么全部成功，要么全部回滚。
 func (s *OrgService) UpdateOrg(
 	ctx context.Context, // 请求上下文（用于超时/取消/链路追踪）
-	userID, orgID uint,  // 当前用户ID、目标组织ID
+	userID, orgID uint, // 当前用户ID、目标组织ID
 	req *request.UpdateOrgReq, // 更新参数（支持部分更新/可选字段）
 ) error {
 	// 开启事务：回调返回 nil -> commit；返回 error -> rollback。
@@ -307,7 +308,7 @@ func (s *OrgService) UpdateOrg(
 
 // orgAvatarPair 表达一次头像参数解析后的语义结果：是否提供、最终 avatar 字符串、最终 avatarID（可空）。
 type orgAvatarPair struct {
-	Provided bool  // 是否显式提供了头像字段对（用于区分“未修改头像”和“清空头像/设置头像”）
+	Provided bool   // 是否显式提供了头像字段对（用于区分“未修改头像”和“清空头像/设置头像”）
 	Avatar   string // 头像URL（空串表示清空）
 	AvatarID *uint  // 头像图片ID（nil 表示无头像）
 }

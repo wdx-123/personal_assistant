@@ -2,9 +2,10 @@ package outbox
 
 import (
 	"context"
+	"time"
+
 	"personal_assistant/internal/infrastructure/messaging"
 	"personal_assistant/internal/repository/interfaces"
-	"time"
 
 	"github.com/go-redis/redis/v8"
 	"go.uber.org/zap"
@@ -103,7 +104,9 @@ func (p *RelayProcessor) Run(ctx context.Context, redisClient *redis.Client) err
 		}
 	}
 	if sub != nil {
-		defer sub.Close()
+		defer func() {
+			_ = sub.Close()
+		}()
 	}
 
 	for {

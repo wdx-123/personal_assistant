@@ -1,9 +1,10 @@
 package config
 
 import (
-	"gorm.io/gorm/logger"
 	"strconv"
 	"strings"
+
+	"gorm.io/gorm/logger"
 )
 
 // Mysql 数据库配置

@@ -2,8 +2,9 @@ package response
 
 import (
 	"net/http"
-	"personal_assistant/global"
 	"reflect"
+
+	"personal_assistant/global"
 
 	"github.com/gin-gonic/gin"
 )

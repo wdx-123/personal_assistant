@@ -1,5 +1,5 @@
 # 第一阶段：构建阶段
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-alpine AS builder
 
 # 设置工作目录
 WORKDIR /app
@@ -17,7 +17,7 @@ COPY . .
 # 编译项目
 # -ldflags="-s -w" 用于减小二进制体积
 # -o personal_assistant 指定输出文件名
-RUN go build -ldflags="-s -w" -o personal_assistant cmd/main.go
+RUN go build -ldflags="-s -w" -o assist-backed cmd/main.go
 
 # 第二阶段：运行阶段
 FROM alpine:latest
@@ -29,7 +29,7 @@ WORKDIR /app
 RUN apk add --no-cache tzdata
 
 # 从构建阶段复制二进制文件
-COPY --from=builder /app/personal_assistant .
+COPY --from=builder /app/assist-backed .
 
 # 复制必要的配置文件
 # 注意：configs.yaml 包含默认配置，生产环境推荐用环境变量覆盖
@@ -40,7 +40,7 @@ COPY configs/model.conf configs/model.conf
 RUN mkdir -p static/images log
 
 # 暴露端口
-EXPOSE 8002
+EXPOSE 9000
 
 # 启动命令
-CMD ["./personal_assistant"]
+CMD ["./assist-backed"]

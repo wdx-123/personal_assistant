@@ -13,7 +13,9 @@ import (
 // SQL 表结构迁移，如果表不存在，它会创建新表；如果表已经存在，它会根据结构更新表
 // 迁移完成后自动初始化内置角色（幂等）
 func SQL() error {
-	if err := global.DB.Set("gorm:table_options", "ENGINE=InnoDB").AutoMigrate(
+	db := global.DB.Set("gorm:table_options", "ENGINE=InnoDB")
+
+	if err := db.AutoMigrate(
 		&entity.User{},                 // 用户表
 		&entity.Org{},                  // 组织表
 		&entity.LeetcodeUserDetail{},   // 力扣用户详情表
@@ -37,8 +39,54 @@ func SQL() error {
 		return err
 	}
 
+	// menu_apis 加唯一索引前先按 api_id 清洗历史重复绑定，仅保留最小 menu_id。
+	// 清晰数据用的，后期可删
+	if err := normalizeMenuAPISingleBinding(); err != nil {
+		return err
+	}
+
+	// 显式迁移 menu_apis 中间表，补齐 api_id 唯一约束（单API归属单菜单）。
+	// 迁移用的后期可删
+	if err := db.AutoMigrate(&entity.MenuAPI{}); err != nil {
+		return err
+	}
+
 	// 表结构就绪后，初始化内置角色
 	return seedBuiltinRoles()
+}
+
+// normalizeMenuAPISingleBinding 将同一 api_id 的多条菜单绑定裁剪为一条（保留最小 menu_id）。
+func normalizeMenuAPISingleBinding() error {
+	if !global.DB.Migrator().HasTable("menu_apis") {
+		return nil
+	}
+
+	return global.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec(`
+			CREATE TEMPORARY TABLE tmp_menu_apis_keep AS
+			SELECT MIN(menu_id) AS menu_id, api_id
+			FROM menu_apis
+			GROUP BY api_id
+		`).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Exec("DELETE FROM menu_apis").Error; err != nil {
+			_ = tx.Exec("DROP TEMPORARY TABLE IF EXISTS tmp_menu_apis_keep").Error
+			return err
+		}
+
+		if err := tx.Exec(`
+			INSERT INTO menu_apis (menu_id, api_id)
+			SELECT menu_id, api_id
+			FROM tmp_menu_apis_keep
+		`).Error; err != nil {
+			_ = tx.Exec("DROP TEMPORARY TABLE IF EXISTS tmp_menu_apis_keep").Error
+			return err
+		}
+
+		return tx.Exec("DROP TEMPORARY TABLE IF EXISTS tmp_menu_apis_keep").Error
+	})
 }
 
 // seedBuiltinRoles 初始化内置角色（幂等：已存在则跳过，不会重复创建）

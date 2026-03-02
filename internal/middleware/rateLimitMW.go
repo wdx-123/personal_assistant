@@ -85,4 +85,3 @@ func setRateLimitHeaders(c *gin.Context, result *ratelimit.Result) {
 		c.Status(http.StatusTooManyRequests)
 	}
 }
-

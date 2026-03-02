@@ -4,10 +4,10 @@
 package core
 
 import (
-"time"
+	"time"
 
-"github.com/fvbock/endless"
-"github.com/gin-gonic/gin"
+	"github.com/fvbock/endless"
+	"github.com/gin-gonic/gin"
 )
 
 // initServer 函数初始化一个 Endless 服务器（适用于非 Windows 系统）
@@ -37,4 +37,3 @@ func initServer(address string, router *gin.Engine) server {
 	3. 重新启动服务器
 	4. 重新监听端口
 */
-

@@ -7,6 +7,7 @@ type RouterGroup struct {
 	// 认证相关
 	RefreshTokenRouter // Token刷新路由
 	BaseRouter         // 基础路由（登录、注册、验证码等公开接口）
+	HealthRouter       // 健康检查路由（公开）
 
 	// 业务模块
 	UserRouter // 用户管理路由

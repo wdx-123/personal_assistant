@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository/interfaces"
@@ -101,6 +102,16 @@ func (m *menuRepository) GetAllMenus(
 	return menus, err
 }
 
+// GetAllMenusWithAPIs 获取所有菜单（预加载关联API）
+func (m *menuRepository) GetAllMenusWithAPIs(ctx context.Context) ([]*entity.Menu, error) {
+	var menus []*entity.Menu
+	err := m.db.WithContext(ctx).
+		Preload("APIs").
+		Order("sort ASC, id ASC").
+		Find(&menus).Error
+	return menus, err
+}
+
 // GetMenuTree 获取菜单树
 func (m *menuRepository) GetMenuTree(
 	ctx context.Context,
@@ -168,6 +179,43 @@ func (m *menuRepository) ClearMenuAPIs(ctx context.Context, menuID uint) error {
 		Exec("DELETE FROM menu_apis WHERE menu_id = ?", menuID).Error
 }
 
+// ReplaceMenuAPIsSingleBinding 覆盖菜单绑定（单菜单语义）
+// 先清空当前菜单旧绑定，再逐个将 apiIDs 迁移并绑定到当前菜单。
+func (m *menuRepository) ReplaceMenuAPIsSingleBinding(
+	ctx context.Context,
+	menuID uint,
+	apiIDs []uint,
+) error {
+	return m.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Exec("DELETE FROM menu_apis WHERE menu_id = ?", menuID).Error; err != nil {
+			return err
+		}
+		if len(apiIDs) == 0 {
+			return nil
+		}
+
+		seen := make(map[uint]struct{}, len(apiIDs))
+		for _, apiID := range apiIDs {
+			if apiID == 0 {
+				continue
+			}
+			if _, ok := seen[apiID]; ok {
+				continue
+			}
+			seen[apiID] = struct{}{}
+
+			// 单菜单语义：一个API仅能属于一个菜单，先按 api_id 清理历史绑定。
+			if err := tx.Exec("DELETE FROM menu_apis WHERE api_id = ?", apiID).Error; err != nil {
+				return err
+			}
+			if err := tx.Exec("INSERT INTO menu_apis (menu_id, api_id) VALUES (?, ?)", menuID, apiID).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 // GetMenuAPIs 获取菜单关联的API列表
 func (m *menuRepository) GetMenuAPIs(ctx context.Context, menuID uint) ([]*entity.API, error) {
 	var apis []*entity.API
@@ -188,6 +236,24 @@ func (m *menuRepository) GetAPIMenus(ctx context.Context, apiID uint) ([]*entity
 		Where("menu_apis.api_id = ? AND menus.deleted_at IS NULL", apiID).
 		Find(&menus).Error
 	return menus, err
+}
+
+// GetAPIIDsByMenuIDs 按菜单ID集合查询绑定的API ID集合（去重）
+func (m *menuRepository) GetAPIIDsByMenuIDs(
+	ctx context.Context,
+	menuIDs []uint,
+) ([]uint, error) {
+	apiIDs := make([]uint, 0)
+	if len(menuIDs) == 0 {
+		return apiIDs, nil
+	}
+	err := m.db.WithContext(ctx).
+		Table("apis").
+		Joins("JOIN menu_apis ON apis.id = menu_apis.api_id").
+		Where("menu_apis.menu_id IN ? AND apis.deleted_at IS NULL", menuIDs).
+		Distinct().
+		Pluck("apis.id", &apiIDs).Error
+	return apiIDs, err
 }
 
 // 角色菜单关系查询

@@ -1,9 +1,10 @@
 package core
 
 import (
+	"strings"
+
 	"personal_assistant/global"
 	"personal_assistant/internal/model/config"
-	"strings"
 
 	"github.com/spf13/viper"
 	"go.uber.org/zap"

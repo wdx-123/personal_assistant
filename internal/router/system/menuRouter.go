@@ -24,7 +24,7 @@ func (r *MenuRouter) InitMenuRouter(router *gin.RouterGroup) {
 		menuGroup.GET("list", menuCtrl.GetMenuList)
 
 		// 写操作接口（bind_api 需在 :id 路由前注册，避免路径冲突）
-		// POST /bind_api - 绑定API到菜单（覆盖式，用于菜单级权限控制）
+		// POST /bind_api - 绑定API到菜单（覆盖式，单菜单语义：API已归属其他菜单时自动迁移）
 		menuGroup.POST("bind_api", menuCtrl.BindAPIs)
 		// POST / - 创建菜单/目录/按钮
 		menuGroup.POST("", menuCtrl.CreateMenu)

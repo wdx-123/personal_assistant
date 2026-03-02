@@ -2,6 +2,7 @@ package adapter
 
 import (
 	"fmt"
+
 	"gorm.io/gorm"
 )
 

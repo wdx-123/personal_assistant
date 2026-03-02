@@ -7,11 +7,11 @@ type OJRankingListResp struct {
 }
 
 type OJRankingListItem struct {
-	Rank            int                      `json:"rank"`
-	UserID          uint                     `json:"user_id"`
-	RealName        string                   `json:"real_name"`
-	Avatar          string                   `json:"avatar"`
-	TotalPassed     int                      `json:"total_passed"`
+	Rank            int                       `json:"rank"`
+	UserID          uint                      `json:"user_id"`
+	RealName        string                    `json:"real_name"`
+	Avatar          string                    `json:"avatar"`
+	TotalPassed     int                       `json:"total_passed"`
 	PlatformDetails *OJRankingPlatformDetails `json:"platform_details,omitempty"`
 }
 

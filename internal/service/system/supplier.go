@@ -6,6 +6,7 @@ type Supplier interface {
 	GetJWTSvc() *JWTService
 	GetPermissionSvc() *PermissionService
 	GetBaseSvc() *BaseService
+	GetHealthSvc() *HealthService
 	GetUserSvc() *UserService
 	GetOrgSvc() *OrgService
 	GetOJSvc() *OJService
@@ -21,10 +22,11 @@ func SetUp(repositoryGroup *repository.Group) Supplier {
 	ss.jwtService = NewJWTService(repositoryGroup)
 	ss.permissionService = NewPermissionService(repositoryGroup)
 	ss.baseService = NewBaseService()
+	ss.healthService = NewHealthService()
 	ss.orgService = NewOrgService(repositoryGroup)
 	ss.ojService = NewOJService(repositoryGroup)
-	ss.apiService = NewApiService(repositoryGroup)
-	ss.menuService = NewMenuService(repositoryGroup)
+	ss.apiService = NewApiService(repositoryGroup, ss.permissionService)
+	ss.menuService = NewMenuService(repositoryGroup, ss.permissionService)
 	ss.roleService = NewRoleService(repositoryGroup, ss.permissionService)
 	ss.imageService = NewImageService(repositoryGroup)
 

@@ -17,8 +17,8 @@ type Config struct {
 	Storage   Storage   `json:"storage" yaml:"storage"` // 存储驱动配置
 	Static    Static    `json:"static" yaml:"static"`   // 静态文件配置
 	Crawler   Crawler   `json:"crawler" yaml:"crawler"`
-	Task      Task      `json:"task" yaml:"task"`           // 定时任务配置
-	Messaging Messaging `json:"messaging" yaml:"messaging"` // 消息队列配置
+	Task      Task      `json:"task" yaml:"task"`             // 定时任务配置
+	Messaging Messaging `json:"messaging" yaml:"messaging"`   // 消息队列配置
 	RateLimit RateLimit `json:"rate_limit" yaml:"rate_limit"` // 限流配置
 }
 

@@ -2,9 +2,10 @@ package system
 
 import (
 	"context"
+	"time"
+
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository/interfaces"
-	"time"
 
 	"gorm.io/gorm"
 )

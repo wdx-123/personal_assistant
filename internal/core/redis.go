@@ -3,8 +3,9 @@ package core
 import (
 	"context"
 	"os"
-	"personal_assistant/global"
 	"time"
+
+	"personal_assistant/global"
 
 	"github.com/go-redis/redis/v8"
 	"go.uber.org/zap"
