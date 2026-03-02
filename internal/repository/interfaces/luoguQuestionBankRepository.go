@@ -2,6 +2,7 @@ package interfaces
 
 import (
 	"context"
+
 	"personal_assistant/internal/model/entity"
 )
 

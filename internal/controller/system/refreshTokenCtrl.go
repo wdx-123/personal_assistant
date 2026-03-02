@@ -2,15 +2,17 @@ package system
 
 import (
 	"errors"
-	"github.com/gin-gonic/gin"
 	"io"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+
 	"personal_assistant/global"
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
 	serviceSystem "personal_assistant/internal/service/system"
 	"personal_assistant/pkg/jwt"
 	"personal_assistant/pkg/response"
-	"strings"
 )
 
 type RefreshTokenCtrl struct {

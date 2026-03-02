@@ -2,6 +2,8 @@ package system
 
 import (
 	"fmt"
+	"time"
+
 	"personal_assistant/global"
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
@@ -10,7 +12,6 @@ import (
 	"personal_assistant/pkg/jwt"
 	"personal_assistant/pkg/response"
 	"personal_assistant/pkg/util"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"

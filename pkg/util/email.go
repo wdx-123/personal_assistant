@@ -3,10 +3,12 @@ package util
 import (
 	"crypto/tls"
 	"fmt"
-	"github.com/jordan-wright/email"
 	"net/smtp"
-	"personal_assistant/global"
 	"strings"
+
+	"github.com/jordan-wright/email"
+
+	"personal_assistant/global"
 )
 
 // Email 发送电子邮件

@@ -3,14 +3,16 @@ package system
 import (
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/mojocn/base64Captcha"
 	"go.uber.org/zap"
+
 	"personal_assistant/global"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/pkg/util"
-	"time"
 )
 
 type BaseService struct {

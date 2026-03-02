@@ -5,6 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
 	"personal_assistant/global"
 	"personal_assistant/internal/infrastructure"
 	lc "personal_assistant/internal/infrastructure/leetcode"
@@ -17,9 +21,6 @@ import (
 	"personal_assistant/internal/repository/interfaces"
 	"personal_assistant/pkg/rediskey"
 	"personal_assistant/pkg/redislock"
-	"strconv"
-	"strings"
-	"time"
 
 	"github.com/go-redis/redis/v8"
 

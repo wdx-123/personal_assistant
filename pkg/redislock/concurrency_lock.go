@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"personal_assistant/global"
 	"sync"
 	"time"
+
+	"personal_assistant/global"
 
 	"github.com/go-redis/redis/v8"
 	"github.com/google/uuid"

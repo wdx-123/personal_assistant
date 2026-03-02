@@ -2,9 +2,10 @@ package jwt
 
 import (
 	"net"
+	"strings"
+
 	"personal_assistant/global"
 	"personal_assistant/internal/model/dto/request"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid"

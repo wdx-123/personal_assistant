@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"personal_assistant/global"
 	"time"
+
+	"personal_assistant/global"
 )
 
 // SQLExport 导出 MySQL 数据
@@ -30,7 +31,9 @@ func SQLExport() error {
 
 	// 将 mysqldump 的标准输出（stdout）重定向到 outFile
 	cmd.Stdout = outFile
-	defer outFile.Close()
+	defer func() {
+		_ = outFile.Close()
+	}()
 
 	return cmd.Run()
 }

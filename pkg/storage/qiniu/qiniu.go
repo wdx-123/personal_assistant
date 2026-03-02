@@ -152,4 +152,3 @@ func generateObjectKey(filename string) string {
 	dateDir := time.Now().Format("20060102")
 	return filepath.ToSlash(filepath.Join(dateDir, randHex+ext))
 }
-

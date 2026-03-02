@@ -85,19 +85,19 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 		}
 	}
 	return &RepositorySupplier{
-		userRepository:               userRepo,
-		jwtRepository:                jwtRepo,
-		roleRepository:               roleRepo,
-		menuRepository:               menuRepo,
-		apiRepository:                apiRepo,
-		orgRepository:                orgRepo,
-		leetcodeUserDetailRepository: leetcodeUserDetailRepo,
-		luoguUserDetailRepository:    luoguUserDetailRepo,
+		userRepository:                 userRepo,
+		jwtRepository:                  jwtRepo,
+		roleRepository:                 roleRepo,
+		menuRepository:                 menuRepo,
+		apiRepository:                  apiRepo,
+		orgRepository:                  orgRepo,
+		leetcodeUserDetailRepository:   leetcodeUserDetailRepo,
+		luoguUserDetailRepository:      luoguUserDetailRepo,
 		leetcodeQuestionBankRepository: leetcodeQuestionBankRepo,
-		luoguQuestionBankRepository:  luoguQuestionBankRepo,
+		luoguQuestionBankRepository:    luoguQuestionBankRepo,
 		leetcodeUserQuestionRepository: leetcodeUserQuestionRepo,
-		luoguUserQuestionRepository:  luoguUserQuestionRepo,
-		outboxRepository:             outboxRepo,
-		imageRepository:              imageRepo,
+		luoguUserQuestionRepository:    luoguUserQuestionRepo,
+		outboxRepository:               outboxRepo,
+		imageRepository:                imageRepo,
 	}
 }

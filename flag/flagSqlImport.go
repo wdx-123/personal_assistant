@@ -2,8 +2,9 @@ package flag
 
 import (
 	"os"
-	"personal_assistant/global"
 	"strings"
+
+	"personal_assistant/global"
 )
 
 // SQLImport 导入 MySQL 数据

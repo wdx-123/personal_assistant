@@ -140,7 +140,7 @@ func TestClient_StructuredError(t *testing.T) {
 	if re.Message != expected {
 		t.Fatalf("expected message %q, got %q", expected, re.Message)
 	}
-	
+
 	// 验证 Error() 输出格式
 	expectedErrorStr := "luogu remote error: 403 Client Error: Forbidden for url: https://www.luogu.com.cn/user/123/practice (status=500)"
 	if err.Error() != expectedErrorStr {

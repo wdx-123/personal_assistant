@@ -3,6 +3,8 @@ package init
 import (
 	"context"
 	"os"
+	"time"
+
 	"personal_assistant/flag"
 	"personal_assistant/global"
 	"personal_assistant/internal/controller"
@@ -11,7 +13,6 @@ import (
 	"personal_assistant/internal/infrastructure"
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/adapter"
-	"time"
 
 	"github.com/joho/godotenv"
 
