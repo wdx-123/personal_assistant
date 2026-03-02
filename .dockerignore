@@ -8,7 +8,6 @@
 docs
 log
 static
-task
 
 .env
 .env.*
