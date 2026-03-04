@@ -227,6 +227,13 @@ func (c *RoleCtrl) GetRoleMenuIDs(ctx *gin.Context) {
 
 // GetRoleMenuAPIMap 获取角色菜单/API映射（一次性渲染大对象）
 func (c *RoleCtrl) GetRoleMenuAPIMap(ctx *gin.Context) {
+	var query request.GetRoleMenuAPIMapQuery
+	if err := ctx.ShouldBindQuery(&query); err != nil {
+		global.Log.Error("获取角色菜单/API映射参数绑定失败", zap.Error(err))
+		response.BizFailWithMessage("参数错误", ctx)
+		return
+	}
+
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
@@ -234,7 +241,7 @@ func (c *RoleCtrl) GetRoleMenuAPIMap(ctx *gin.Context) {
 		return
 	}
 
-	mapping, err := c.roleService.GetRoleMenuAPIMap(ctx.Request.Context(), uint(id))
+	mapping, err := c.roleService.GetRoleMenuAPIMap(ctx.Request.Context(), uint(id), query.MaxLevel)
 	if err != nil {
 		global.Log.Error("获取角色菜单/API映射失败", zap.Uint64("id", id), zap.Error(err))
 		response.BizFailWithError(err, ctx)
