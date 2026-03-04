@@ -8,7 +8,7 @@ import (
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
-	serviceSystem "personal_assistant/internal/service/system"
+	serviceContract "personal_assistant/internal/service/contract"
 	"personal_assistant/pkg/jwt"
 	"personal_assistant/pkg/response"
 	"personal_assistant/pkg/util"
@@ -18,8 +18,8 @@ import (
 )
 
 type UserCtrl struct {
-	userService *serviceSystem.UserService
-	jwtService  *serviceSystem.JWTService
+	userService serviceContract.UserServiceContract
+	jwtService  serviceContract.JWTServiceContract
 }
 
 // Register 注册

@@ -2,7 +2,11 @@ package messaging
 
 import (
 	"context"
+	"strings"
 	"time"
+
+	"personal_assistant/pkg/observability/contextid"
+	"personal_assistant/pkg/observability/w3c"
 
 	"github.com/go-redis/redis/v8"
 	"go.uber.org/zap"
@@ -28,6 +32,28 @@ func (p *RedisStreamPublisher) Publish(
 	ctx context.Context,
 	msg *Message,
 ) error {
+	if msg.Metadata == nil {
+		msg.Metadata = make(map[string]string)
+	}
+	ctx, ids := contextid.EnsureIDs(ctx)
+	ctx, tc := contextid.EnsureTraceContext(ctx)
+
+	if traceparent := w3c.BuildTraceparent(tc); traceparent != "" {
+		if _, ok := msg.Metadata["traceparent"]; !ok {
+			msg.Metadata["traceparent"] = traceparent
+		}
+	}
+	if tracestate := strings.TrimSpace(tc.TraceState); tracestate != "" {
+		if _, ok := msg.Metadata["tracestate"]; !ok {
+			msg.Metadata["tracestate"] = tracestate
+		}
+	}
+	if ids.RequestID != "" {
+		if _, ok := msg.Metadata["request_id"]; !ok {
+			msg.Metadata["request_id"] = ids.RequestID
+		}
+	}
+
 	// 如果没有设置发布时间，则设置为当前时间
 	if msg.PublishedAt.IsZero() {
 		msg.PublishedAt = time.Now()

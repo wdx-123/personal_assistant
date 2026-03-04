@@ -14,11 +14,14 @@ import (
 	lc "personal_assistant/internal/infrastructure/leetcode"
 	lg "personal_assistant/internal/infrastructure/luogu"
 	"personal_assistant/internal/infrastructure/outbox"
+	eventdto "personal_assistant/internal/model/dto/event"
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/interfaces"
+	svccontract "personal_assistant/internal/service/contract"
+	"personal_assistant/pkg/observability/contextid"
 	"personal_assistant/pkg/rediskey"
 	"personal_assistant/pkg/redislock"
 
@@ -27,13 +30,6 @@ import (
 	"github.com/google/uuid"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
-)
-
-var (
-	ErrInvalidPlatform   = errors.New("invalid platform")
-	ErrInvalidIdentifier = errors.New("invalid identifier")
-	ErrBindCoolDown      = errors.New("bind operation is in cooldown")
-	ErrOJAccountNotBound = errors.New("oj account not bound")
 )
 
 type OJService struct {
@@ -68,13 +64,13 @@ func (s *OJService) BindOJAccount(
 	req *request.BindOJAccountReq,
 ) (*resp.BindOJAccountResp, error) {
 	if req == nil {
-		return nil, ErrInvalidIdentifier
+		return nil, svccontract.ErrInvalidIdentifier
 	}
 
 	platform := strings.ToLower(strings.TrimSpace(req.Platform))
 	identifier := strings.TrimSpace(req.Identifier)
 	if identifier == "" {
-		return nil, ErrInvalidIdentifier
+		return nil, svccontract.ErrInvalidIdentifier
 	}
 
 	const sleepSec = 0.2
@@ -85,7 +81,7 @@ func (s *OJService) BindOJAccount(
 	case "luogu":
 		return s.bindLuogu(ctx, userID, identifier, sleepSec)
 	default:
-		return nil, ErrInvalidPlatform
+		return nil, svccontract.ErrInvalidPlatform
 	}
 }
 
@@ -103,7 +99,7 @@ func (s *OJService) GetUserStats(
 
 	platform := strings.ToLower(strings.TrimSpace(req.Platform))
 	if platform != "luogu" && platform != "leetcode" {
-		return nil, ErrInvalidPlatform
+		return nil, svccontract.ErrInvalidPlatform
 	}
 
 	if platform == "luogu" {
@@ -112,7 +108,7 @@ func (s *OJService) GetUserStats(
 			return nil, err
 		}
 		if detail == nil {
-			return nil, ErrOJAccountNotBound
+			return nil, svccontract.ErrOJAccountNotBound
 		}
 		return &resp.BindOJAccountResp{
 			Platform:     "luogu",
@@ -128,7 +124,7 @@ func (s *OJService) GetUserStats(
 		return nil, err
 	}
 	if detail == nil {
-		return nil, ErrOJAccountNotBound
+		return nil, svccontract.ErrOJAccountNotBound
 	}
 	return &resp.BindOJAccountResp{
 		Platform:     "leetcode",
@@ -159,7 +155,7 @@ func (s *OJService) bindLeetCode(
 		}
 		// 指针为空视为从未绑定，直接放行；否则检查冷却
 		if existing.LastBindAt != nil && time.Since(*existing.LastBindAt) < time.Duration(coolDownHours)*time.Hour {
-			return nil, ErrBindCoolDown
+			return nil, svccontract.ErrBindCoolDown
 		}
 		// 2. 如果存在旧记录且ID变更（即换绑），则清空旧数据
 		// 注意：如果只是更新同一个账号的信息，其实不需要删，但为了逻辑简化统一，
@@ -195,7 +191,7 @@ func (s *OJService) bindLeetCode(
 	realName := strings.TrimSpace(out.Data.Profile.RealName)
 	userAvatar := strings.TrimSpace(out.Data.Profile.UserAvatar)
 	if userSlug == "" && realName == "" && userAvatar == "" && total == 0 {
-		return nil, ErrOJAccountNotBound
+		return nil, svccontract.ErrOJAccountNotBound
 	}
 
 	now := time.Now()
@@ -369,7 +365,7 @@ func (s *OJService) syncSingleLeetcodeUser( // 单用户力扣同步
 	}
 	identifier := strings.TrimSpace(u.UserSlug) // 取用户 slug 作为标识
 	if identifier == "" {                       // 校验标识合法性
-		return ErrInvalidIdentifier // 返回无效标识错误
+		return svccontract.ErrInvalidIdentifier // 返回无效标识错误
 	}
 
 	out, err := infrastructure.LeetCode().PublicProfile(ctx, identifier, 0) // 拉取公开资料
@@ -484,7 +480,7 @@ func (s *OJService) fetchLuoguPractice(ctx context.Context, u *entity.LuoguUserD
 		passed = len(out.Data.Passed)
 	}
 	if name == "" && avatar == "" && passed == 0 {
-		return nil, ErrOJAccountNotBound
+		return nil, svccontract.ErrOJAccountNotBound
 	}
 	return out, nil
 }
@@ -826,7 +822,7 @@ func (s *OJService) rebuildRankingCache(
 	}
 	platform = strings.ToLower(strings.TrimSpace(platform))
 	if platform != "luogu" && platform != "leetcode" {
-		return ErrInvalidPlatform
+		return svccontract.ErrInvalidPlatform
 	}
 	key := rediskey.RankingZSetKey(orgID, platform)
 	pipe := global.Redis.Pipeline()
@@ -932,7 +928,7 @@ func normalizeRankingRequest(
 
 	platform := strings.ToLower(strings.TrimSpace(req.Platform))
 	if platform != "luogu" && platform != "leetcode" {
-		return "", 0, 0, ErrInvalidPlatform
+		return "", 0, 0, svccontract.ErrInvalidPlatform
 	}
 
 	page := req.Page
@@ -1139,14 +1135,10 @@ func loadMyRank(
 	return nil, nil
 }
 
-type LuoguBindPayload struct {
-	Passed []lg.PassedProblem `json:"passed"`
-}
-
 func (s *OJService) HandleLuoguBindPayload(
 	ctx context.Context,
 	userID uint,
-	payload *LuoguBindPayload,
+	payload *eventdto.LuoguBindPayload,
 ) error {
 	if payload == nil {
 		return errors.New("nil luogu bind payload")
@@ -1288,7 +1280,7 @@ func (s *OJService) ensureLuoguBindReady(
 		coolDownHours = 24
 	}
 	if existing.LastBindAt != nil && time.Since(*existing.LastBindAt) < time.Duration(coolDownHours)*time.Hour {
-		return ErrBindCoolDown
+		return svccontract.ErrBindCoolDown
 	}
 	if existing.Identification != identifier {
 		return s.luoguRepo.DeleteByUserID(ctx, userID)
@@ -1303,7 +1295,7 @@ func (s *OJService) fetchLuoguPracticeForBind(
 ) (*lg.GetPracticeResponse, error) {
 	uid, err := strconv.Atoi(identifier)
 	if err != nil || uid <= 0 {
-		return nil, ErrInvalidIdentifier
+		return nil, svccontract.ErrInvalidIdentifier
 	}
 	out, err := infrastructure.Luogu().GetPractice(ctx, uid, sleepSec)
 	if err != nil {
@@ -1326,7 +1318,7 @@ func (s *OJService) fetchLuoguPracticeForBind(
 		passed = len(out.Data.Passed)
 	}
 	if name == "" && avatar == "" && passed == 0 {
-		return nil, ErrOJAccountNotBound
+		return nil, svccontract.ErrOJAccountNotBound
 	}
 	return out, nil
 }
@@ -1388,13 +1380,14 @@ func (s *OJService) publishLuoguBindOutbox(
 		return errors.New("luogu bind topic config is empty")
 	}
 
-	payload := &LuoguBindPayload{
+	payload := &eventdto.LuoguBindPayload{
 		Passed: passed,
 	}
 	payloadBytes, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
+	ids := contextid.FromContext(ctx)
 
 	event := &entity.OutboxEvent{
 		EventID:       uuid.New().String(),
@@ -1402,6 +1395,8 @@ func (s *OJService) publishLuoguBindOutbox(
 		AggregateID:   strconv.FormatUint(uint64(userID), 10),
 		AggregateType: "luogu_user",
 		Payload:       string(payloadBytes),
+		TraceID:       ids.TraceID,
+		RequestID:     ids.RequestID,
 	}
 	if err := s.outboxRepo.Create(ctx, event); err != nil {
 		return err
@@ -1425,6 +1420,7 @@ func (s *OJService) publishLeetcodeBindOutbox(
 	if err != nil {
 		return err
 	}
+	ids := contextid.FromContext(ctx)
 
 	event := &entity.OutboxEvent{
 		EventID:       uuid.New().String(),
@@ -1432,6 +1428,8 @@ func (s *OJService) publishLeetcodeBindOutbox(
 		AggregateID:   strconv.FormatUint(uint64(userID), 10),
 		AggregateType: "leetcode_user",
 		Payload:       string(payloadBytes),
+		TraceID:       ids.TraceID,
+		RequestID:     ids.RequestID,
 	}
 	if err := s.outboxRepo.Create(ctx, event); err != nil {
 		return err

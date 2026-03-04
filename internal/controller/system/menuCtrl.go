@@ -7,7 +7,7 @@ import (
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
-	serviceSystem "personal_assistant/internal/service/system"
+	serviceContract "personal_assistant/internal/service/contract"
 	"personal_assistant/pkg/jwt"
 	"personal_assistant/pkg/response"
 
@@ -17,11 +17,11 @@ import (
 
 // MenuCtrl 菜单管理控制器
 type MenuCtrl struct {
-	menuService *serviceSystem.MenuService
+	menuService serviceContract.MenuServiceContract
 }
 
 // NewMenuCtrl 创建菜单控制器实例
-func NewMenuCtrl(menuService *serviceSystem.MenuService) *MenuCtrl {
+func NewMenuCtrl(menuService serviceContract.MenuServiceContract) *MenuCtrl {
 	return &MenuCtrl{menuService: menuService}
 }
 

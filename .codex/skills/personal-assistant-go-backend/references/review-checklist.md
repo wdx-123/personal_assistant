@@ -51,7 +51,18 @@
 - 合并前至少执行相关 build/test 命令。
 - 若无法完成某些验证，明确剩余风险。
 
-## I. 输出格式
+## I. 独立基础设施能力（新增或改造时必查）
+
+- 初始化、连接创建与生命周期逻辑位于 `internal/core`，而非散落在业务层。
+- `internal/init/init.go` 仅做编排，未承载具体设施实现细节。
+- Controller/Service 未直接 `new` 第三方设施客户端。
+- 可变参数均已进入 `internal/model/config`，并通过 `global.Config` 读取。
+- `pkg/*` 未直接依赖 `viper` 或 `global.Config`（若有配置，采用注入的 `Options`）。
+- Redis/MySQL 的业务 CRUD/JOIN 仍在 Repository 层，未被下沉到基础设施通用层。
+- 运行失败具备可观测日志（`global.Log.Error`）且无静默吞错。
+- 无重复初始化或重复启动同一设施组件。
+
+## J. 输出格式
 
 输出评审结果时：
 

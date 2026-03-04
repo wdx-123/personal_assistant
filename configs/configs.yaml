@@ -167,3 +167,61 @@ messaging:
   leetcode_bind_topic: "leetcode.bind"
   leetcode_bind_group: "leetcode_bind_group"
   leetcode_bind_consumer: "leetcode_bind_consumer"
+observability:
+  enabled: true                      # 总开关
+  service_name: "personal_assistant" # 服务名维度（需稳定）
+  service_trace:
+    enabled: true
+    modules:
+      - "jwt"
+      - "user"
+      - "oj"
+      - "image"
+      - "observability"
+  propagation:
+    enabled: true
+    request_id_header: "X-Request-ID" # 本地日志排障 ID
+    parse_w3c: true
+    inject_w3c: true
+
+  metrics:
+    flush_interval_ms: 1000          # 内存桶刷库间隔
+    db_batch_size: 500               # 每批写库行数
+    fine_retention_days: 45          # 1m/5m 保留天数
+    day_retention_days: 365          # 1d 保留天数
+    week_retention_days: 0           # 1w 保留天数（0=不保留/不启用，按实现）
+    rollup_cron: "10 2 * * *"        # rollup+清理定时
+
+  traces:
+    enabled: true                    # trace spans 开关
+    stream_key: "traces:stream"      # Redis Stream key
+    stream_group: "traces_persist_group" # consumer group
+    stream_consumer: "go_trace_consumer" # consumer 名（建议实例唯一）
+    stream_read_count: 200           # 单次读/claim 条数
+    stream_block_ms: 1000            # 阻塞读取时长
+    pending_idle_ms: 60000           # pending 回收阈值
+    db_batch_size: 100               # spans 落库批量
+    db_flush_interval_ms: 800        # spans 刷新间隔
+    normal_queue_size: 4096          # 成功/非关键队列容量（满则丢）
+    critical_queue_size: 1024        # 错误/关键队列容量
+    enqueue_timeout_ms: 30           # 关键入队等待上限
+    success_sample_rate: 1           # 成功采样率（1=全量）
+    drop_success_on_overload: true   # 过载丢成功，保错误
+    capture_error_payload: true      # 仅错误采集 payload
+    max_payload_bytes: 4096          # payload 截断字节数
+    capture_error_stack: true        # 错误 span 是否采集栈
+    capture_error_detail: true       # 错误 span 是否采集结构化明细
+    max_stack_bytes: 8192            # stack 截断字节数
+    max_detail_bytes: 4096           # detail 截断字节数
+    redact_keys:                     # 明细脱敏关键字
+      - "password"
+      - "token"
+      - "authorization"
+      - "cookie"
+      - "secret"
+      - "apikey"
+      - "access_token"
+      - "refresh_token"
+    success_retention_days: 5        # 成功 spans 保留天数
+    error_retention_days: 10         # 错误 spans 保留天数
+    cleanup_cron: "30 2 * * *"       # traces 清理定时

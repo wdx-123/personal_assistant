@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"personal_assistant/global"
+	"personal_assistant/pkg/observability/contextid"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -83,6 +84,7 @@ func GinRecovery(stack bool) gin.HandlerFunc {
 						zap.Any("error", err),
 						zap.String("request", string(httpRequest)),
 					)
+					c.Set(contextid.GinKeyPanicStack, "broken pipe")
 					// 由于连接断开，不能再向客户端写入状态码
 					_ = c.Error(err.(error)) // nolint: errcheck
 					c.Abort()                // 中止请求处理
@@ -90,12 +92,14 @@ func GinRecovery(stack bool) gin.HandlerFunc {
 				}
 
 				// 如果是其他类型的 panic，根据 `stack` 参数决定是否记录堆栈信息
+				stackTrace := string(debug.Stack())
+				c.Set(contextid.GinKeyPanicStack, stackTrace)
 				if stack {
 					// 记录详细的错误和堆栈信息
 					global.Log.Error("[Recovery from panic]",
 						zap.Any("error", err),
 						zap.String("request", string(httpRequest)),
-						zap.String("stack", string(debug.Stack())),
+						zap.String("stack", stackTrace),
 					)
 				} else {
 					// 只记录错误信息，不记录堆栈

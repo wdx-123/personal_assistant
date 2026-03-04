@@ -2,6 +2,7 @@ package leetcode
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -10,7 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"personal_assistant/global"
 	"personal_assistant/internal/model/config"
+	obsprophttp "personal_assistant/pkg/observability/propagation/http"
+	obstrace "personal_assistant/pkg/observability/trace"
 
 	"github.com/go-resty/resty/v2"
 	"go.uber.org/zap"
@@ -207,6 +211,17 @@ func (c *Client) post(
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	spanCtx, spanEvent := obstrace.StartSpan(ctx, obstrace.StartOptions{
+		Service: traceServiceName(),
+		Stage:   "outbound.http",
+		Name:    "leetcode" + path,
+		Kind:    "client",
+		Tags: map[string]string{
+			"provider": "leetcode",
+			"path":     path,
+		},
+	})
+	ctx = spanCtx
 	// 确保路径以 / 开头
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
@@ -222,6 +237,10 @@ func (c *Client) post(
 		SetBody(body).
 		SetResult(out)
 
+	obsprophttp.InjectHeaders(ctx, func(key, value string) {
+		r.SetHeader(key, value)
+	}, outboundInjectOptions())
+
 	// 如果设置了响应体限制，应用该限制 (防止内存溢出)
 	// 注意：go-resty 的 SetResponseBodyLimit 方法可能随版本不同而不同，这里假设 v2.16+ 支持
 	// 如果编译报错，可暂时移除此行或检查 resty 版本
@@ -232,9 +251,27 @@ func (c *Client) post(
 	if err != nil {
 		// 网络层错误 (如超时、DNS 解析失败)
 		c.logError("leetcode http request failed", err, endpoint, 0)
+		if spanEvent != nil && global.ObservabilityTraces != nil {
+			reqSnippet := marshalTraceSnippet(body)
+			spanEvent.WithErrorPayload(reqSnippet, err.Error())
+			spanEvent.WithErrorDetail(buildOutboundErrorDetail(path, endpoint, 0, body, "", err.Error()))
+			span := spanEvent.End(obstrace.SpanStatusError, "outbound_http_error", err.Error(), map[string]string{
+				"endpoint": endpoint,
+				"path":     path,
+			})
+			_ = global.ObservabilityTraces.RecordSpan(ctx, span)
+		}
 		return fmt.Errorf("leetcode http request failed: %w", err)
 	}
 	if resp == nil {
+		if spanEvent != nil && global.ObservabilityTraces != nil {
+			spanEvent.WithErrorDetail(buildOutboundErrorDetail(path, endpoint, 0, body, "", "leetcode empty response"))
+			span := spanEvent.End(obstrace.SpanStatusError, "outbound_empty_response", "leetcode empty response", map[string]string{
+				"endpoint": endpoint,
+				"path":     path,
+			})
+			_ = global.ObservabilityTraces.RecordSpan(ctx, span)
+		}
 		return errors.New("leetcode empty response")
 	}
 
@@ -247,9 +284,101 @@ func (c *Client) post(
 			Body:       resp.String(),
 		}
 		c.logError("leetcode remote http error", httpErr, endpoint, resp.StatusCode())
+		if spanEvent != nil && global.ObservabilityTraces != nil {
+			spanEvent.WithErrorPayload(marshalTraceSnippet(body), cutTracePayload(resp.String()))
+			spanEvent.WithErrorDetail(buildOutboundErrorDetail(path, endpoint, resp.StatusCode(), body, resp.String(), httpErr.Error()))
+			span := spanEvent.End(obstrace.SpanStatusError, "outbound_http_status_error", httpErr.Error(), map[string]string{
+				"endpoint":    endpoint,
+				"path":        path,
+				"status_code": fmt.Sprintf("%d", resp.StatusCode()),
+			})
+			_ = global.ObservabilityTraces.RecordSpan(ctx, span)
+		}
 		return httpErr
 	}
+	if spanEvent != nil && global.ObservabilityTraces != nil {
+		span := spanEvent.End(obstrace.SpanStatusOK, "", "", map[string]string{
+			"endpoint":    endpoint,
+			"path":        path,
+			"status_code": fmt.Sprintf("%d", resp.StatusCode()),
+		})
+		_ = global.ObservabilityTraces.RecordSpan(ctx, span)
+	}
 	return nil
+}
+
+func marshalTraceSnippet(body any) string {
+	if body == nil {
+		return ""
+	}
+	data, err := json.Marshal(body)
+	if err != nil {
+		return ""
+	}
+	return cutTracePayload(string(data))
+}
+
+func cutTracePayload(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	maxBytes := 4096
+	if global.Config != nil && global.Config.Observability.Traces.MaxPayloadBytes > 0 {
+		maxBytes = global.Config.Observability.Traces.MaxPayloadBytes
+	}
+	if len(raw) <= maxBytes {
+		return raw
+	}
+	return raw[:maxBytes]
+}
+
+func buildOutboundErrorDetail(
+	path string,
+	endpoint string,
+	statusCode int,
+	requestBody any,
+	responseBody string,
+	errMsg string,
+) string {
+	payload := map[string]interface{}{
+		"provider":       "leetcode",
+		"path":           strings.TrimSpace(path),
+		"endpoint":       strings.TrimSpace(endpoint),
+		"status_code":    statusCode,
+		"error":          strings.TrimSpace(errMsg),
+		"request":        marshalTraceSnippet(requestBody),
+		"response":       cutTracePayload(responseBody),
+		"occurred_stage": "outbound.http",
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func traceServiceName() string {
+	if global.Config == nil {
+		return "personal_assistant"
+	}
+	if v := strings.TrimSpace(global.Config.Observability.ServiceName); v != "" {
+		return v
+	}
+	return "personal_assistant"
+}
+
+func outboundInjectOptions() obsprophttp.InjectOptions {
+	opt := obsprophttp.InjectOptions{
+		InjectW3C: true,
+	}
+	if global.Config == nil {
+		return opt
+	}
+	opt.RequestIDHeader = strings.TrimSpace(global.Config.Observability.Propagation.RequestIDHeader)
+	opt.InjectW3C = global.Config.Observability.Propagation.Enabled &&
+		global.Config.Observability.Propagation.InjectW3C
+	return opt
 }
 
 // logError 统一错误日志记录

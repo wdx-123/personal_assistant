@@ -16,7 +16,6 @@ import (
 	"github.com/go-redis/redis/v8"
 
 	"github.com/gofrs/uuid"
-	"go.uber.org/zap"
 )
 
 type JWTService struct {
@@ -205,36 +204,4 @@ func (j *JWTService) IssueLoginTokens(
 		RefreshToken:         refreshToken,
 	}
 	return res, refreshToken, refreshClaims.ExpiresAt.Unix() * 1000, nil
-}
-
-// LoadAll 从数据库加载所有的JWT黑名单并加入缓存
-func LoadAll() {
-	// 注意：这个函数在init阶段调用，此时Repository还未初始化
-	// 所以暂时保持使用global.DB，后续可以考虑重构
-	var data []string
-	// 从数据库中获取所有的黑名单JWT
-	if err := global.DB.Model(&entity.JwtBlacklist{}).Pluck("jwt", &data).Error; err != nil {
-		// 如果获取失败，记录错误日志
-		global.Log.Error("Failed to load JWT blacklist from the entity", zap.Error(err))
-		return
-	}
-	// 将所有JWT添加到BlackCache缓存中
-	for i := 0; i < len(data); i++ {
-		global.BlackCache.SetDefault(data[i], struct{}{})
-	}
-}
-
-// LoadAllWithRepository 使用Repository加载所有的JWT黑名单并加入缓存
-func LoadAllWithRepository(ctx context.Context, repositoryGroup *repository.Group) {
-	jwtRepo := repositoryGroup.SystemRepositorySupplier.GetJWTRepository()
-	data, err := jwtRepo.GetAllJwtBlacklist(ctx)
-	if err != nil {
-		// 如果获取失败，记录错误日志
-		global.Log.Error("Failed to load JWT blacklist from the repository", zap.Error(err))
-		return
-	}
-	// 将所有JWT添加到BlackCache缓存中
-	for i := 0; i < len(data); i++ {
-		global.BlackCache.SetDefault(data[i], struct{}{})
-	}
 }

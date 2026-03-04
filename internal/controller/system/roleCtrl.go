@@ -16,7 +16,7 @@ import (
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
-	serviceSystem "personal_assistant/internal/service/system"
+	serviceContract "personal_assistant/internal/service/contract"
 	"personal_assistant/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -25,11 +25,11 @@ import (
 
 // RoleCtrl 角色管理控制器
 type RoleCtrl struct {
-	roleService *serviceSystem.RoleService
+	roleService serviceContract.RoleServiceContract
 }
 
 // NewRoleCtrl 创建角色控制器实例
-func NewRoleCtrl(roleService *serviceSystem.RoleService) *RoleCtrl {
+func NewRoleCtrl(roleService serviceContract.RoleServiceContract) *RoleCtrl {
 	return &RoleCtrl{roleService: roleService}
 }
 

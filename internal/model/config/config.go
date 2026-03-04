@@ -4,22 +4,23 @@ import "github.com/spf13/viper"
 
 // Config 应用全局配置结构体，包含所有核心模块配置
 type Config struct {
-	Redis     Redis     `json:"redis" yaml:"redis"`     // Redis配置
-	Mysql     Mysql     `json:"mysql" yaml:"mysql"`     // MySQL数据库配置
-	System    System    `json:"system" yaml:"system"`   // 系统服务配置
-	Zap       Zap       `json:"zap" yaml:"zap"`         // 日志配置
-	JWT       JWT       `json:"jwt" yaml:"jwt"`         // JWT认证配置
-	Upload    Upload    `json:"upload" yaml:"upload"`   // 文件上传配置
-	Captcha   Captcha   `json:"captcha" yaml:"captcha"` // 验证码配置
-	Email     Email     `json:"email" yaml:"email"`     // 邮件发送配置
-	Gaode     Gaode     `json:"gaode" yaml:"gaode"`     // 高德地图API配置
-	Website   Website   `json:"website" yaml:"website"` // 个人网站配置
-	Storage   Storage   `json:"storage" yaml:"storage"` // 存储驱动配置
-	Static    Static    `json:"static" yaml:"static"`   // 静态文件配置
-	Crawler   Crawler   `json:"crawler" yaml:"crawler"`
-	Task      Task      `json:"task" yaml:"task"`             // 定时任务配置
-	Messaging Messaging `json:"messaging" yaml:"messaging"`   // 消息队列配置
-	RateLimit RateLimit `json:"rate_limit" yaml:"rate_limit"` // 限流配置
+	Redis         Redis         `json:"redis" yaml:"redis"`     // Redis配置
+	Mysql         Mysql         `json:"mysql" yaml:"mysql"`     // MySQL数据库配置
+	System        System        `json:"system" yaml:"system"`   // 系统服务配置
+	Zap           Zap           `json:"zap" yaml:"zap"`         // 日志配置
+	JWT           JWT           `json:"jwt" yaml:"jwt"`         // JWT认证配置
+	Upload        Upload        `json:"upload" yaml:"upload"`   // 文件上传配置
+	Captcha       Captcha       `json:"captcha" yaml:"captcha"` // 验证码配置
+	Email         Email         `json:"email" yaml:"email"`     // 邮件发送配置
+	Gaode         Gaode         `json:"gaode" yaml:"gaode"`     // 高德地图API配置
+	Website       Website       `json:"website" yaml:"website"` // 个人网站配置
+	Storage       Storage       `json:"storage" yaml:"storage"` // 存储驱动配置
+	Static        Static        `json:"static" yaml:"static"`   // 静态文件配置
+	Crawler       Crawler       `json:"crawler" yaml:"crawler"`
+	Task          Task          `json:"task" yaml:"task"`                   // 定时任务配置
+	Messaging     Messaging     `json:"messaging" yaml:"messaging"`         // 消息队列配置
+	RateLimit     RateLimit     `json:"rate_limit" yaml:"rate_limit"`       // 限流配置
+	Observability Observability `json:"observability" yaml:"observability"` // 观测基础设施配置
 }
 
 func NewConfig() *Config {
@@ -208,22 +209,77 @@ func NewConfig() *Config {
 		LeetcodeBindConsumer: viper.GetString("messaging.leetcode_bind_consumer"),
 	}
 
+	_observability := &Observability{
+		Enabled:     viper.GetBool("observability.enabled"),
+		ServiceName: viper.GetString("observability.service_name"),
+		ServiceTrace: ObservabilityServiceTrace{
+			Enabled: viper.GetBool("observability.service_trace.enabled"),
+			Modules: viper.GetStringSlice("observability.service_trace.modules"),
+		},
+		Propagation: ObservabilityPropagation{
+			Enabled:         viper.GetBool("observability.propagation.enabled"),
+			RequestIDHeader: viper.GetString("observability.propagation.request_id_header"),
+			ParseW3C:        viper.GetBool("observability.propagation.parse_w3c"),
+			InjectW3C:       viper.GetBool("observability.propagation.inject_w3c"),
+		},
+		Metrics: ObservabilityMetrics{
+			FlushIntervalMs:   viper.GetInt("observability.metrics.flush_interval_ms"),
+			DBBatchSize:       viper.GetInt("observability.metrics.db_batch_size"),
+			FineRetentionDays: viper.GetInt("observability.metrics.fine_retention_days"),
+			DayRetentionDays:  viper.GetInt("observability.metrics.day_retention_days"),
+			WeekRetentionDays: viper.GetInt("observability.metrics.week_retention_days"),
+			RollupCron:        viper.GetString("observability.metrics.rollup_cron"),
+		},
+		Traces: ObservabilityTraces{
+			Enabled: viper.GetBool("observability.traces.enabled"),
+
+			StreamKey:       viper.GetString("observability.traces.stream_key"),
+			StreamGroup:     viper.GetString("observability.traces.stream_group"),
+			StreamConsumer:  viper.GetString("observability.traces.stream_consumer"),
+			StreamReadCount: viper.GetInt("observability.traces.stream_read_count"),
+			StreamBlockMs:   viper.GetInt("observability.traces.stream_block_ms"),
+			PendingIdleMs:   viper.GetInt("observability.traces.pending_idle_ms"),
+
+			DBBatchSize:       viper.GetInt("observability.traces.db_batch_size"),
+			DBFlushIntervalMs: viper.GetInt("observability.traces.db_flush_interval_ms"),
+
+			NormalQueueSize:   viper.GetInt("observability.traces.normal_queue_size"),
+			CriticalQueueSize: viper.GetInt("observability.traces.critical_queue_size"),
+			EnqueueTimeoutMs:  viper.GetInt("observability.traces.enqueue_timeout_ms"),
+
+			SuccessSampleRate:     viper.GetFloat64("observability.traces.success_sample_rate"),
+			DropSuccessOnOverload: viper.GetBool("observability.traces.drop_success_on_overload"),
+			CaptureErrorPayload:   viper.GetBool("observability.traces.capture_error_payload"),
+			MaxPayloadBytes:       viper.GetInt("observability.traces.max_payload_bytes"),
+			CaptureErrorStack:     viper.GetBool("observability.traces.capture_error_stack"),
+			CaptureErrorDetail:    viper.GetBool("observability.traces.capture_error_detail"),
+			MaxStackBytes:         viper.GetInt("observability.traces.max_stack_bytes"),
+			MaxDetailBytes:        viper.GetInt("observability.traces.max_detail_bytes"),
+			RedactKeys:            viper.GetStringSlice("observability.traces.redact_keys"),
+
+			SuccessRetentionDays: viper.GetInt("observability.traces.success_retention_days"),
+			ErrorRetentionDays:   viper.GetInt("observability.traces.error_retention_days"),
+			CleanupCron:          viper.GetString("observability.traces.cleanup_cron"),
+		},
+	}
+
 	return &Config{
-		Redis:     *_redis,
-		Mysql:     *_mysql,
-		System:    *_system,
-		Zap:       *_zap,
-		JWT:       *_jwt,
-		Upload:    *_upload,
-		Captcha:   *_captcha,
-		Email:     *_email,
-		Storage:   *_storage,
-		Static:    *_static,
-		Gaode:     *_gaode,
-		Website:   *_website,
-		Crawler:   *_crawler,
-		Task:      *_task,
-		Messaging: *_messaging,
-		RateLimit: *_rateLimit,
+		Redis:         *_redis,
+		Mysql:         *_mysql,
+		System:        *_system,
+		Zap:           *_zap,
+		JWT:           *_jwt,
+		Upload:        *_upload,
+		Captcha:       *_captcha,
+		Email:         *_email,
+		Storage:       *_storage,
+		Static:        *_static,
+		Gaode:         *_gaode,
+		Website:       *_website,
+		Crawler:       *_crawler,
+		Task:          *_task,
+		Messaging:     *_messaging,
+		RateLimit:     *_rateLimit,
+		Observability: *_observability,
 	}
 }

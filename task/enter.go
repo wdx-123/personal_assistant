@@ -2,12 +2,15 @@ package task
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"personal_assistant/global"
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/service"
+	obstrace "personal_assistant/pkg/observability/trace"
 
 	"github.com/robfig/cron/v3"
 	"go.uber.org/zap"
@@ -21,9 +24,13 @@ func runServiceTask(name string, fn func(ctx context.Context) error) {
 		return
 	}
 	ctx := context.Background()
+	spanCtx, spanEvent := startTaskTrace(ctx, name)
+	ctx = spanCtx
 	if err := fn(ctx); err != nil {
+		finishTaskTrace(ctx, spanEvent, err)
 		global.Log.Error(name+" failed", zap.Error(err))
 	} else {
+		finishTaskTrace(ctx, spanEvent, nil)
 		global.Log.Info(name + " completed successfully")
 	}
 }
@@ -48,6 +55,59 @@ func OutboxCleanupTask() {
 	} else {
 		global.Log.Info("OutboxCleanupTask completed successfully")
 	}
+}
+
+// ObservabilityMetricsRollupTask 指标汇总与清理任务
+func ObservabilityMetricsRollupTask() {
+	if global.ObservabilityMetrics == nil {
+		return
+	}
+	ctx := context.Background()
+	spanCtx, spanEvent := startTaskTrace(ctx, "ObservabilityMetricsRollupTask")
+	ctx = spanCtx
+	if err := global.ObservabilityMetrics.RollupAndCleanup(ctx, time.Now()); err != nil {
+		finishTaskTrace(ctx, spanEvent, err)
+		global.Log.Error("ObservabilityMetricsRollupTask failed", zap.Error(err))
+		return
+	}
+	finishTaskTrace(ctx, spanEvent, nil)
+	global.Log.Info("ObservabilityMetricsRollupTask completed successfully")
+}
+
+// ObservabilityTraceCleanupTask Trace 明细清理任务
+func ObservabilityTraceCleanupTask() {
+	if global.ObservabilityTraces == nil || global.Config == nil {
+		return
+	}
+	cfg := global.Config.Observability.Traces
+	successDays := cfg.SuccessRetentionDays
+	errorDays := cfg.ErrorRetentionDays
+	if successDays <= 0 {
+		successDays = 5
+	}
+	if errorDays <= 0 {
+		errorDays = 10
+	}
+
+	ctx := context.Background()
+	spanCtx, spanEvent := startTaskTrace(ctx, "ObservabilityTraceCleanupTask")
+	ctx = spanCtx
+	successBefore := time.Now().Add(-time.Duration(successDays) * 24 * time.Hour)
+	if err := global.ObservabilityTraces.CleanupBeforeByStatus(ctx, "ok", successBefore); err != nil {
+		finishTaskTrace(ctx, spanEvent, err)
+		global.Log.Error("ObservabilityTraceCleanupTask cleanup ok failed", zap.Error(err))
+		return
+	}
+
+	errorBefore := time.Now().Add(-time.Duration(errorDays) * 24 * time.Hour)
+	if err := global.ObservabilityTraces.CleanupBeforeByStatus(ctx, "error", errorBefore); err != nil {
+		finishTaskTrace(ctx, spanEvent, err)
+		global.Log.Error("ObservabilityTraceCleanupTask cleanup error failed", zap.Error(err))
+		return
+	}
+
+	finishTaskTrace(ctx, spanEvent, nil)
+	global.Log.Info("ObservabilityTraceCleanupTask completed successfully")
 }
 
 // LuoguSyncTask 洛谷用户数据定时全量同步
@@ -118,5 +178,74 @@ func RegisterScheduledTasks(c *cron.Cron) error {
 		return fmt.Errorf("注册 ImageOrphanCleanupTask 失败: %w", err)
 	}
 
+	rollupCron := global.Config.Observability.Metrics.RollupCron
+	if rollupCron == "" {
+		rollupCron = "10 2 * * *"
+	}
+	if _, err := c.AddFunc(rollupCron, ObservabilityMetricsRollupTask); err != nil {
+		return fmt.Errorf("注册 ObservabilityMetricsRollupTask 失败: %w", err)
+	}
+
+	traceCleanupCron := global.Config.Observability.Traces.CleanupCron
+	if traceCleanupCron == "" {
+		traceCleanupCron = "30 2 * * *"
+	}
+	if _, err := c.AddFunc(traceCleanupCron, ObservabilityTraceCleanupTask); err != nil {
+		return fmt.Errorf("注册 ObservabilityTraceCleanupTask 失败: %w", err)
+	}
+
 	return nil
+}
+
+func startTaskTrace(ctx context.Context, name string) (context.Context, *obstrace.SpanEvent) {
+	if global.ObservabilityTraces == nil {
+		return ctx, nil
+	}
+	serviceName := ""
+	if global.Config != nil {
+		serviceName = strings.TrimSpace(global.Config.Observability.ServiceName)
+	}
+	return obstrace.StartSpan(ctx, obstrace.StartOptions{
+		Service: serviceName,
+		Stage:   "task",
+		Name:    name,
+		Kind:    "cron",
+		Tags: map[string]string{
+			"task": name,
+		},
+	})
+}
+
+func finishTaskTrace(ctx context.Context, spanEvent *obstrace.SpanEvent, err error) {
+	if spanEvent == nil || global.ObservabilityTraces == nil {
+		return
+	}
+	status := obstrace.SpanStatusOK
+	code := ""
+	message := ""
+	if err != nil {
+		status = obstrace.SpanStatusError
+		code = "task_error"
+		message = err.Error()
+		spanEvent.WithErrorDetail(buildTaskErrorDetail(spanEvent, err))
+	}
+	span := spanEvent.End(status, code, message, nil)
+	_ = global.ObservabilityTraces.RecordSpan(ctx, span)
+}
+
+func buildTaskErrorDetail(spanEvent *obstrace.SpanEvent, err error) string {
+	span := spanEvent.Span()
+	payload := map[string]string{}
+	if span != nil {
+		payload["task"] = strings.TrimSpace(span.Name)
+		payload["stage"] = strings.TrimSpace(span.Stage)
+	}
+	if err != nil {
+		payload["error"] = strings.TrimSpace(err.Error())
+	}
+	data, marshalErr := json.Marshal(payload)
+	if marshalErr != nil {
+		return ""
+	}
+	return string(data)
 }

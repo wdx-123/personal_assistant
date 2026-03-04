@@ -15,6 +15,7 @@ type Supplier interface {
 	GetMenuCtrl() *MenuCtrl
 	GetRoleCtrl() *RoleCtrl
 	GetImageCtrl() *ImageCtrl
+	GetObservabilityCtrl() *ObservabilityCtrl
 }
 
 // SetUp 工厂函数-单例
@@ -50,6 +51,9 @@ func SetUp(service *service.Group) Supplier {
 	}
 	cs.imageCtrl = &ImageCtrl{
 		imageService: service.SystemServiceSupplier.GetImageSvc(),
+	}
+	cs.observabilityCtrl = &ObservabilityCtrl{
+		observabilityService: service.SystemServiceSupplier.GetObservabilitySvc(),
 	}
 	return cs
 }

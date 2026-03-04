@@ -10,13 +10,13 @@ import (
 	"personal_assistant/global"
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
-	serviceSystem "personal_assistant/internal/service/system"
+	serviceContract "personal_assistant/internal/service/contract"
 	"personal_assistant/pkg/jwt"
 	"personal_assistant/pkg/response"
 )
 
 type RefreshTokenCtrl struct {
-	jwtService *serviceSystem.JWTService
+	jwtService serviceContract.JWTServiceContract
 }
 
 func (r *RefreshTokenCtrl) RefreshToken(c *gin.Context) {

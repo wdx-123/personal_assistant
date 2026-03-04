@@ -5,6 +5,7 @@ import (
 	"reflect"
 
 	"personal_assistant/global"
+	"personal_assistant/pkg/observability/contextid"
 
 	"github.com/gin-gonic/gin"
 )
@@ -44,6 +45,7 @@ func (r *Response[T, R]) getCode() global.AppCode {
 func (r *Response[T, R]) Success(msg string, data any) {
 	r.buildLayout(data)
 	r.withMessage(msg)
+	r.Ctx.Set(contextid.GinKeyErrorCode, 0)
 	r.Ctx.JSON(http.StatusOK, r.layout)
 }
 
@@ -54,6 +56,7 @@ func (r *Response[T, R]) Failed(err string, data any) {
 	}
 	r.buildLayout(data)
 	r.withError(err)
+	r.Ctx.Set(contextid.GinKeyErrorCode, int(r.getCode()))
 	r.Ctx.JSON(http.StatusOK, r.layout)
 }
 

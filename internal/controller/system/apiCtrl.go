@@ -7,7 +7,7 @@ import (
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
-	serviceSystem "personal_assistant/internal/service/system"
+	serviceContract "personal_assistant/internal/service/contract"
 	"personal_assistant/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -16,11 +16,11 @@ import (
 
 // ApiCtrl API接口管理控制器
 type ApiCtrl struct {
-	apiService *serviceSystem.ApiService
+	apiService serviceContract.ApiServiceContract
 }
 
 // NewApiCtrl 创建API控制器实例
-func NewApiCtrl(apiService *serviceSystem.ApiService) *ApiCtrl {
+func NewApiCtrl(apiService serviceContract.ApiServiceContract) *ApiCtrl {
 	return &ApiCtrl{apiService: apiService}
 }
 

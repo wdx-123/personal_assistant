@@ -7,7 +7,7 @@ import (
 	"personal_assistant/global"
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
-	serviceSystem "personal_assistant/internal/service/system"
+	serviceContract "personal_assistant/internal/service/contract"
 	"personal_assistant/pkg/jwt"
 	"personal_assistant/pkg/response"
 
@@ -16,7 +16,7 @@ import (
 )
 
 type OJCtrl struct {
-	ojService *serviceSystem.OJService
+	ojService serviceContract.OJServiceContract
 }
 
 func (ctrl *OJCtrl) BindOJAccount(c *gin.Context) {
@@ -40,9 +40,9 @@ func (ctrl *OJCtrl) BindOJAccount(c *gin.Context) {
 	out, err := ctrl.ojService.BindOJAccount(c.Request.Context(), userID, &req)
 	if err != nil {
 		code := global.StatusInternalServerError
-		if errors.Is(err, serviceSystem.ErrInvalidPlatform) || errors.Is(err, serviceSystem.ErrInvalidIdentifier) {
+		if errors.Is(err, serviceContract.ErrInvalidPlatform) || errors.Is(err, serviceContract.ErrInvalidIdentifier) {
 			code = global.StatusBadRequest
-		} else if errors.Is(err, serviceSystem.ErrBindCoolDown) {
+		} else if errors.Is(err, serviceContract.ErrBindCoolDown) {
 			code = global.StatusTooManyRequests
 		}
 		global.Log.Error("绑定OJ账号失败",
@@ -81,7 +81,7 @@ func (ctrl *OJCtrl) GetRankingList(c *gin.Context) {
 	out, err := ctrl.ojService.GetRankingList(c.Request.Context(), userID, &req)
 	if err != nil {
 		code := global.StatusInternalServerError
-		if errors.Is(err, serviceSystem.ErrInvalidPlatform) {
+		if errors.Is(err, serviceContract.ErrInvalidPlatform) {
 			code = global.StatusBadRequest
 		}
 		global.Log.Error("获取排行榜失败",
@@ -119,7 +119,7 @@ func (ctrl *OJCtrl) GetStats(c *gin.Context) {
 	out, err := ctrl.ojService.GetUserStats(c.Request.Context(), userID, &req)
 	if err != nil {
 		code := global.StatusInternalServerError
-		if errors.Is(err, serviceSystem.ErrInvalidPlatform) || errors.Is(err, serviceSystem.ErrOJAccountNotBound) {
+		if errors.Is(err, serviceContract.ErrInvalidPlatform) || errors.Is(err, serviceContract.ErrOJAccountNotBound) {
 			code = global.StatusBadRequest
 		}
 		global.Log.Error("获取用户卡片信息失败",

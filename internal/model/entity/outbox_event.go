@@ -13,6 +13,8 @@ type OutboxEvent struct {
 	AggregateID   string     `gorm:"type:varchar(100);not null;comment:'聚合根ID'" json:"aggregate_id"`
 	AggregateType string     `gorm:"type:varchar(50);not null;comment:'聚合根类型'" json:"aggregate_type"`
 	Payload       string     `gorm:"type:json;not null;comment:'事件数据'" json:"payload"`
+	TraceID       string     `gorm:"type:varchar(64);not null;default:'';index:idx_outbox_trace;comment:'链路ID'" json:"trace_id"`
+	RequestID     string     `gorm:"type:varchar(64);not null;default:'';index:idx_outbox_request;comment:'请求ID'" json:"request_id"`
 	Status        string     `gorm:"type:varchar(20);not null;default:'pending';index:idx_status_created;comment:'状态'" json:"status"`
 	RetryCount    int        `gorm:"type:int;default:0;comment:'重试次数'" json:"retry_count"`
 	ErrorMessage  string     `gorm:"type:text;comment:'错误信息'" json:"error_message,omitempty"`

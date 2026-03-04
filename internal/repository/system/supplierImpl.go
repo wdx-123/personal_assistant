@@ -18,6 +18,8 @@ type RepositorySupplier struct {
 	luoguUserQuestionRepository    interfaces.LuoguUserQuestionRepository
 	outboxRepository               interfaces.OutboxRepository
 	imageRepository                interfaces.ImageRepository
+	observabilityMetricRepository  interfaces.ObservabilityMetricRepository
+	observabilityTraceRepository   interfaces.ObservabilityTraceRepository
 }
 
 func (r *RepositorySupplier) GetUserRepository() interfaces.UserRepository {
@@ -74,4 +76,12 @@ func (r *RepositorySupplier) GetOutboxRepository() interfaces.OutboxRepository {
 
 func (r *RepositorySupplier) GetImageRepository() interfaces.ImageRepository {
 	return r.imageRepository
+}
+
+func (r *RepositorySupplier) GetObservabilityMetricRepository() interfaces.ObservabilityMetricRepository {
+	return r.observabilityMetricRepository
+}
+
+func (r *RepositorySupplier) GetObservabilityTraceRepository() interfaces.ObservabilityTraceRepository {
+	return r.observabilityTraceRepository
 }

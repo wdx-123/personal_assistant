@@ -2,10 +2,12 @@ package outbox
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"personal_assistant/internal/infrastructure/messaging"
 	"personal_assistant/internal/repository/interfaces"
+	"personal_assistant/pkg/observability/w3c"
 
 	"github.com/go-redis/redis/v8"
 	"go.uber.org/zap"
@@ -63,7 +65,16 @@ func (p *RelayProcessor) Process(ctx context.Context) error {
 			Metadata: map[string]string{
 				"aggregate_id":   event.AggregateID,
 				"aggregate_type": event.AggregateType,
+				"request_id":     event.RequestID,
 			},
+		}
+		traceID := strings.TrimSpace(event.TraceID)
+		if w3c.IsValidTraceID(traceID) {
+			msg.Metadata["traceparent"] = w3c.BuildTraceparent(w3c.TraceContext{
+				TraceID:    traceID,
+				SpanID:     w3c.NewSpanID(),
+				TraceFlags: "01",
+			})
 		}
 
 		// 3. 发布消息
