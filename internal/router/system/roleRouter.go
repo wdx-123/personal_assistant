@@ -38,7 +38,7 @@ func (r *RoleRouter) InitRoleRouter(router *gin.RouterGroup) {
 
 		// 获取角色菜单权限
 		roleGroup.GET(":id/menus", roleCtrl.GetRoleMenuIDs)
-		// 获取角色菜单/API映射（menu_tree + assigned_menu_ids + assigned_api_ids）
+		// 获取角色菜单/API映射（支持可选max_level层级裁剪）
 		roleGroup.GET(":id/menu_api_map", roleCtrl.GetRoleMenuAPIMap)
 	}
 }

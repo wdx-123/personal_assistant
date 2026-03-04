@@ -58,3 +58,9 @@ type AssignRoleAPIReq struct {
 	// API ID列表（允许空数组，空表示清空角色直绑API权限）
 	APIIDs []uint `json:"api_ids"`
 }
+
+// GetRoleMenuAPIMapQuery 获取角色菜单/API映射查询参数
+type GetRoleMenuAPIMapQuery struct {
+	// 菜单树最大层级，根节点层级为1；不传表示返回全量树
+	MaxLevel *int `form:"max_level" binding:"omitempty,gte=1"`
+}
