@@ -363,7 +363,7 @@ func (r *roleRepository) GetUserRolesByOrg(ctx context.Context, userID, orgID ui
 	err := r.db.WithContext(ctx).
 		Table("roles").
 		Joins("JOIN user_org_roles ON roles.id = user_org_roles.role_id").
-		Where("user_org_roles.user_id = ? AND user_org_roles.org_id = ? AND roles.deleted_at IS NULL",
+		Where("user_org_roles.user_id = ? AND user_org_roles.org_id = ? AND roles.status = 1 AND roles.deleted_at IS NULL",
 			userID, orgID).
 		Find(&roles).Error
 	return roles, err
@@ -375,7 +375,7 @@ func (r *roleRepository) GetUserGlobalRoles(ctx context.Context, userID uint) ([
 	err := r.db.WithContext(ctx).
 		Table("roles").
 		Joins("JOIN user_org_roles ON roles.id = user_org_roles.role_id").
-		Where("user_org_roles.user_id = ? AND user_org_roles.org_id = 0 AND roles.deleted_at IS NULL", userID).
+		Where("user_org_roles.user_id = ? AND user_org_roles.org_id = 0 AND roles.status = 1 AND roles.deleted_at IS NULL", userID).
 		Find(&roles).Error
 	return roles, err
 }
