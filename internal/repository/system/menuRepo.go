@@ -278,7 +278,13 @@ func (m *menuRepository) GetMenusByUserID(
 		Table("menus").
 		Joins("JOIN role_menus ON menus.id = role_menus.menu_id")
 	db = db.Joins("JOIN user_org_roles ON role_menus.role_id = user_org_roles.role_id").
-		Where("user_org_roles.user_id = ? AND user_org_roles.org_id = ? AND menus.deleted_at IS NULL", userID, orgID)
+		Joins("JOIN roles ON user_org_roles.role_id = roles.id").
+		Where(`user_org_roles.user_id = ? 
+		AND user_org_roles.org_id = ? 
+		AND roles.status = 1 
+		AND roles.deleted_at IS NULL 
+		AND menus.deleted_at IS NULL`,
+			userID, orgID)
 	err := db.Distinct().Find(&menus).Error
 	return menus, err
 }
