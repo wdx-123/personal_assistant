@@ -9,6 +9,7 @@ import (
 	resp "personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
 	serviceContract "personal_assistant/internal/service/contract"
+	bizerrors "personal_assistant/pkg/errors"
 	"personal_assistant/pkg/jwt"
 	"personal_assistant/pkg/response"
 	"personal_assistant/pkg/util"
@@ -30,7 +31,7 @@ func (u *UserCtrl) Register(ctx *gin.Context) {
 		global.Log.Error("绑定数据错误",
 			zap.Error(err))
 		response.NewResponse[any, any](ctx).
-			SetCode(global.StatusBadRequest).
+			SetCode(bizerrors.CodeBindFailed).
 			Failed(fmt.Sprintf("绑定数据错误: %v", err), nil)
 		return
 	}
@@ -43,7 +44,7 @@ func (u *UserCtrl) Register(ctx *gin.Context) {
 			zap.String("phone", req.Phone),
 			zap.Error(err))
 		response.NewResponse[any, any](ctx).
-			SetCode(global.StatusInternalServerError).
+			SetCode(bizerrors.CodeInternalError).
 			Failed(fmt.Sprintf("用户注册失败: %v", err), nil)
 		return
 	}
@@ -63,7 +64,7 @@ func (u *UserCtrl) Login(ctx *gin.Context) {
 	if err != nil {
 		global.Log.Error("绑定数据错误", zap.Error(err))
 		response.NewResponse[any, any](ctx).
-			SetCode(global.StatusBadRequest).
+			SetCode(bizerrors.CodeBindFailed).
 			Failed(fmt.Sprintf("绑定数据错误: %v", err), nil)
 		return
 	}
@@ -75,7 +76,7 @@ func (u *UserCtrl) Login(ctx *gin.Context) {
 			zap.String("phone", req.Phone),
 			zap.Error(err))
 		response.NewResponse[any, any](ctx).
-			SetCode(global.StatusUnauthorized).
+			SetCode(bizerrors.CodeUnauthorized).
 			Failed(fmt.Sprintf("登录失败: %v", err), nil)
 		return
 	}
@@ -136,7 +137,7 @@ func (u *UserCtrl) Logout(c *gin.Context) {
 	}
 
 	response.NewResponse[any, any](c).
-		SetCode(global.StatusOK).
+		SetCode(bizerrors.CodeSuccess).
 		Success("登出成功",
 			map[string]any{"message": "已成功退出登录"})
 }
@@ -231,16 +232,7 @@ func (u *UserCtrl) GetUserDetail(c *gin.Context) {
 		return
 	}
 	if user == nil {
-		// 根据API设计返回特定Code: 20001
-		// 这里假设 errors.NewWithCode 或者直接构造响应
-		// 由于 BizFailWithCodeMsg 接受 errors.BizCode，我需要定义或者直接返回
-		// 简单起见，这里直接返回
-		c.JSON(200, gin.H{
-			"code":    20001,
-			"message": "用户不存在",
-			"success": false,
-			"data":    nil,
-		})
+		response.BizFailWithCode(bizerrors.CodeUserNotFound, c)
 		return
 	}
 

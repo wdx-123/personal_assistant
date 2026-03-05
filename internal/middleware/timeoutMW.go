@@ -7,6 +7,7 @@ import (
 
 	"personal_assistant/global"
 	resp "personal_assistant/internal/model/dto/response"
+	bizerrors "personal_assistant/pkg/errors"
 	"personal_assistant/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -51,10 +52,10 @@ func TimeoutMiddleware(timeout time.Duration) gin.HandlerFunc {
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				c.Header("Connection", "close")
 				response.NewResponse[resp.ErrorResponse, resp.ErrorResponse](c).
-					SetCode(global.StatusInternalServerError).
+					SetCode(bizerrors.CodeInternalError).
 					Failed("Request timeout", &resp.ErrorResponse{
 						Message: "请求超时，请稍后重试",
-						Code:    int(global.StatusInternalServerError),
+						Code:    bizerrors.CodeInternalError.Int(),
 					})
 				c.Abort()
 				return

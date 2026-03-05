@@ -81,7 +81,7 @@ func (j *JWTService) GetUserFromJWT(ctx context.Context, token string) (user *en
 	}
 	if user.Freeze {
 		return user, &erro.JWTError{
-			Code:    global.StatusUserFrozen,
+			Code:    erro.CodeUserFrozen,
 			Message: "用户已被冻结",
 			Err:     errors.New("user has been frozen"),
 		}
@@ -104,7 +104,7 @@ func (j *JWTService) GetAccessToken(ctx context.Context, token string) (resR *re
 	Token, err := jwtTool.CreateAccessToken(claims)
 	if err != nil {
 		return nil, &erro.JWTError{
-			Code:    global.StatusInternalServerError,
+			Code:    erro.CodeInternalError,
 			Message: "生成Token失败",
 			Err:     errors.New("create token failed"),
 		}
@@ -123,7 +123,7 @@ func (j *JWTService) IssueLoginTokens(
 ) (*response.LoginResponse, string, int64, *erro.JWTError) {
 	if user.Freeze {
 		return nil, "", 0, &erro.JWTError{
-			Code:    global.StatusUserFrozen,
+			Code:    erro.CodeUserFrozen,
 			Message: "用户已被冻结",
 			Err:     errors.New("user frozen"),
 		}
@@ -137,7 +137,7 @@ func (j *JWTService) IssueLoginTokens(
 	accessToken, err := jwtTool.CreateAccessToken(accessClaims)
 	if err != nil {
 		return nil, "", 0, &erro.JWTError{
-			Code:    global.StatusInternalServerError,
+			Code:    erro.CodeInternalError,
 			Message: "生成访问令牌失败",
 			Err:     err,
 		}
@@ -148,7 +148,7 @@ func (j *JWTService) IssueLoginTokens(
 	refreshToken, err := jwtTool.CreateRefreshToken(refreshClaims)
 	if err != nil {
 		return nil, "", 0, &erro.JWTError{
-			Code:    global.StatusInternalServerError,
+			Code:    erro.CodeInternalError,
 			Message: "生成刷新令牌失败",
 			Err:     err,
 		}
@@ -163,7 +163,7 @@ func (j *JWTService) IssueLoginTokens(
 			// 无旧记录（Redis中不存在该用户的token），这属于正常情况，直接设置新的刷新令牌
 			if err := j.SetRedisJWT(refreshToken, user.UUID); err != nil {
 				return nil, "", 0, &erro.JWTError{
-					Code:    global.StatusInternalServerError,
+					Code:    erro.CodeInternalError,
 					Message: "设置登录状态失败",
 					Err:     err,
 				}
@@ -171,7 +171,7 @@ func (j *JWTService) IssueLoginTokens(
 		} else if err != nil {
 			// 读取Redis失败（真正的错误，如连接超时、认证失败等）
 			return nil, "", 0, &erro.JWTError{
-				Code:    global.StatusInternalServerError,
+				Code:    erro.CodeInternalError,
 				Message: "读取登录状态失败",
 				Err:     err,
 			}
@@ -180,7 +180,7 @@ func (j *JWTService) IssueLoginTokens(
 			bl := entity.JwtBlacklist{JWT: old}
 			if err = j.JoinInBlacklist(ctx, bl); err != nil {
 				return nil, "", 0, &erro.JWTError{
-					Code:    global.StatusInternalServerError,
+					Code:    erro.CodeInternalError,
 					Message: "旧令牌加入黑名单失败",
 					Err:     err,
 				}
@@ -188,7 +188,7 @@ func (j *JWTService) IssueLoginTokens(
 			// 写入新令牌
 			if err = j.SetRedisJWT(refreshToken, user.UUID); err != nil {
 				return nil, "", 0, &erro.JWTError{
-					Code:    global.StatusInternalServerError,
+					Code:    erro.CodeInternalError,
 					Message: "设置登录状态失败",
 					Err:     err,
 				}

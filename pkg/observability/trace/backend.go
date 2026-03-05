@@ -373,7 +373,6 @@ func (b *Backend) runConsumer(
 	ticker := time.NewTicker(b.opt.DBFlushInterval)
 	defer ticker.Stop()
 
-	pendingCursor := "0-0"
 	buffer := make([]*streamAckSpan, 0, b.opt.DBBatchSize)
 
 	// flush 将缓冲区数据写入 DB 并 ACK
@@ -419,22 +418,14 @@ func (b *Backend) runConsumer(
 		}
 
 		// 1. 尝试认领（Claim）长时间 Pending 的消息（处理崩溃的消费者遗留的消息）
-		claimed, next, claimErr := b.redisClient.XAutoClaim(ctx, &redis.XAutoClaimArgs{
-			Stream:   b.opt.StreamKey,
-			Group:    b.opt.StreamGroup,
-			Consumer: b.opt.StreamConsumer,
-			MinIdle:  b.opt.PendingIdle,
-			Start:    pendingCursor,
-			Count:    b.opt.StreamReadCount,
-		}).Result()
+		claimed, claimErr := b.claimTimedOutPending(ctx)
 		if claimErr == nil {
-			pendingCursor = next
 			b.consumeMessages(ctx, claimed, &buffer)
 			if len(buffer) >= b.opt.DBBatchSize {
 				flush()
 			}
 		} else if claimErr != redis.Nil {
-			b.log.Error("trace xautoclaim failed", zap.Error(claimErr))
+			b.log.Error("trace claim pending failed", zap.Error(claimErr))
 		}
 
 		// 2. 读取新消息
@@ -461,6 +452,41 @@ func (b *Backend) runConsumer(
 			}
 		}
 	}
+}
+
+func (b *Backend) claimTimedOutPending(ctx context.Context) ([]redis.XMessage, error) {
+	pending, err := b.redisClient.XPendingExt(ctx, &redis.XPendingExtArgs{
+		Stream: b.opt.StreamKey,
+		Group:  b.opt.StreamGroup,
+		Start:  "-",
+		End:    "+",
+		Count:  b.opt.StreamReadCount,
+	}).Result()
+	if err != nil {
+		return nil, err
+	}
+	if len(pending) == 0 {
+		return nil, nil
+	}
+
+	msgIDs := make([]string, 0, len(pending))
+	for _, item := range pending {
+		if item.Idle < b.opt.PendingIdle {
+			continue
+		}
+		msgIDs = append(msgIDs, item.ID)
+	}
+	if len(msgIDs) == 0 {
+		return nil, nil
+	}
+
+	return b.redisClient.XClaim(ctx, &redis.XClaimArgs{
+		Stream:   b.opt.StreamKey,
+		Group:    b.opt.StreamGroup,
+		Consumer: b.opt.StreamConsumer,
+		MinIdle:  b.opt.PendingIdle,
+		Messages: msgIDs,
+	}).Result()
 }
 
 // consumeMessages 解析 Redis 消息并添加到缓冲区
@@ -626,6 +652,13 @@ func (b *Backend) normalizeSpan(span *Span) *Span {
 
 // toEntity 将 Span 转换为数据库实体
 func (b *Backend) toEntity(span *Span) *entity.ObservabilityTraceSpan {
+	errorDetail := strings.TrimSpace(span.ErrorDetailJSON)
+	if errorDetail == "" {
+		errorDetail = "{}"
+	} else if !json.Valid([]byte(errorDetail)) {
+		errorDetail = packRawDetail(errorDetail, b.opt.MaxDetailBytes)
+	}
+
 	return &entity.ObservabilityTraceSpan{
 		SpanID:          span.SpanID,
 		ParentSpanID:    span.ParentSpanID,
@@ -645,7 +678,7 @@ func (b *Backend) toEntity(span *Span) *entity.ObservabilityTraceSpan {
 		RequestSnippet:  span.RequestSnippet,
 		ResponseSnippet: span.ResponseSnippet,
 		ErrorStack:      span.ErrorStack,
-		ErrorDetailJSON: span.ErrorDetailJSON,
+		ErrorDetailJSON: errorDetail,
 	}
 }
 

@@ -26,7 +26,7 @@ func NewAPIHelper(c *gin.Context, apiName string) *APIHelper {
 
 // HandleBindError 处理参数绑定错误
 func (h *APIHelper) HandleBindError(err error) {
-	h.CommonError(global.ErrBindDataFailed, global.StatusBadRequest, err)
+	h.CommonError("绑定数据失败", erro.CodeBindFailed, err)
 }
 
 // HandleJWTError 处理JWT相关错误
@@ -35,11 +35,11 @@ func (h *APIHelper) HandleJWTError(jwtErr *erro.JWTError) {
 }
 
 // CommonError 通用错误处理
-func (h *APIHelper) CommonError(message string, code global.AppCode, err error) {
+func (h *APIHelper) CommonError(message string, code erro.BizCode, err error) {
 	// 构建日志字段
 	logFields := []zap.Field{
 		zap.String("message", message),
-		zap.Int("code", int(code)),
+		zap.Int("code", code.Int()),
 	}
 	// 只有当 err 不为 nil 时才添加错误字段
 	if err != nil {
