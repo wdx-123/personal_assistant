@@ -1,13 +1,14 @@
 package request
 
 // ApiListReq API列表请求参数
-// 分页获取系统注册的API接口列表，支持按状态、分组、方法、关键词过滤
+// 分页获取系统注册的API接口列表，支持按状态、方法、关键词、菜单名称过滤
 type ApiListReq struct {
 	Page     int    `form:"page" binding:"omitempty,min=1"`      // 页码，默认1
 	PageSize int    `form:"page_size" binding:"omitempty,min=1"` // 每页数量，默认10
 	Status   *int   `form:"status"`                              // 状态过滤：1启用 0禁用
 	Method   string `form:"method"`                              // 请求方法过滤：GET/POST/PUT/DELETE/PATCH
 	Keyword  string `form:"keyword"`                             // 按路径或描述模糊搜索
+	MenuName string `form:"menu_name"`                           // 按菜单名称模糊搜索（更新菜单候选：命中菜单 + 未绑定）
 }
 
 // ApiListFilter API列表查询过滤条件（供 Repository 层使用）
@@ -17,6 +18,7 @@ type ApiListFilter struct {
 	Status   *int   // 状态过滤：1启用 0禁用
 	Method   string // 请求方法过滤
 	Keyword  string // 按路径或描述模糊搜索
+	MenuName string // 按菜单名称模糊筛选（命中菜单 + 未绑定）
 }
 
 // CreateApiReq 创建API请求

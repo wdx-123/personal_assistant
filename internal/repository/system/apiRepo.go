@@ -101,14 +101,22 @@ func (a *apiRepository) GetAPIList(ctx context.Context, filter *request.ApiListF
 	query := a.db.WithContext(ctx).Model(&entity.API{})
 
 	if filter != nil {
+		if filter.MenuName != "" {
+			menuNameLike := "%" + filter.MenuName + "%"
+			query = query.
+				Joins("LEFT JOIN menu_apis ON menu_apis.api_id = apis.id").
+				Joins("LEFT JOIN menus ON menus.id = menu_apis.menu_id AND menus.deleted_at IS NULL").
+				Where("(menus.name LIKE ? OR menu_apis.api_id IS NULL)", menuNameLike)
+		}
 		if filter.Status != nil {
-			query = query.Where("status = ?", *filter.Status)
+			query = query.Where("apis.status = ?", *filter.Status)
 		}
 		if filter.Method != "" {
-			query = query.Where("method = ?", filter.Method)
+			query = query.Where("apis.method = ?", filter.Method)
 		}
 		if filter.Keyword != "" {
-			query = query.Where("path LIKE ? OR detail LIKE ?", "%"+filter.Keyword+"%", "%"+filter.Keyword+"%")
+			keywordLike := "%" + filter.Keyword + "%"
+			query = query.Where("(apis.path LIKE ? OR apis.detail LIKE ?)", keywordLike, keywordLike)
 		}
 	}
 
@@ -128,7 +136,12 @@ func (a *apiRepository) GetAPIList(ctx context.Context, filter *request.ApiListF
 	}
 
 	offset := (page - 1) * pageSize
-	err := query.Offset(offset).Limit(pageSize).Order("id ASC").Find(&apis).Error
+	err := query.
+		Select("apis.*").
+		Offset(offset).
+		Limit(pageSize).
+		Order("apis.id ASC").
+		Find(&apis).Error
 	return apis, total, err
 }
 

@@ -49,6 +49,17 @@ func (s *ApiService) GetAPIList(
 	}
 	filter.Method = strings.TrimSpace(filter.Method)
 	filter.Keyword = strings.TrimSpace(filter.Keyword)
+	filter.MenuName = strings.TrimSpace(filter.MenuName)
+
+	if filter.MenuName != "" {
+		matchedCount, err := s.menuRepo.CountByNameLike(ctx, filter.MenuName)
+		if err != nil {
+			return nil, nil, 0, errors.Wrap(errors.CodeDBError, err)
+		}
+		if matchedCount == 0 {
+			return nil, nil, 0, errors.New(errors.CodeMenuNotFound)
+		}
+	}
 
 	list, total, err := s.apiRepo.GetAPIList(ctx, filter)
 	if err != nil {
