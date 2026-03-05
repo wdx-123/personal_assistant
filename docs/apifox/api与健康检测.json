@@ -99,7 +99,7 @@
           "系统-API管理"
         ],
         "summary": "获取 API 列表",
-        "description": "分页查询系统 API。支持按状态、请求方法、关键词过滤。\n\n返回字段中包含 `menu_id` 与 `menu_name`，便于前端直接回显 API 归属菜单。",
+        "description": "分页查询系统 API。支持按状态、请求方法、关键词、菜单名称过滤。\n\n当传入 `menu_name` 时，采用更新菜单候选语义：返回“命中菜单名称的已绑定 API + 未绑定 API”。\n当 `menu_name` 未命中任何菜单时返回菜单不存在。\n\n返回字段中包含 `menu_id` 与 `menu_name`，便于前端直接回显 API 归属菜单。",
         "operationId": "GetAPIList",
         "parameters": [
           {
@@ -161,6 +161,15 @@
               "type": "string"
             },
             "example": "system/api"
+          },
+          {
+            "name": "menu_name",
+            "in": "query",
+            "description": "菜单名称（模糊匹配，返回命中菜单绑定API + 未绑定API）",
+            "schema": {
+              "type": "string"
+            },
+            "example": "接口管理"
           }
         ],
         "responses": {

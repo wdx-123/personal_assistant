@@ -36,6 +36,8 @@ type MenuRepository interface {
 	GetActiveMenus(ctx context.Context) ([]*entity.Menu, error)
 	// ExistsByCode 检查代码是否存在
 	ExistsByCode(ctx context.Context, code string) (bool, error)
+	// CountByNameLike 按菜单名称模糊匹配统计数量（仅统计未删除菜单）
+	CountByNameLike(ctx context.Context, name string) (int64, error)
 
 	// AssignAPIToMenu 为菜单分配API
 	AssignAPIToMenu(ctx context.Context, menuID, apiID uint) error

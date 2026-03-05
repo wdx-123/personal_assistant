@@ -155,6 +155,16 @@ func (m *menuRepository) ExistsByCode(ctx context.Context, code string) (bool, e
 	return count > 0, err
 }
 
+// CountByNameLike 按菜单名称模糊匹配统计数量（仅统计未删除菜单）
+func (m *menuRepository) CountByNameLike(ctx context.Context, name string) (int64, error) {
+	var count int64
+	err := m.db.WithContext(ctx).
+		Model(&entity.Menu{}).
+		Where("name LIKE ? AND deleted_at IS NULL", "%"+name+"%").
+		Count(&count).Error
+	return count, err
+}
+
 // 菜单API关系管理
 
 func (m *menuRepository) AssignAPIToMenu(ctx context.Context, menuID, apiID uint) error {

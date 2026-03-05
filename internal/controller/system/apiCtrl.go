@@ -39,6 +39,7 @@ func (c *ApiCtrl) GetAPIList(ctx *gin.Context) {
 		Status:   req.Status,
 		Method:   req.Method,
 		Keyword:  req.Keyword,
+		MenuName: req.MenuName,
 	}
 
 	list, menuMap, total, err := c.apiService.GetAPIList(ctx.Request.Context(), filter)
