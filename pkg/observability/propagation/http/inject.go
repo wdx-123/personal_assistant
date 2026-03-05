@@ -63,7 +63,7 @@ func InjectHeaders(ctx context.Context, setHeader func(key, value string), opt I
 
 	// 确保 ctx 中存在一个合法的 W3C TraceContext（trace_id/span_id/flags/state）。
 	// 若上游未带入 traceparent，这里会生成新的 trace_id/span_id，避免出站链路断裂。
-	ctx, tc := contextid.EnsureTraceContext(ctx)
+	_, tc := contextid.EnsureTraceContext(ctx)
 
 	// TraceID 为空表示无法形成合法 trace；不写 trace 相关 header。
 	//（理论上 EnsureTraceContext 会保证 TraceID 合法，但保留防御性判断更稳健）
