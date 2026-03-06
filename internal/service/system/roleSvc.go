@@ -314,6 +314,7 @@ func (s *RoleService) AssignAPIs(
 func (s *RoleService) GetRoleMenuAPIMap(
 	ctx context.Context,
 	roleID uint,
+	maxLevel *int,
 ) (*response.RoleMenuAPIMappingItem, error) {
 	role, err := s.roleRepo.GetByID(ctx, roleID)
 	if err != nil {
@@ -333,11 +334,17 @@ func (s *RoleService) GetRoleMenuAPIMap(
 	if err != nil {
 		return nil, errors.Wrap(errors.CodeDBError, err)
 	}
-	// 获取角色已分配的API ID列表（包含菜单关联和直绑）
-	assignedAPIIDs, err := s.menuRepo.GetAPIIDsByMenuIDs(ctx, assignedMenuIDs)
+	// 获取角色通过菜单链路分配的API ID列表
+	menuAPIIDs, err := s.menuRepo.GetAPIIDsByMenuIDs(ctx, assignedMenuIDs)
 	if err != nil {
 		return nil, errors.Wrap(errors.CodeDBError, err)
 	}
+	// 获取角色直绑API ID列表
+	directAPIIDs, err := s.roleRepo.GetRoleAPIIDs(ctx, roleID)
+	if err != nil {
+		return nil, errors.Wrap(errors.CodeDBError, err)
+	}
+	assignedAPIIDs := append(menuAPIIDs, directAPIIDs...)
 
 	assignedMenuIDs = normalizeIDs(assignedMenuIDs)
 	assignedAPIIDs = normalizeIDs(assignedAPIIDs)
@@ -345,7 +352,7 @@ func (s *RoleService) GetRoleMenuAPIMap(
 	sort.Slice(assignedAPIIDs, func(i, j int) bool { return assignedAPIIDs[i] < assignedAPIIDs[j] })
 
 	return &response.RoleMenuAPIMappingItem{
-		MenuTree:        s.buildRoleMenuTree(menus, 0),
+		MenuTree:        s.buildRoleMenuTree(menus, 0, 1, maxLevel),
 		AssignedMenuIDs: assignedMenuIDs,
 		AssignedAPIIDs:  assignedAPIIDs,
 	}, nil
@@ -390,14 +397,21 @@ func normalizeIDs(ids []uint) []uint {
 	return out
 }
 
-func (s *RoleService) buildRoleMenuTree(menus []*entity.Menu, parentID uint) []*response.MenuItem {
+func (s *RoleService) buildRoleMenuTree(
+	menus []*entity.Menu,
+	parentID uint,
+	depth int,
+	maxLevel *int,
+) []*response.MenuItem {
 	result := make([]*response.MenuItem, 0)
 	for _, m := range menus {
 		if m.ParentID != parentID {
 			continue
 		}
 		item := s.roleMenuEntityToItem(m)
-		item.Children = s.buildRoleMenuTree(menus, m.ID)
+		if maxLevel == nil || depth < *maxLevel {
+			item.Children = s.buildRoleMenuTree(menus, m.ID, depth+1, maxLevel)
+		}
 		result = append(result, item)
 	}
 	sort.Slice(result, func(i, j int) bool {

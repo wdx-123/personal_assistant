@@ -8,7 +8,7 @@ const (
 )
 
 // builtinRoleCodes 受保护的内置角色code列表
-var builtinRoleCodes = []string{RoleCodeSuperAdmin, RoleCodeOrgAdmin}
+var builtinRoleCodes = []string{RoleCodeSuperAdmin, RoleCodeOrgAdmin, RoleCodeMember}
 
 // BuiltinRoleCodes 返回所有受保护的内置角色code
 func BuiltinRoleCodes() []string {

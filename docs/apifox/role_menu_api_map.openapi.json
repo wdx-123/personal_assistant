@@ -1,0 +1,460 @@
+﻿{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "personal_assistant - 角色菜单/API映射接口",
+    "description": "用于获取指定角色的菜单树与API授权映射。\n\n说明：\n1. 该接口位于受保护路由，需携带 JWT Bearer Token。\n2. 返回体采用统一 BizResponse 结构：code/success/message/data/timestamp。\n3. `max_level` 为可选层级裁剪参数，根节点层级定义为 1；不传则返回全量菜单树。\n4. `assigned_menu_ids` 与 `assigned_api_ids` 始终返回角色授权全集，不受 `max_level` 影响。",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:9000",
+      "description": "本地开发环境（请按实际服务地址修改）"
+    }
+  ],
+  "tags": [
+    {
+      "name": "系统-角色管理",
+      "description": "对应 internal/router/system/roleRouter.go 中的角色接口"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/system/role/{id}/menu_api_map": {
+      "get": {
+        "tags": [
+          "系统-角色管理"
+        ],
+        "summary": "获取角色菜单/API映射",
+        "description": "返回角色配置页面所需的大对象：`menu_tree`、`assigned_menu_ids`、`assigned_api_ids`。\n\n`max_level` 行为：\n- 不传：返回全量树\n- 传 1：仅返回根层\n- 传 N：返回到第 N 层，达到上限层节点不再返回 `children` 字段",
+        "operationId": "GetRoleMenuAPIMap",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "角色ID",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "example": 2
+          },
+          {
+            "name": "max_level",
+            "in": "query",
+            "required": false,
+            "description": "菜单树最大层级（根节点=1），最小值 1；不传表示全量返回",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "example": 2
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功/业务失败均返回 HTTP 200，具体以 code 判断",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseRoleMenuAPIMap"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizResponseError"
+                    }
+                  ]
+                },
+                "examples": {
+                  "查询成功_全量树": {
+                    "summary": "不传 max_level，返回全量层级",
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "menu_tree": [
+                          {
+                            "id": 13,
+                            "parent_id": 0,
+                            "name": "权限管理",
+                            "code": "permission",
+                            "type": 1,
+                            "icon": "lock",
+                            "route_name": "Permission",
+                            "route_path": "/console/permission",
+                            "route_param": "",
+                            "component_path": "views/permission/index.vue",
+                            "status": 1,
+                            "sort": 2,
+                            "desc": "权限根菜单",
+                            "created_at": "2026-03-01T10:00:00+08:00",
+                            "updated_at": "2026-03-01T10:00:00+08:00",
+                            "children": [
+                              {
+                                "id": 14,
+                                "parent_id": 13,
+                                "name": "角色管理",
+                                "code": "permission:role",
+                                "type": 2,
+                                "icon": "",
+                                "route_name": "RoleManage",
+                                "route_path": "/console/permission/role",
+                                "route_param": "",
+                                "component_path": "views/permission/role/index.vue",
+                                "status": 1,
+                                "sort": 1,
+                                "desc": "",
+                                "created_at": "2026-03-01T10:00:00+08:00",
+                                "updated_at": "2026-03-01T10:00:00+08:00",
+                                "apis": [
+                                  {
+                                    "id": 10,
+                                    "path": "/system/role/list",
+                                    "method": "GET"
+                                  },
+                                  {
+                                    "id": 11,
+                                    "path": "/system/role",
+                                    "method": "POST"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ],
+                        "assigned_menu_ids": [
+                          13,
+                          14
+                        ],
+                        "assigned_api_ids": [
+                          10,
+                          11,
+                          99
+                        ]
+                      },
+                      "timestamp": 1770644002088
+                    }
+                  },
+                  "查询成功_层级裁剪": {
+                    "summary": "max_level=1，仅返回根层",
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "menu_tree": [
+                          {
+                            "id": 13,
+                            "parent_id": 0,
+                            "name": "权限管理",
+                            "code": "permission",
+                            "type": 1,
+                            "icon": "lock",
+                            "route_name": "Permission",
+                            "route_path": "/console/permission",
+                            "route_param": "",
+                            "component_path": "views/permission/index.vue",
+                            "status": 1,
+                            "sort": 2,
+                            "desc": "权限根菜单",
+                            "created_at": "2026-03-01T10:00:00+08:00",
+                            "updated_at": "2026-03-01T10:00:00+08:00"
+                          }
+                        ],
+                        "assigned_menu_ids": [
+                          13,
+                          14
+                        ],
+                        "assigned_api_ids": [
+                          10,
+                          11,
+                          99
+                        ]
+                      },
+                      "timestamp": 1770644002099
+                    }
+                  },
+                  "参数错误": {
+                    "summary": "max_level 非法或格式错误",
+                    "value": {
+                      "code": 10004,
+                      "success": false,
+                      "message": "参数错误",
+                      "data": null,
+                      "timestamp": 1770644002101
+                    }
+                  },
+                  "角色不存在": {
+                    "summary": "id 对应角色不存在",
+                    "value": {
+                      "code": 30101,
+                      "success": false,
+                      "message": "角色不存在",
+                      "data": null,
+                      "timestamp": 1770644002102
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或 Token 无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseError"
+                },
+                "example": {
+                  "code": 11000,
+                  "success": false,
+                  "message": "未授权访问",
+                  "data": null,
+                  "timestamp": 1770644002103
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "在 Authorization 头中传入：Bearer <token>"
+      }
+    },
+    "schemas": {
+      "BizResponseRoleMenuAPIMap": {
+        "type": "object",
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/RoleMenuAPIMappingItem"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1770644002088
+          }
+        }
+      },
+      "BizResponseError": {
+        "type": "object",
+        "required": [
+          "code",
+          "success",
+          "message",
+          "timestamp"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 10004
+          },
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "参数错误"
+          },
+          "data": {
+            "nullable": true,
+            "example": null
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1770644002101
+          }
+        }
+      },
+      "RoleMenuAPIMappingItem": {
+        "type": "object",
+        "required": [
+          "menu_tree",
+          "assigned_menu_ids",
+          "assigned_api_ids"
+        ],
+        "properties": {
+          "menu_tree": {
+            "type": "array",
+            "description": "菜单树（可按 max_level 裁剪）",
+            "items": {
+              "$ref": "#/components/schemas/MenuItem"
+            }
+          },
+          "assigned_menu_ids": {
+            "type": "array",
+            "description": "角色已分配菜单ID集合（全量）",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": [
+              13,
+              14
+            ]
+          },
+          "assigned_api_ids": {
+            "type": "array",
+            "description": "角色最终API ID集合（菜单链路+直绑并集，全量）",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": [
+              10,
+              11,
+              99
+            ]
+          }
+        }
+      },
+      "MenuItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "example": 13
+          },
+          "parent_id": {
+            "type": "integer",
+            "format": "int64",
+            "example": 0
+          },
+          "name": {
+            "type": "string",
+            "example": "权限管理"
+          },
+          "code": {
+            "type": "string",
+            "example": "permission"
+          },
+          "type": {
+            "type": "integer",
+            "description": "菜单类型：1目录 2菜单 3按钮",
+            "enum": [
+              1,
+              2,
+              3
+            ],
+            "example": 1
+          },
+          "icon": {
+            "type": "string",
+            "example": "lock"
+          },
+          "route_name": {
+            "type": "string",
+            "example": "Permission"
+          },
+          "route_path": {
+            "type": "string",
+            "example": "/console/permission"
+          },
+          "route_param": {
+            "type": "string",
+            "example": ""
+          },
+          "component_path": {
+            "type": "string",
+            "example": "views/permission/index.vue"
+          },
+          "status": {
+            "type": "integer",
+            "description": "状态：1显示 0隐藏",
+            "enum": [
+              0,
+              1
+            ],
+            "example": 1
+          },
+          "sort": {
+            "type": "integer",
+            "example": 2
+          },
+          "desc": {
+            "type": "string",
+            "example": "权限根菜单"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-01T10:00:00+08:00"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2026-03-01T10:00:00+08:00"
+          },
+          "children": {
+            "type": "array",
+            "description": "子菜单（达到 max_level 上限时不返回该字段）",
+            "items": {
+              "$ref": "#/components/schemas/MenuItem"
+            }
+          },
+          "apis": {
+            "type": "array",
+            "description": "菜单关联的API列表",
+            "items": {
+              "$ref": "#/components/schemas/APIItemSimple"
+            }
+          }
+        }
+      },
+      "APIItemSimple": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "example": 10
+          },
+          "path": {
+            "type": "string",
+            "example": "/system/role/list"
+          },
+          "method": {
+            "type": "string",
+            "example": "GET"
+          }
+        }
+      }
+    }
+  }
+}

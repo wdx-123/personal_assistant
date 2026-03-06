@@ -27,3 +27,6 @@ aaa/
 # 编译产物
 /bin/
 /dist/
+
+# golangci-lint 本地缓存
+.golangci-cache/

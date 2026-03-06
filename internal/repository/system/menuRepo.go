@@ -155,6 +155,16 @@ func (m *menuRepository) ExistsByCode(ctx context.Context, code string) (bool, e
 	return count > 0, err
 }
 
+// CountByNameLike 按菜单名称模糊匹配统计数量（仅统计未删除菜单）
+func (m *menuRepository) CountByNameLike(ctx context.Context, name string) (int64, error) {
+	var count int64
+	err := m.db.WithContext(ctx).
+		Model(&entity.Menu{}).
+		Where("name LIKE ? AND deleted_at IS NULL", "%"+name+"%").
+		Count(&count).Error
+	return count, err
+}
+
 // 菜单API关系管理
 
 func (m *menuRepository) AssignAPIToMenu(ctx context.Context, menuID, apiID uint) error {
@@ -278,7 +288,13 @@ func (m *menuRepository) GetMenusByUserID(
 		Table("menus").
 		Joins("JOIN role_menus ON menus.id = role_menus.menu_id")
 	db = db.Joins("JOIN user_org_roles ON role_menus.role_id = user_org_roles.role_id").
-		Where("user_org_roles.user_id = ? AND user_org_roles.org_id = ? AND menus.deleted_at IS NULL", userID, orgID)
+		Joins("JOIN roles ON user_org_roles.role_id = roles.id").
+		Where(`user_org_roles.user_id = ? 
+		AND user_org_roles.org_id = ? 
+		AND roles.status = 1 
+		AND roles.deleted_at IS NULL 
+		AND menus.deleted_at IS NULL`,
+			userID, orgID)
 	err := db.Distinct().Find(&menus).Error
 	return menus, err
 }

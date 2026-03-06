@@ -43,9 +43,9 @@ func SQL() error {
 
 	// menu_apis 加唯一索引前先按 api_id 清洗历史重复绑定，仅保留最小 menu_id。
 	// 清晰数据用的，后期可删
-	if err := normalizeMenuAPISingleBinding(); err != nil {
-		return err
-	}
+	// if err := normalizeMenuAPISingleBinding(); err != nil {
+	// 	return err
+	// }
 
 	// 显式迁移 menu_apis 中间表，补齐 api_id 唯一约束（单API归属单菜单）。
 	// 迁移用的后期可删
@@ -58,38 +58,38 @@ func SQL() error {
 }
 
 // normalizeMenuAPISingleBinding 将同一 api_id 的多条菜单绑定裁剪为一条（保留最小 menu_id）。
-func normalizeMenuAPISingleBinding() error {
-	if !global.DB.Migrator().HasTable("menu_apis") {
-		return nil
-	}
+// func normalizeMenuAPISingleBinding() error {
+// 	if !global.DB.Migrator().HasTable("menu_apis") {
+// 		return nil
+// 	}
 
-	return global.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec(`
-			CREATE TEMPORARY TABLE tmp_menu_apis_keep AS
-			SELECT MIN(menu_id) AS menu_id, api_id
-			FROM menu_apis
-			GROUP BY api_id
-		`).Error; err != nil {
-			return err
-		}
+// 	return global.DB.Transaction(func(tx *gorm.DB) error {
+// 		if err := tx.Exec(`
+// 			CREATE TEMPORARY TABLE tmp_menu_apis_keep AS
+// 			SELECT MIN(menu_id) AS menu_id, api_id
+// 			FROM menu_apis
+// 			GROUP BY api_id
+// 		`).Error; err != nil {
+// 			return err
+// 		}
 
-		if err := tx.Exec("DELETE FROM menu_apis").Error; err != nil {
-			_ = tx.Exec("DROP TEMPORARY TABLE IF EXISTS tmp_menu_apis_keep").Error
-			return err
-		}
+// 		if err := tx.Exec("DELETE FROM menu_apis").Error; err != nil {
+// 			_ = tx.Exec("DROP TEMPORARY TABLE IF EXISTS tmp_menu_apis_keep").Error
+// 			return err
+// 		}
 
-		if err := tx.Exec(`
-			INSERT INTO menu_apis (menu_id, api_id)
-			SELECT menu_id, api_id
-			FROM tmp_menu_apis_keep
-		`).Error; err != nil {
-			_ = tx.Exec("DROP TEMPORARY TABLE IF EXISTS tmp_menu_apis_keep").Error
-			return err
-		}
+// 		if err := tx.Exec(`
+// 			INSERT INTO menu_apis (menu_id, api_id)
+// 			SELECT menu_id, api_id
+// 			FROM tmp_menu_apis_keep
+// 		`).Error; err != nil {
+// 			_ = tx.Exec("DROP TEMPORARY TABLE IF EXISTS tmp_menu_apis_keep").Error
+// 			return err
+// 		}
 
-		return tx.Exec("DROP TEMPORARY TABLE IF EXISTS tmp_menu_apis_keep").Error
-	})
-}
+// 		return tx.Exec("DROP TEMPORARY TABLE IF EXISTS tmp_menu_apis_keep").Error
+// 	})
+// }
 
 // seedBuiltinRoles 初始化内置角色（幂等：已存在则跳过，不会重复创建）
 func seedBuiltinRoles() error {
@@ -101,7 +101,8 @@ func seedBuiltinRoles() error {
 
 	for _, r := range roles {
 		var existing entity.Role
-		if err := global.DB.Where("code = ?", r.Code).First(&existing).Error; err != nil {
+		// 使用 Unscoped() 忽略软删除标记，防止因记录被软删除而重复创建导致的唯一键冲突
+		if err := global.DB.Unscoped().Where("code = ?", r.Code).First(&existing).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				// 角色不存在，创建
 				if createErr := global.DB.Create(&r).Error; createErr != nil {
@@ -110,8 +111,15 @@ func seedBuiltinRoles() error {
 			} else {
 				return err
 			}
+		} else {
+			// 如果角色存在但被软删除了，恢复它
+			if existing.DeletedAt.Valid {
+				if err := global.DB.Unscoped().Model(&existing).Update("deleted_at", nil).Error; err != nil {
+					return err
+				}
+			}
 		}
-		// 角色已存在，跳过
+		// 角色已存在且正常，跳过
 	}
 	return nil
 }
