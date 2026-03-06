@@ -12,7 +12,11 @@ const (
 	LockKeyLuoguProblemBankSyncKey   = "luogu:sync:problem_bank"      // 洛谷题库同步锁
 	LockKeyLuoguProblemBankWarmup    = "luogu:warmup:problem_bank"    // 洛谷题库预热锁
 	LockKeyLeetcodeProblemBankWarmup = "leetcode:warmup:problem_bank" // 力扣题库预热锁
-	lockKeyRoleMenuAssignFmt         = "role:menu:assign:%d"          // 角色菜单分配锁
+
+	// Outbox Relay 调度锁，确保任何时候，只有一个outbox实例在运行
+	LockKeyOutboxRelayProcess = "outbox:relay:process"
+
+	lockKeyRoleMenuAssignFmt = "role:menu:assign:%d" // 角色菜单分配锁
 )
 
 func LockKeyLuoguBindUser(userID uint) string {

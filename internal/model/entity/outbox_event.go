@@ -15,10 +15,12 @@ type OutboxEvent struct {
 	Payload       string     `gorm:"type:json;not null;comment:'事件数据'" json:"payload"`
 	TraceID       string     `gorm:"type:varchar(64);not null;default:'';index:idx_outbox_trace;comment:'链路ID'" json:"trace_id"`
 	RequestID     string     `gorm:"type:varchar(64);not null;default:'';index:idx_outbox_request;comment:'请求ID'" json:"request_id"`
-	Status        string     `gorm:"type:varchar(20);not null;default:'pending';index:idx_status_created;comment:'状态'" json:"status"`
+	TraceParent   string     `gorm:"type:varchar(128);not null;default:'';comment:'W3C traceparent'" json:"traceparent,omitempty"`
+	TraceState    string     `gorm:"type:text;comment:'W3C tracestate'" json:"tracestate,omitempty"`
+	Status        string     `gorm:"type:varchar(20);not null;default:'pending';index:idx_status_created;index:idx_outbox_status_published,priority:1;comment:'状态'" json:"status"`
 	RetryCount    int        `gorm:"type:int;default:0;comment:'重试次数'" json:"retry_count"`
 	ErrorMessage  string     `gorm:"type:text;comment:'错误信息'" json:"error_message,omitempty"`
-	PublishedAt   *time.Time `gorm:"index;comment:'发布时间'" json:"published_at,omitempty"`
+	PublishedAt   *time.Time `gorm:"index;index:idx_outbox_status_published,priority:2;comment:'发布时间'" json:"published_at,omitempty"`
 }
 
 // OutboxEventStatus 事件状态常量

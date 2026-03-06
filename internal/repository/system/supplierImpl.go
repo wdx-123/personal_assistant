@@ -20,6 +20,7 @@ type RepositorySupplier struct {
 	imageRepository                interfaces.ImageRepository
 	observabilityMetricRepository  interfaces.ObservabilityMetricRepository
 	observabilityTraceRepository   interfaces.ObservabilityTraceRepository
+	observabilityRuntimeRepository interfaces.ObservabilityRuntimeRepository
 }
 
 func (r *RepositorySupplier) GetUserRepository() interfaces.UserRepository {
@@ -84,4 +85,8 @@ func (r *RepositorySupplier) GetObservabilityMetricRepository() interfaces.Obser
 
 func (r *RepositorySupplier) GetObservabilityTraceRepository() interfaces.ObservabilityTraceRepository {
 	return r.observabilityTraceRepository
+}
+
+func (r *RepositorySupplier) GetObservabilityRuntimeRepository() interfaces.ObservabilityRuntimeRepository {
+	return r.observabilityRuntimeRepository
 }

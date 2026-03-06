@@ -16,5 +16,6 @@ func (r *ObservabilityRouter) InitObservabilityRouter(router *gin.RouterGroup) {
 		obsGroup.GET("traces/detail/:id", obsCtrl.QueryTraceDetail)
 		obsGroup.POST("traces/query", obsCtrl.QueryTrace)
 		obsGroup.POST("metrics/query", obsCtrl.QueryMetrics)
+		obsGroup.POST("runtime/query", obsCtrl.QueryRuntimeMetrics)
 	}
 }

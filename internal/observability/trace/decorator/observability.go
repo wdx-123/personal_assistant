@@ -28,6 +28,15 @@ func (t *tracedObservabilityService) QueryMetrics(
 	})
 }
 
+func (t *tracedObservabilityService) QueryRuntimeMetrics(
+	ctx context.Context,
+	req *request.ObservabilityRuntimeMetricQueryReq,
+) (*resp.ObservabilityRuntimeMetricQueryResp, error) {
+	return runTraced(ctx, "observability", "QueryRuntimeMetrics", func(inner context.Context) (*resp.ObservabilityRuntimeMetricQueryResp, error) {
+		return t.next.QueryRuntimeMetrics(inner, req)
+	})
+}
+
 func (t *tracedObservabilityService) QueryTraceDetail(
 	ctx context.Context,
 	id string,

@@ -17,6 +17,7 @@ type observabilityTraceRepository struct {
 }
 
 const rootTraceStage = "http.request"
+const taskRootTraceStage = "task"
 
 func NewObservabilityTraceRepository(db *gorm.DB) interfaces.ObservabilityTraceRepository {
 	return &observabilityTraceRepository{db: db}
@@ -204,7 +205,9 @@ func (r *observabilityTraceRepository) QueryRootSummaries(
 			"root.trace_id",
 			"root.request_id",
 			"root.service",
+			"root.stage",
 			"root.name",
+			"root.kind",
 			"root.status",
 			"root.error_code",
 			"root.message",
@@ -233,8 +236,18 @@ func (r *observabilityTraceRepository) buildRootSummaryBaseQuery(
 ) *gorm.DB {
 	base := r.db.WithContext(ctx).
 		Table("observability_trace_spans").
-		Where("deleted_at IS NULL").
-		Where("stage = ?", rootTraceStage)
+		Where("deleted_at IS NULL")
+
+	switch strings.TrimSpace(q.RootStage) {
+	case "", rootTraceStage:
+		base = base.Where("stage = ?", rootTraceStage)
+	case taskRootTraceStage:
+		base = base.Where("stage = ?", taskRootTraceStage)
+	case "all":
+		base = base.Where("stage IN ?", []string{rootTraceStage, taskRootTraceStage})
+	default:
+		base = base.Where("stage = ?", rootTraceStage)
+	}
 
 	if v := strings.TrimSpace(q.TraceID); v != "" {
 		base = base.Where("trace_id = ?", v)

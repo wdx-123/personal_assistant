@@ -43,6 +43,9 @@ func NewRedisLock(
 	key string,
 	expiration time.Duration,
 ) *RedisLock {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if expiration < 5*time.Second {
 		expiration = 5 * time.Second // 最小过期时间5秒 (给续期留足够时间)
 	}
@@ -57,6 +60,11 @@ func NewRedisLock(
 	}
 }
 
+// TryLock 获取锁（单次尝试）
+func (l *RedisLock) TryLock() error {
+	return l.tryLock()
+}
+
 // Lock 获取锁
 func (l *RedisLock) Lock() error {
 	return l.LockWithRetry(3, 100*time.Millisecond)
@@ -67,20 +75,32 @@ func (l *RedisLock) LockWithRetry(
 	maxRetries int,
 	retryInterval time.Duration,
 ) error {
+	var lastErr error
 	for i := 0; i < maxRetries; i++ {
-		if err := l.tryLock(); err == nil {
+		err := l.tryLock()
+		if err == nil {
 			return nil
 		}
+		if !errors.Is(err, ErrLockFailed) {
+			return err
+		}
+		lastErr = err
 
 		if i < maxRetries-1 {
 			time.Sleep(retryInterval)
 		}
+	}
+	if lastErr != nil {
+		return lastErr
 	}
 	return ErrLockFailed
 }
 
 // tryLock 尝试获取锁
 func (l *RedisLock) tryLock() error {
+	if l.rdb == nil {
+		return fmt.Errorf("redis client is nil")
+	}
 	// 使用SET NX EX原子操作
 	success, err := l.rdb.SetNX(l.ctx, l.key, l.value, l.expiration).Result()
 	if err != nil {
@@ -120,6 +140,9 @@ func (l *RedisLock) startAutoRenewIfNeeded() error {
 
 // Unlock 释放锁
 func (l *RedisLock) Unlock() error {
+	if l.rdb == nil {
+		return fmt.Errorf("redis client is nil")
+	}
 	// 停止续期
 	l.mutex.Lock()
 	if l.renewStarted {
@@ -176,6 +199,9 @@ func (l *RedisLock) autoRenew() {
 
 // renew 续期
 func (l *RedisLock) renew() error {
+	if l.rdb == nil {
+		return fmt.Errorf("redis client is nil")
+	}
 	// Lua脚本保证原子性: 只有持有锁的客户端才能续期
 	luaScript := `
 		if redis.call("get", KEYS[1]) == ARGV[1] then
@@ -186,7 +212,7 @@ func (l *RedisLock) renew() error {
 	`
 
 	result, err := l.rdb.Eval(l.ctx, luaScript, []string{l.key},
-		l.value, l.expiration.Seconds()).Result()
+		l.value, lockExpirationSeconds(l.expiration)).Result()
 
 	if err != nil {
 		return fmt.Errorf("执行lua脚本失败: %w", err)
@@ -198,6 +224,17 @@ func (l *RedisLock) renew() error {
 	}
 
 	return nil
+}
+
+func lockExpirationSeconds(expiration time.Duration) int64 {
+	if expiration < 5*time.Second {
+		expiration = 5 * time.Second
+	}
+	seconds := expiration / time.Second
+	if expiration%time.Second != 0 {
+		seconds++
+	}
+	return int64(seconds)
 }
 
 // WithLock 使用锁执行函数

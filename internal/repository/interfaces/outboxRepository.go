@@ -27,4 +27,8 @@ type OutboxRepository interface {
 	MarkAsFailed(ctx context.Context, eventID string, errorMsg string, maxRetries int) error
 	// DeletePublishedBefore 删除指定时间之前的已发布事件
 	DeletePublishedBefore(ctx context.Context, before time.Time) error
+	// DeleteFailedBefore 删除指定时间之前的失败事件
+	DeleteFailedBefore(ctx context.Context, before time.Time) error
+	// CountByStatus 按状态统计事件数量
+	CountByStatus(ctx context.Context) (map[string]int64, error)
 }

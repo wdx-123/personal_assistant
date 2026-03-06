@@ -22,6 +22,7 @@ import (
 	"personal_assistant/internal/repository/interfaces"
 	svccontract "personal_assistant/internal/service/contract"
 	"personal_assistant/pkg/observability/contextid"
+	"personal_assistant/pkg/observability/w3c"
 	"personal_assistant/pkg/rediskey"
 	"personal_assistant/pkg/redislock"
 
@@ -1387,7 +1388,7 @@ func (s *OJService) publishLuoguBindOutbox(
 	if err != nil {
 		return err
 	}
-	ids := contextid.FromContext(ctx)
+	ids, traceparent, tracestate := extractOutboxTraceFields(ctx)
 
 	event := &entity.OutboxEvent{
 		EventID:       uuid.New().String(),
@@ -1397,6 +1398,8 @@ func (s *OJService) publishLuoguBindOutbox(
 		Payload:       string(payloadBytes),
 		TraceID:       ids.TraceID,
 		RequestID:     ids.RequestID,
+		TraceParent:   traceparent,
+		TraceState:    tracestate,
 	}
 	if err := s.outboxRepo.Create(ctx, event); err != nil {
 		return err
@@ -1420,7 +1423,7 @@ func (s *OJService) publishLeetcodeBindOutbox(
 	if err != nil {
 		return err
 	}
-	ids := contextid.FromContext(ctx)
+	ids, traceparent, tracestate := extractOutboxTraceFields(ctx)
 
 	event := &entity.OutboxEvent{
 		EventID:       uuid.New().String(),
@@ -1430,6 +1433,8 @@ func (s *OJService) publishLeetcodeBindOutbox(
 		Payload:       string(payloadBytes),
 		TraceID:       ids.TraceID,
 		RequestID:     ids.RequestID,
+		TraceParent:   traceparent,
+		TraceState:    tracestate,
 	}
 	if err := s.outboxRepo.Create(ctx, event); err != nil {
 		return err
@@ -1438,4 +1443,15 @@ func (s *OJService) publishLeetcodeBindOutbox(
 		global.Log.Warn("leetcode bind notify outbox failed", zap.Error(err))
 	}
 	return nil
+}
+
+func extractOutboxTraceFields(ctx context.Context) (contextid.IDs, string, string) {
+	ids := contextid.FromContext(ctx)
+	traceparent := ""
+	tracestate := ""
+	if tc, ok := contextid.TraceContextFromContext(ctx); ok {
+		traceparent = strings.TrimSpace(w3c.BuildTraceparent(tc))
+		tracestate = strings.TrimSpace(tc.TraceState)
+	}
+	return ids, traceparent, tracestate
 }

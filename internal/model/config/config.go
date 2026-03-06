@@ -179,13 +179,22 @@ func NewConfig() *Config {
 
 	_task := &Task{
 		OutboxCleanupRetentionDays:            viper.GetInt("task.outbox_cleanup_retention_days"),
+		OutboxFailedCleanupRetentionDays:      viper.GetInt("task.outbox_failed_cleanup_retention_days"),
+		DistributedLockEnabled:                viper.GetBool("task.distributed_lock_enabled"),
+		DistributedLockTTLSeconds:             viper.GetInt("task.distributed_lock_ttl_seconds"),
 		LuoguQuestionBankWarmupEnabled:        viper.GetBool("task.luogu_question_bank_warmup_enabled"),
 		LuoguQuestionBankWarmupBatchSize:      viper.GetInt("task.luogu_question_bank_warmup_batch_size"),
 		LuoguQuestionBankWarmupLockTTLSeconds: viper.GetInt("task.luogu_question_bank_warmup_lock_ttl_seconds"),
-		LuoguSyncUserIntervalSeconds:          viper.GetInt("task.luogu_sync_user_interval_seconds"),    // 读取洛谷用户间隔
-		LeetcodeSyncUserIntervalSeconds:       viper.GetInt("task.leetcode_sync_user_interval_seconds"), // 读取力扣用户间隔
-		LeetcodeSyncIntervalSeconds:           viper.GetInt("task.leetcode_sync_interval_seconds"),      // 读取力扣全量间隔
-		RankingSyncIntervalSeconds:            viper.GetInt("task.ranking_sync_interval_seconds"),       // 读取排行榜间隔
+		LeetcodeQuestionBankWarmupEnabled:     viper.GetBool("task.leetcode_question_bank_warmup_enabled"),
+		LeetcodeQuestionBankWarmupBatchSize:   viper.GetInt("task.leetcode_question_bank_warmup_batch_size"),
+		LeetcodeQuestionBankWarmupLockTTLSeconds: viper.GetInt(
+			"task.leetcode_question_bank_warmup_lock_ttl_seconds",
+		),
+		LuoguSyncUserIntervalSeconds:    viper.GetInt("task.luogu_sync_user_interval_seconds"),    // 读取洛谷用户间隔
+		LeetcodeSyncUserIntervalSeconds: viper.GetInt("task.leetcode_sync_user_interval_seconds"), // 读取力扣用户间隔
+		LeetcodeSyncIntervalSeconds:     viper.GetInt("task.leetcode_sync_interval_seconds"),      // 读取力扣全量间隔
+		RankingSyncIntervalSeconds:      viper.GetInt("task.ranking_sync_interval_seconds"),       // 读取排行榜间隔
+		ImageOrphanCleanupCron:          viper.GetString("task.image_orphan_cleanup_cron"),
 	}
 
 	// 限流配置初始化
@@ -199,14 +208,16 @@ func NewConfig() *Config {
 	}
 
 	_messaging := &Messaging{
-		RedisStreamReadCount: viper.GetInt("messaging.redis_stream_read_count"),
-		RedisStreamBlockMs:   viper.GetInt("messaging.redis_stream_block_ms"),
-		LuoguBindTopic:       viper.GetString("messaging.luogu_bind_topic"),
-		LuoguBindGroup:       viper.GetString("messaging.luogu_bind_group"),
-		LuoguBindConsumer:    viper.GetString("messaging.luogu_bind_consumer"),
-		LeetcodeBindTopic:    viper.GetString("messaging.leetcode_bind_topic"),
-		LeetcodeBindGroup:    viper.GetString("messaging.leetcode_bind_group"),
-		LeetcodeBindConsumer: viper.GetString("messaging.leetcode_bind_consumer"),
+		RedisStreamReadCount:      viper.GetInt("messaging.redis_stream_read_count"),
+		RedisStreamBlockMs:        viper.GetInt("messaging.redis_stream_block_ms"),
+		OutboxRelayLockEnabled:    viper.GetBool("messaging.outbox_relay_lock_enabled"),
+		OutboxRelayLockTTLSeconds: viper.GetInt("messaging.outbox_relay_lock_ttl_seconds"),
+		LuoguBindTopic:            viper.GetString("messaging.luogu_bind_topic"),
+		LuoguBindGroup:            viper.GetString("messaging.luogu_bind_group"),
+		LuoguBindConsumer:         viper.GetString("messaging.luogu_bind_consumer"),
+		LeetcodeBindTopic:         viper.GetString("messaging.leetcode_bind_topic"),
+		LeetcodeBindGroup:         viper.GetString("messaging.leetcode_bind_group"),
+		LeetcodeBindConsumer:      viper.GetString("messaging.leetcode_bind_consumer"),
 	}
 
 	_observability := &Observability{

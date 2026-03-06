@@ -29,6 +29,7 @@ type ObservabilityTraceRootSummaryQuery struct {
 	RequestID string
 	Service   string
 	Status    string
+	RootStage string
 	StartAt   time.Time
 	EndAt     time.Time
 	Limit     int
@@ -40,7 +41,9 @@ type ObservabilityTraceRootSummary struct {
 	TraceID        string
 	RequestID      string
 	Service        string
+	Stage          string
 	Name           string
+	Kind           string
 	Status         string
 	ErrorCode      string
 	Message        string

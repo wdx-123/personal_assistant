@@ -110,6 +110,7 @@ type ImageServiceContract interface {
 
 type ObservabilityServiceContract interface {
 	QueryMetrics(ctx context.Context, req *request.ObservabilityMetricsQueryReq) (*resp.ObservabilityMetricsQueryResp, error)
+	QueryRuntimeMetrics(ctx context.Context, req *request.ObservabilityRuntimeMetricQueryReq) (*resp.ObservabilityRuntimeMetricQueryResp, error)
 	QueryTraceDetail(
 		ctx context.Context,
 		id string,

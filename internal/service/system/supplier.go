@@ -37,6 +37,7 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 		global.ObservabilityMetrics,
 		global.ObservabilityTraces,
 		repositoryGroup.SystemRepositorySupplier.GetObservabilityTraceRepository(),
+		repositoryGroup.SystemRepositorySupplier.GetObservabilityRuntimeRepository(),
 	)
 
 	jwtSvc := contract.JWTServiceContract(rawJWT)

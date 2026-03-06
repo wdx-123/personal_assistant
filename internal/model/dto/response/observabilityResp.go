@@ -26,7 +26,9 @@ type ObservabilityTraceSummaryResp struct {
 	TraceID        string `json:"trace_id"`
 	RequestID      string `json:"request_id"`
 	Service        string `json:"service"`
+	Stage          string `json:"stage"`
 	Name           string `json:"name"`
+	Kind           string `json:"kind"`
 	Status         string `json:"status"`
 	ErrorCode      string `json:"error_code,omitempty"`
 	Message        string `json:"message,omitempty"`
@@ -77,4 +79,36 @@ type ObservabilityTraceSpanResp struct {
 type ObservabilityTraceQueryResp struct {
 	List  []*ObservabilityTraceSpanResp `json:"list"`
 	Total int64                         `json:"total"`
+}
+
+type ObservabilityRuntimeMetricPointResp struct {
+	BucketStart   string `json:"bucket_start"`
+	Status        string `json:"status,omitempty"`
+	Name          string `json:"name,omitempty"`
+	Topic         string `json:"topic,omitempty"`
+	Count         int64  `json:"count"`
+	AvgDurationMs int64  `json:"avg_duration_ms"`
+	MaxDurationMs int64  `json:"max_duration_ms"`
+}
+
+type ObservabilityRuntimeMetricSummaryResp struct {
+	Total          int64  `json:"total"`
+	SuccessTotal   int64  `json:"success_total"`
+	ErrorTotal     int64  `json:"error_total"`
+	SkippedTotal   int64  `json:"skipped_total"`
+	PendingTotal   int64  `json:"pending_total"`
+	PublishedTotal int64  `json:"published_total"`
+	FailedTotal    int64  `json:"failed_total"`
+	P50DurationMs  int64  `json:"p50_duration_ms"`
+	P95DurationMs  int64  `json:"p95_duration_ms"`
+	P99DurationMs  int64  `json:"p99_duration_ms"`
+	MaxDurationMs  int64  `json:"max_duration_ms"`
+	SnapshotAt     string `json:"snapshot_at,omitempty"`
+}
+
+type ObservabilityRuntimeMetricQueryResp struct {
+	Metric  string                                 `json:"metric"`
+	Mode    string                                 `json:"mode"`
+	List    []*ObservabilityRuntimeMetricPointResp `json:"list"`
+	Summary *ObservabilityRuntimeMetricSummaryResp `json:"summary,omitempty"`
 }

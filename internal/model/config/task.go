@@ -2,7 +2,15 @@ package config
 
 // Task 定时任务配置
 type Task struct {
-	OutboxCleanupRetentionDays               int    `json:"outbox_cleanup_retention_days" yaml:"outbox_cleanup_retention_days"`
+	OutboxCleanupRetentionDays int `json:"outbox_cleanup_retention_days" yaml:"outbox_cleanup_retention_days"`
+	// OutboxFailedCleanupRetentionDays 失败消息保留更久，便于排查和补救
+	OutboxFailedCleanupRetentionDays int `json:"outbox_failed_cleanup_retention_days" yaml:"outbox_failed_cleanup_retention_days"`
+
+	// DistributedLockEnabled 是否启用分布式锁来协调定时任务，防止多实例重复执行
+	DistributedLockEnabled bool `json:"distributed_lock_enabled" yaml:"distributed_lock_enabled"`
+	// DistributedLockTTLSeconds 分布式锁 TTL，单位秒，需略大于单次任务执行预估时间，防止死锁
+	DistributedLockTTLSeconds int `json:"distributed_lock_ttl_seconds" yaml:"distributed_lock_ttl_seconds"`
+
 	LuoguQuestionBankWarmupEnabled           bool   `json:"luogu_question_bank_warmup_enabled" yaml:"luogu_question_bank_warmup_enabled"`
 	LuoguQuestionBankWarmupBatchSize         int    `json:"luogu_question_bank_warmup_batch_size" yaml:"luogu_question_bank_warmup_batch_size"`
 	LuoguQuestionBankWarmupLockTTLSeconds    int    `json:"luogu_question_bank_warmup_lock_ttl_seconds" yaml:"luogu_question_bank_warmup_lock_ttl_seconds"`

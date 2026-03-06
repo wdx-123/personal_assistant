@@ -12,12 +12,12 @@ type ObservabilityTraceSpan struct {
 	RequestID string `json:"request_id" gorm:"type:varchar(64);not null;index:idx_request_time,priority:1;comment:'请求ID'"`
 
 	Service string `json:"service" gorm:"type:varchar(64);not null;index:idx_service_time,priority:1;comment:'服务名'"`
-	Stage   string `json:"stage" gorm:"type:varchar(64);not null;default:'';index:idx_stage_time,priority:1;comment:'阶段'"`
-	Name    string `json:"name" gorm:"type:varchar(128);not null;default:'';comment:'Span名称'"`
+	Stage   string `json:"stage" gorm:"type:varchar(64);not null;default:'';index:idx_stage_time,priority:1;index:idx_stage_name_time,priority:1;comment:'阶段'"`
+	Name    string `json:"name" gorm:"type:varchar(128);not null;default:'';index:idx_stage_name_time,priority:2;comment:'Span名称'"`
 	Kind    string `json:"kind" gorm:"type:varchar(32);not null;default:'';comment:'Span类型'"`
 	Status  string `json:"status" gorm:"type:varchar(16);not null;index:idx_status_time,priority:1;comment:'状态 ok/error'"`
 
-	StartAt    time.Time `json:"start_at" gorm:"type:datetime;not null;index:idx_trace_time,priority:2;index:idx_request_time,priority:2;index:idx_service_time,priority:2;index:idx_status_time,priority:2;index:idx_stage_time,priority:2;comment:'开始时间'"`
+	StartAt    time.Time `json:"start_at" gorm:"type:datetime;not null;index:idx_trace_time,priority:2;index:idx_request_time,priority:2;index:idx_service_time,priority:2;index:idx_status_time,priority:2;index:idx_stage_time,priority:2;index:idx_stage_name_time,priority:3;comment:'开始时间'"`
 	EndAt      time.Time `json:"end_at" gorm:"type:datetime;not null;comment:'结束时间'"`
 	DurationMs int64     `json:"duration_ms" gorm:"type:bigint;not null;default:0;comment:'耗时毫秒'"`
 

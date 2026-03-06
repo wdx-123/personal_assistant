@@ -24,6 +24,7 @@ type Supplier interface {
 	GetImageRepository() interfaces.ImageRepository
 	GetObservabilityMetricRepository() interfaces.ObservabilityMetricRepository
 	GetObservabilityTraceRepository() interfaces.ObservabilityTraceRepository
+	GetObservabilityRuntimeRepository() interfaces.ObservabilityRuntimeRepository
 }
 
 // SetUp 工厂函数，统一管理 - 现在支持配置驱动
@@ -44,6 +45,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 	var imageRepo interfaces.ImageRepository
 	var observabilityMetricRepo interfaces.ObservabilityMetricRepository
 	var observabilityTraceRepo interfaces.ObservabilityTraceRepository
+	var observabilityRuntimeRepo interfaces.ObservabilityRuntimeRepository
 
 	switch factoryConfig.DatabaseType {
 	case adapter.MySQL:
@@ -64,6 +66,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			imageRepo = NewImageRepository(db)
 			observabilityMetricRepo = NewObservabilityMetricRepository(db)
 			observabilityTraceRepo = NewObservabilityTraceRepository(db)
+			observabilityRuntimeRepo = NewObservabilityRuntimeRepository(db)
 		}
 	case adapter.MongoDB:
 		// 未来可以添加Mongo	DB实现
@@ -90,6 +93,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			imageRepo = NewImageRepository(db)
 			observabilityMetricRepo = NewObservabilityMetricRepository(db)
 			observabilityTraceRepo = NewObservabilityTraceRepository(db)
+			observabilityRuntimeRepo = NewObservabilityRuntimeRepository(db)
 		}
 	}
 	return &RepositorySupplier{
@@ -109,5 +113,6 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 		imageRepository:                imageRepo,
 		observabilityMetricRepository:  observabilityMetricRepo,
 		observabilityTraceRepository:   observabilityTraceRepo,
+		observabilityRuntimeRepository: observabilityRuntimeRepo,
 	}
 }

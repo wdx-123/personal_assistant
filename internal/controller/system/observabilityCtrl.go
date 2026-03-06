@@ -1,8 +1,8 @@
 package system
 
 import (
-	stdErrors "errors"
 	"encoding/json"
+	stdErrors "errors"
 	"io"
 	"strconv"
 	"strings"
@@ -39,6 +39,23 @@ func (ctrl *ObservabilityCtrl) QueryMetrics(c *gin.Context) {
 	response.BizOkWithData(data, c)
 }
 
+// QueryRuntimeMetrics 查询后台执行器运行时指标。
+func (ctrl *ObservabilityCtrl) QueryRuntimeMetrics(c *gin.Context) {
+	var req request.ObservabilityRuntimeMetricQueryReq
+	if err := bindJSONStrict(c, &req); err != nil {
+		global.Log.Error("query observability runtime bind failed", zap.Error(err))
+		response.BizFailWithCodeMsg(bizerrors.CodeBindFailed, "参数绑定失败", c)
+		return
+	}
+	data, err := ctrl.observabilityService.QueryRuntimeMetrics(c.Request.Context(), &req)
+	if err != nil {
+		global.Log.Error("query observability runtime failed", zap.Error(err))
+		response.BizFailWithError(err, c)
+		return
+	}
+	response.BizOkWithData(data, c)
+}
+
 // QueryTraceDetail 统一按 id + id_type 查询 trace spans 详情。
 func (ctrl *ObservabilityCtrl) QueryTraceDetail(c *gin.Context) {
 	id := strings.TrimSpace(c.Param("id"))
@@ -67,7 +84,7 @@ func (ctrl *ObservabilityCtrl) QueryTraceDetail(c *gin.Context) {
 	response.BizOkWithData(data, c)
 }
 
-// QueryTrace 按条件查询 root 摘要（JSON 请求体：trace_id/request_id/service/status/time range）。
+// QueryTrace 按条件查询 root 摘要（JSON 请求体：trace_id/request_id/service/status/root_stage/time range）。
 func (ctrl *ObservabilityCtrl) QueryTrace(c *gin.Context) {
 	var req request.ObservabilityTraceQueryReq
 	if err := bindJSONStrict(c, &req); err != nil {
