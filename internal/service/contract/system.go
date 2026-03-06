@@ -110,22 +110,16 @@ type ImageServiceContract interface {
 
 type ObservabilityServiceContract interface {
 	QueryMetrics(ctx context.Context, req *request.ObservabilityMetricsQueryReq) (*resp.ObservabilityMetricsQueryResp, error)
-	QueryTraceByRequestID(
+	QueryTraceDetail(
 		ctx context.Context,
-		requestID string,
-		limit int,
-		includePayload bool,
-		includeErrorDetail bool,
-	) (*resp.ObservabilityTraceQueryResp, error)
-	QueryTraceByTraceID(
-		ctx context.Context,
-		traceID string,
+		id string,
+		idType string,
 		limit int,
 		offset int,
 		includePayload bool,
 		includeErrorDetail bool,
 	) (*resp.ObservabilityTraceQueryResp, error)
-	QueryTrace(ctx context.Context, req *request.ObservabilityTraceQueryReq) (*resp.ObservabilityTraceQueryResp, error)
+	QueryTrace(ctx context.Context, req *request.ObservabilityTraceQueryReq) (*resp.ObservabilityTraceSummaryQueryResp, error)
 }
 
 type Supplier interface {

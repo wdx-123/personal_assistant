@@ -2,11 +2,13 @@ package query
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
+	"personal_assistant/internal/repository/interfaces"
 	"personal_assistant/internal/service/contract"
 	bizerrors "personal_assistant/pkg/errors"
 	obsmetrics "personal_assistant/pkg/observability/metrics"
@@ -15,14 +17,20 @@ import (
 
 // Service 提供可观测性查询相关应用服务。
 type Service struct {
-	metricsBackend obsmetrics.MetricsBackend
-	traceBackend   obstrace.TraceBackend
+	metricsBackend  obsmetrics.MetricsBackend
+	traceBackend    obstrace.TraceBackend
+	traceRepository interfaces.ObservabilityTraceRepository
 }
 
-func NewQueryService(metricsBackend obsmetrics.MetricsBackend, traceBackend obstrace.TraceBackend) *Service {
+func NewQueryService(
+	metricsBackend obsmetrics.MetricsBackend,
+	traceBackend obstrace.TraceBackend,
+	traceRepository interfaces.ObservabilityTraceRepository,
+) *Service {
 	return &Service{
-		metricsBackend: metricsBackend,
-		traceBackend:   traceBackend,
+		metricsBackend:  metricsBackend,
+		traceBackend:    traceBackend,
+		traceRepository: traceRepository,
 	}
 }
 
@@ -104,75 +112,70 @@ func (s *Service) QueryMetrics(
 	}, nil
 }
 
-func (s *Service) QueryTraceByRequestID(
+func (s *Service) QueryTraceDetail(
 	ctx context.Context,
-	requestID string,
-	limit int,
-	includePayload bool,
-	includeErrorDetail bool,
-) (*resp.ObservabilityTraceQueryResp, error) {
-	requestID = strings.TrimSpace(requestID)
-	if requestID == "" {
-		return nil, bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "request_id 不能为空")
-	}
-	limit, offset := normalizeTracePage(limit, 0)
-	if s.traceBackend == nil {
-		return nil, bizerrors.NewWithMsg(bizerrors.CodeInternalError, "追踪后端未初始化")
-	}
-	spans, total, err := s.traceBackend.ListByRequestID(
-		ctx,
-		requestID,
-		limit,
-		offset,
-		includePayload,
-		includeErrorDetail,
-	)
-	if err != nil {
-		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
-	}
-	return toTraceQueryResp(spans, total, includePayload, includeErrorDetail), nil
-}
-
-func (s *Service) QueryTraceByTraceID(
-	ctx context.Context,
-	traceID string,
+	id string,
+	idType string,
 	limit int,
 	offset int,
 	includePayload bool,
 	includeErrorDetail bool,
 ) (*resp.ObservabilityTraceQueryResp, error) {
-	traceID = strings.TrimSpace(traceID)
-	if traceID == "" {
-		return nil, bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "trace_id 不能为空")
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return nil, bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "id 不能为空")
+	}
+	idType = request.NormalizeTraceDetailIDType(idType)
+	if !request.IsValidTraceDetailIDType(idType) {
+		return nil, bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "id_type 仅支持 trace/request")
 	}
 	if s.traceBackend == nil {
 		return nil, bizerrors.NewWithMsg(bizerrors.CodeInternalError, "追踪后端未初始化")
 	}
+
 	limit, offset = normalizeTracePage(limit, offset)
-	spans, total, err := s.traceBackend.ListByTraceID(
-		ctx,
-		traceID,
-		limit,
-		offset,
-		includePayload,
-		includeErrorDetail,
+	var (
+		spans []*obstrace.Span
+		total int64
+		err   error
 	)
+	switch idType {
+	case request.TraceDetailIDTypeTrace:
+		spans, total, err = s.traceBackend.ListByTraceID(
+			ctx,
+			id,
+			limit,
+			offset,
+			includePayload,
+			includeErrorDetail,
+		)
+	case request.TraceDetailIDTypeRequest:
+		spans, total, err = s.traceBackend.ListByRequestID(
+			ctx,
+			id,
+			limit,
+			offset,
+			includePayload,
+			includeErrorDetail,
+		)
+	}
 	if err != nil {
 		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
 	}
-	return toTraceQueryResp(spans, total, includePayload, includeErrorDetail), nil
+	return toTraceDetailQueryResp(spans, total, includePayload, includeErrorDetail), nil
 }
 
 func (s *Service) QueryTrace(
 	ctx context.Context,
 	req *request.ObservabilityTraceQueryReq,
-) (*resp.ObservabilityTraceQueryResp, error) {
+) (*resp.ObservabilityTraceSummaryQueryResp, error) {
 	if req == nil {
 		return nil, bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "请求参数不能为空")
 	}
-	if s.traceBackend == nil {
-		return nil, bizerrors.NewWithMsg(bizerrors.CodeInternalError, "追踪后端未初始化")
+	if s.traceRepository == nil {
+		return nil, bizerrors.NewWithMsg(bizerrors.CodeInternalError, "追踪仓储未初始化")
 	}
+
 	status := strings.ToLower(strings.TrimSpace(req.Status))
 	if status != "" && status != obstrace.SpanStatusOK && status != obstrace.SpanStatusError {
 		return nil, bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "status 仅支持 ok/error")
@@ -188,25 +191,22 @@ func (s *Service) QueryTrace(
 	if !start.IsZero() && !end.IsZero() && !end.After(start) {
 		return nil, bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "end_at 必须大于 start_at")
 	}
-	limit, offset := normalizeTracePage(req.Limit, req.Offset)
 
-	rows, total, queryErr := s.traceBackend.Query(ctx, &obstrace.Query{
-		TraceID:            strings.TrimSpace(req.TraceID),
-		RequestID:          strings.TrimSpace(req.RequestID),
-		Service:            strings.TrimSpace(req.Service),
-		Stage:              strings.TrimSpace(req.Stage),
-		Status:             status,
-		StartAt:            start.UTC(),
-		EndAt:              end.UTC(),
-		Limit:              limit,
-		Offset:             offset,
-		IncludePayload:     req.IncludePayload,
-		IncludeErrorDetail: req.IncludeErrorDetail,
+	limit, offset := normalizeTracePage(req.Limit, req.Offset)
+	rows, total, queryErr := s.traceRepository.QueryRootSummaries(ctx, &interfaces.ObservabilityTraceRootSummaryQuery{
+		TraceID:   strings.TrimSpace(req.TraceID),
+		RequestID: strings.TrimSpace(req.RequestID),
+		Service:   strings.TrimSpace(req.Service),
+		Status:    status,
+		StartAt:   start.UTC(),
+		EndAt:     end.UTC(),
+		Limit:     limit,
+		Offset:    offset,
 	})
 	if queryErr != nil {
 		return nil, bizerrors.Wrap(bizerrors.CodeDBError, queryErr)
 	}
-	return toTraceQueryResp(rows, total, req.IncludePayload, req.IncludeErrorDetail), nil
+	return toTraceSummaryQueryResp(rows, total), nil
 }
 
 func parseTraceTime(raw string) (time.Time, error) {
@@ -230,7 +230,7 @@ func normalizeTracePage(limit, offset int) (int, int) {
 	return limit, offset
 }
 
-func toTraceQueryResp(
+func toTraceDetailQueryResp(
 	spans []*obstrace.Span,
 	total int64,
 	includePayload bool,
@@ -272,6 +272,56 @@ func toTraceQueryResp(
 		List:  list,
 		Total: total,
 	}
+}
+
+func toTraceSummaryQueryResp(
+	rows []*interfaces.ObservabilityTraceRootSummary,
+	total int64,
+) *resp.ObservabilityTraceSummaryQueryResp {
+	list := make([]*resp.ObservabilityTraceSummaryResp, 0, len(rows))
+	for _, row := range rows {
+		if row == nil {
+			continue
+		}
+		method, routeTemplate := parseSummaryTags(row.TagsJSON)
+		list = append(list, &resp.ObservabilityTraceSummaryResp{
+			TraceID:        row.TraceID,
+			RequestID:      row.RequestID,
+			Service:        row.Service,
+			Name:           row.Name,
+			Status:         row.Status,
+			ErrorCode:      row.ErrorCode,
+			Message:        row.Message,
+			StartAt:        row.StartAt.UTC().Format(time.RFC3339),
+			EndAt:          row.EndAt.UTC().Format(time.RFC3339),
+			DurationMs:     row.DurationMs,
+			SpanTotal:      row.SpanTotal,
+			ErrorSpanTotal: row.ErrorSpanTotal,
+			Method:         method,
+			RouteTemplate:  routeTemplate,
+		})
+	}
+	return &resp.ObservabilityTraceSummaryQueryResp{
+		List:  list,
+		Total: total,
+	}
+}
+
+func parseSummaryTags(tagsJSON string) (method string, routeTemplate string) {
+	tagsJSON = strings.TrimSpace(tagsJSON)
+	if tagsJSON == "" {
+		return "", ""
+	}
+	tags := make(map[string]string)
+	if err := json.Unmarshal([]byte(tagsJSON), &tags); err != nil {
+		return "", ""
+	}
+	method = strings.TrimSpace(tags["method"])
+	routeTemplate = strings.TrimSpace(tags["route_template"])
+	if routeTemplate == "" {
+		routeTemplate = strings.TrimSpace(tags["route"])
+	}
+	return method, routeTemplate
 }
 
 var _ contract.ObservabilityServiceContract = (*Service)(nil)

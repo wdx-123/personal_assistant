@@ -28,36 +28,25 @@ func (t *tracedObservabilityService) QueryMetrics(
 	})
 }
 
-func (t *tracedObservabilityService) QueryTraceByRequestID(
+func (t *tracedObservabilityService) QueryTraceDetail(
 	ctx context.Context,
-	requestID string,
-	limit int,
-	includePayload bool,
-	includeErrorDetail bool,
-) (*resp.ObservabilityTraceQueryResp, error) {
-	return runTraced(ctx, "observability", "QueryTraceByRequestID", func(inner context.Context) (*resp.ObservabilityTraceQueryResp, error) {
-		return t.next.QueryTraceByRequestID(inner, requestID, limit, includePayload, includeErrorDetail)
-	})
-}
-
-func (t *tracedObservabilityService) QueryTraceByTraceID(
-	ctx context.Context,
-	traceID string,
+	id string,
+	idType string,
 	limit int,
 	offset int,
 	includePayload bool,
 	includeErrorDetail bool,
 ) (*resp.ObservabilityTraceQueryResp, error) {
-	return runTraced(ctx, "observability", "QueryTraceByTraceID", func(inner context.Context) (*resp.ObservabilityTraceQueryResp, error) {
-		return t.next.QueryTraceByTraceID(inner, traceID, limit, offset, includePayload, includeErrorDetail)
+	return runTraced(ctx, "observability", "QueryTraceDetail", func(inner context.Context) (*resp.ObservabilityTraceQueryResp, error) {
+		return t.next.QueryTraceDetail(inner, id, idType, limit, offset, includePayload, includeErrorDetail)
 	})
 }
 
 func (t *tracedObservabilityService) QueryTrace(
 	ctx context.Context,
 	req *request.ObservabilityTraceQueryReq,
-) (*resp.ObservabilityTraceQueryResp, error) {
-	return runTraced(ctx, "observability", "QueryTrace", func(inner context.Context) (*resp.ObservabilityTraceQueryResp, error) {
+) (*resp.ObservabilityTraceSummaryQueryResp, error) {
+	return runTraced(ctx, "observability", "QueryTrace", func(inner context.Context) (*resp.ObservabilityTraceSummaryQueryResp, error) {
 		return t.next.QueryTrace(inner, req)
 	})
 }

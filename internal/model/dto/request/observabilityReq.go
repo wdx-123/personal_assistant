@@ -1,5 +1,7 @@
 package request
 
+import "strings"
+
 // ObservabilityMetricsQueryReq 指标查询请求
 type ObservabilityMetricsQueryReq struct {
 	Granularity   string  `json:"granularity" binding:"required"`
@@ -13,19 +15,37 @@ type ObservabilityMetricsQueryReq struct {
 	Limit         int     `json:"limit"`
 }
 
-// ObservabilityTraceQueryReq 追踪 Span 查询请求
+const (
+	// TraceDetailIDTypeTrace 表示按 trace_id 查询详情。
+	TraceDetailIDTypeTrace = "trace"
+	// TraceDetailIDTypeRequest 表示按 request_id 查询详情。
+	TraceDetailIDTypeRequest = "request"
+)
+
+// IsValidTraceDetailIDType 校验详情查询 id_type 参数。
+func IsValidTraceDetailIDType(idType string) bool {
+	switch strings.ToLower(strings.TrimSpace(idType)) {
+	case TraceDetailIDTypeTrace, TraceDetailIDTypeRequest:
+		return true
+	default:
+		return false
+	}
+}
+
+// NormalizeTraceDetailIDType 归一化详情查询 id_type。
+func NormalizeTraceDetailIDType(idType string) string {
+	return strings.ToLower(strings.TrimSpace(idType))
+}
+
+// ObservabilityTraceQueryReq 追踪 root 摘要查询请求
 type ObservabilityTraceQueryReq struct {
 	TraceID   string `json:"trace_id"`
 	RequestID string `json:"request_id"`
 	Service   string `json:"service"`
-	Stage     string `json:"stage"`
 	Status    string `json:"status"`
 	StartAt   string `json:"start_at"`
 	EndAt     string `json:"end_at"`
 
 	Limit  int `json:"limit"`
 	Offset int `json:"offset"`
-
-	IncludePayload     bool `json:"include_payload"`
-	IncludeErrorDetail bool `json:"include_error_detail"`
 }

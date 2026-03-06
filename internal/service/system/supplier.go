@@ -33,7 +33,11 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 	rawMenu := NewMenuService(repositoryGroup, rawPermission)
 	rawRole := NewRoleService(repositoryGroup, rawPermission)
 	rawImage := NewImageService(repositoryGroup)
-	rawObservability := obsquery.NewQueryService(global.ObservabilityMetrics, global.ObservabilityTraces)
+	rawObservability := obsquery.NewQueryService(
+		global.ObservabilityMetrics,
+		global.ObservabilityTraces,
+		repositoryGroup.SystemRepositorySupplier.GetObservabilityTraceRepository(),
+	)
 
 	jwtSvc := contract.JWTServiceContract(rawJWT)
 	permissionSvc := contract.PermissionServiceContract(rawPermission)

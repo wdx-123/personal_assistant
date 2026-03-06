@@ -21,6 +21,30 @@ type ObservabilityMetricsQueryResp struct {
 	List        []*ObservabilityMetricPointResp `json:"list"`
 }
 
+// ObservabilityTraceSummaryResp 追踪 root 摘要响应项
+type ObservabilityTraceSummaryResp struct {
+	TraceID        string `json:"trace_id"`
+	RequestID      string `json:"request_id"`
+	Service        string `json:"service"`
+	Name           string `json:"name"`
+	Status         string `json:"status"`
+	ErrorCode      string `json:"error_code,omitempty"`
+	Message        string `json:"message,omitempty"`
+	StartAt        string `json:"start_at"`
+	EndAt          string `json:"end_at"`
+	DurationMs     int64  `json:"duration_ms"`
+	SpanTotal      int64  `json:"span_total"`
+	ErrorSpanTotal int64  `json:"error_span_total"`
+	Method         string `json:"method,omitempty"`
+	RouteTemplate  string `json:"route_template,omitempty"`
+}
+
+// ObservabilityTraceSummaryQueryResp 追踪摘要查询响应
+type ObservabilityTraceSummaryQueryResp struct {
+	List  []*ObservabilityTraceSummaryResp `json:"list"`
+	Total int64                            `json:"total"`
+}
+
 // ObservabilityTraceSpanResp 全链路 Span 响应
 type ObservabilityTraceSpanResp struct {
 	SpanID       string `json:"span_id"`
@@ -49,7 +73,7 @@ type ObservabilityTraceSpanResp struct {
 	ErrorDetailJSON string `json:"error_detail_json,omitempty"`
 }
 
-// ObservabilityTraceQueryResp 追踪查询响应
+// ObservabilityTraceQueryResp 追踪详情查询响应
 type ObservabilityTraceQueryResp struct {
 	List  []*ObservabilityTraceSpanResp `json:"list"`
 	Total int64                         `json:"total"`

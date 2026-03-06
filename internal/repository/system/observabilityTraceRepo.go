@@ -16,6 +16,8 @@ type observabilityTraceRepository struct {
 	db *gorm.DB
 }
 
+const rootTraceStage = "http.request"
+
 func NewObservabilityTraceRepository(db *gorm.DB) interfaces.ObservabilityTraceRepository {
 	return &observabilityTraceRepository{db: db}
 }
@@ -138,6 +140,121 @@ func (r *observabilityTraceRepository) Query(
 		return nil, 0, err
 	}
 	return rows, total, nil
+}
+
+func (r *observabilityTraceRepository) QueryRootSummaries(
+	ctx context.Context,
+	q *interfaces.ObservabilityTraceRootSummaryQuery,
+) ([]*interfaces.ObservabilityTraceRootSummary, int64, error) {
+	if q == nil {
+		q = &interfaces.ObservabilityTraceRootSummaryQuery{}
+	}
+	if q.Limit <= 0 {
+		q.Limit = 200
+	}
+	if q.Limit > 1000 {
+		q.Limit = 1000
+	}
+	if q.Offset < 0 {
+		q.Offset = 0
+	}
+
+	rootBase := r.buildRootSummaryBaseQuery(ctx, q)
+	groupedRoots := rootBase.
+		Select("trace_id, request_id").
+		Group("trace_id, request_id")
+
+	var total int64
+	if err := r.db.WithContext(ctx).
+		Table("(?) AS grouped_roots", groupedRoots).
+		Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	if total == 0 {
+		return []*interfaces.ObservabilityTraceRootSummary{}, 0, nil
+	}
+
+	latestStartPerGroup := rootBase.
+		Select("trace_id, request_id, MAX(start_at) AS max_start_at").
+		Group("trace_id, request_id")
+
+	latestIDPerGroup := r.db.WithContext(ctx).
+		Table("observability_trace_spans AS root").
+		Where("root.deleted_at IS NULL").
+		Select("root.trace_id, root.request_id, MAX(root.id) AS latest_id").
+		Joins(
+			"JOIN (?) AS latest_start ON latest_start.trace_id = root.trace_id AND latest_start.request_id = root.request_id AND latest_start.max_start_at = root.start_at",
+			latestStartPerGroup,
+		).
+		Group("root.trace_id, root.request_id")
+
+	spanStats := r.db.WithContext(ctx).
+		Table("observability_trace_spans AS span").
+		Where("span.deleted_at IS NULL").
+		Select(
+			"span.trace_id, span.request_id, COUNT(1) AS span_total, SUM(CASE WHEN span.status = ? THEN 1 ELSE 0 END) AS error_span_total",
+			"error",
+		).
+		Group("span.trace_id, span.request_id")
+
+	var rows []*interfaces.ObservabilityTraceRootSummary
+	if err := r.db.WithContext(ctx).
+		Table("observability_trace_spans AS root").
+		Select(strings.Join([]string{
+			"root.trace_id",
+			"root.request_id",
+			"root.service",
+			"root.name",
+			"root.status",
+			"root.error_code",
+			"root.message",
+			"root.start_at",
+			"root.end_at",
+			"root.duration_ms",
+			"root.tags_json",
+			"COALESCE(stat.span_total, 0) AS span_total",
+			"COALESCE(stat.error_span_total, 0) AS error_span_total",
+		}, ", ")).
+		Joins("JOIN (?) AS latest ON latest.latest_id = root.id", latestIDPerGroup).
+		Joins("LEFT JOIN (?) AS stat ON stat.trace_id = root.trace_id AND stat.request_id = root.request_id", spanStats).
+		Order("root.start_at DESC").
+		Order("root.id DESC").
+		Limit(q.Limit).
+		Offset(q.Offset).
+		Scan(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
+}
+
+func (r *observabilityTraceRepository) buildRootSummaryBaseQuery(
+	ctx context.Context,
+	q *interfaces.ObservabilityTraceRootSummaryQuery,
+) *gorm.DB {
+	base := r.db.WithContext(ctx).
+		Table("observability_trace_spans").
+		Where("deleted_at IS NULL").
+		Where("stage = ?", rootTraceStage)
+
+	if v := strings.TrimSpace(q.TraceID); v != "" {
+		base = base.Where("trace_id = ?", v)
+	}
+	if v := strings.TrimSpace(q.RequestID); v != "" {
+		base = base.Where("request_id = ?", v)
+	}
+	if v := strings.TrimSpace(q.Service); v != "" {
+		base = base.Where("service = ?", v)
+	}
+	if v := strings.TrimSpace(q.Status); v != "" {
+		base = base.Where("status = ?", v)
+	}
+	if !q.StartAt.IsZero() {
+		base = base.Where("start_at >= ?", q.StartAt)
+	}
+	if !q.EndAt.IsZero() {
+		base = base.Where("start_at < ?", q.EndAt)
+	}
+	return base
 }
 
 func (r *observabilityTraceRepository) DeleteBeforeByStatus(

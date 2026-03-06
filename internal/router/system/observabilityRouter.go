@@ -13,8 +13,7 @@ func (r *ObservabilityRouter) InitObservabilityRouter(router *gin.RouterGroup) {
 	obsGroup := router.Group("system/observability")
 	obsCtrl := controller.ApiGroupApp.SystemApiGroup.GetObservabilityCtrl()
 	{
-		obsGroup.GET("traces/request/:request_id", obsCtrl.QueryTraceByRequestID)
-		obsGroup.GET("traces/trace/:trace_id", obsCtrl.QueryTraceByTraceID)
+		obsGroup.GET("traces/detail/:id", obsCtrl.QueryTraceDetail)
 		obsGroup.POST("traces/query", obsCtrl.QueryTrace)
 		obsGroup.POST("metrics/query", obsCtrl.QueryMetrics)
 	}

@@ -1,13 +1,16 @@
 package system
 
 import (
+	stdErrors "errors"
+	"encoding/json"
+	"io"
 	"strconv"
 	"strings"
 
 	"personal_assistant/global"
 	"personal_assistant/internal/model/dto/request"
 	serviceContract "personal_assistant/internal/service/contract"
-	"personal_assistant/pkg/errors"
+	bizerrors "personal_assistant/pkg/errors"
 	"personal_assistant/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -24,7 +27,7 @@ func (ctrl *ObservabilityCtrl) QueryMetrics(c *gin.Context) {
 	var req request.ObservabilityMetricsQueryReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		global.Log.Error("query observability metrics bind failed", zap.Error(err))
-		response.BizFailWithCodeMsg(errors.CodeBindFailed, "参数绑定失败", c)
+		response.BizFailWithCodeMsg(bizerrors.CodeBindFailed, "参数绑定失败", c)
 		return
 	}
 	data, err := ctrl.observabilityService.QueryMetrics(c.Request.Context(), &req)
@@ -36,51 +39,40 @@ func (ctrl *ObservabilityCtrl) QueryMetrics(c *gin.Context) {
 	response.BizOkWithData(data, c)
 }
 
-// QueryTraceByRequestID 按 request_id 查询 trace spans（分页参数见 parseTraceQueryPage）。
-func (ctrl *ObservabilityCtrl) QueryTraceByRequestID(c *gin.Context) {
-	requestID := strings.TrimSpace(c.Param("request_id"))
-	limit, _, includePayload, includeErrorDetail := parseTraceQueryPage(c)
-	data, err := ctrl.observabilityService.QueryTraceByRequestID(
-		c.Request.Context(),
-		requestID,
-		limit,
-		includePayload,
-		includeErrorDetail,
-	)
-	if err != nil {
-		global.Log.Error("query trace by request id failed", zap.Error(err), zap.String("request_id", requestID))
-		response.BizFailWithError(err, c)
-		return
-	}
-	response.BizOkWithData(data, c)
-}
-
-// QueryTraceByTraceID 按 trace_id 查询 trace spans（支持 offset/limit 与是否包含 payload）。
-func (ctrl *ObservabilityCtrl) QueryTraceByTraceID(c *gin.Context) {
-	traceID := strings.TrimSpace(c.Param("trace_id"))
+// QueryTraceDetail 统一按 id + id_type 查询 trace spans 详情。
+func (ctrl *ObservabilityCtrl) QueryTraceDetail(c *gin.Context) {
+	id := strings.TrimSpace(c.Param("id"))
+	idType := request.NormalizeTraceDetailIDType(c.Query("id_type"))
 	limit, offset, includePayload, includeErrorDetail := parseTraceQueryPage(c)
-	data, err := ctrl.observabilityService.QueryTraceByTraceID(
+
+	data, err := ctrl.observabilityService.QueryTraceDetail(
 		c.Request.Context(),
-		traceID,
+		id,
+		idType,
 		limit,
 		offset,
 		includePayload,
 		includeErrorDetail,
 	)
 	if err != nil {
-		global.Log.Error("query trace by trace id failed", zap.Error(err), zap.String("trace_id", traceID))
+		global.Log.Error(
+			"query trace detail failed",
+			zap.Error(err),
+			zap.String("id", id),
+			zap.String("id_type", idType),
+		)
 		response.BizFailWithError(err, c)
 		return
 	}
 	response.BizOkWithData(data, c)
 }
 
-// QueryTrace 按多条件查询 trace spans（JSON 请求体：trace_id/request_id/service/stage/status/time range 等）。
+// QueryTrace 按条件查询 root 摘要（JSON 请求体：trace_id/request_id/service/status/time range）。
 func (ctrl *ObservabilityCtrl) QueryTrace(c *gin.Context) {
 	var req request.ObservabilityTraceQueryReq
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := bindJSONStrict(c, &req); err != nil {
 		global.Log.Error("query observability trace bind failed", zap.Error(err))
-		response.BizFailWithCodeMsg(errors.CodeBindFailed, "参数绑定失败", c)
+		response.BizFailWithCodeMsg(bizerrors.CodeBindFailed, "参数绑定失败", c)
 		return
 	}
 	data, err := ctrl.observabilityService.QueryTrace(c.Request.Context(), &req)
@@ -92,10 +84,10 @@ func (ctrl *ObservabilityCtrl) QueryTrace(c *gin.Context) {
 	response.BizOkWithData(data, c)
 }
 
-// parseTraceQueryPage 解析 trace 查询分页参数（querystring）：
+// parseTraceQueryPage 解析 trace 详情查询分页参数（querystring）：
 //   - limit：默认 200
 //   - offset：默认 0
-//   - include_payload：默认 true（是否返回 request/response 片段，建议前端按需关闭）
+//   - include_payload：默认 true（是否返回 request/response 片段）
 //   - include_error_detail：默认 false（是否返回 error_stack/error_detail_json）
 func parseTraceQueryPage(c *gin.Context) (limit int, offset int, includePayload bool, includeErrorDetail bool) {
 	limit = 200
@@ -124,4 +116,24 @@ func parseTraceQueryPage(c *gin.Context) (limit int, offset int, includePayload 
 		}
 	}
 	return
+}
+
+// bindJSONStrict 严格绑定 JSON：拒绝未知字段，避免旧参数混入新契约。
+func bindJSONStrict(c *gin.Context, target any) error {
+	if c == nil || c.Request == nil || c.Request.Body == nil {
+		return io.EOF
+	}
+
+	decoder := json.NewDecoder(c.Request.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return stdErrors.New("unexpected trailing json content")
+		}
+		return err
+	}
+	return nil
 }
