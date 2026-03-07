@@ -155,6 +155,38 @@ func (c *RoleCtrl) DeleteRole(ctx *gin.Context) {
 	response.BizOkWithMessage("删除成功", ctx)
 }
 
+// AssignPermissions 分配角色权限（菜单 + 直绑API，全量替换）
+// @Summary 分配角色权限
+// @Tags System: Role
+// @Accept json
+// @Produce json
+// @Param body body request.AssignRolePermissionReq true "分配角色权限请求"
+// @Success 200 {object} response.Response
+// @Router /api/system/role/assign_permission [post]
+func (c *RoleCtrl) AssignPermissions(ctx *gin.Context) {
+	var req request.AssignRolePermissionReq
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		global.Log.Error("分配角色权限参数绑定失败", zap.Error(err))
+		response.BizFailWithMessage("参数错误", ctx)
+		return
+	}
+	if req.MenuIDs == nil {
+		response.BizFailWithMessage("menu_ids 必须传入（可为空数组）", ctx)
+		return
+	}
+	if req.DirectAPIIDs == nil {
+		response.BizFailWithMessage("direct_api_ids 必须传入（可为空数组）", ctx)
+		return
+	}
+
+	if err := c.roleService.AssignPermissions(ctx.Request.Context(), req.RoleID, req.MenuIDs, req.DirectAPIIDs); err != nil {
+		global.Log.Error("分配角色权限失败", zap.Uint("roleID", req.RoleID), zap.Error(err))
+		response.BizFailWithError(err, ctx)
+		return
+	}
+	response.BizOkWithMessage("分配成功", ctx)
+}
+
 // AssignMenus 分配菜单权限
 // @Summary 分配菜单权限
 // @Tags System: Role
@@ -180,6 +212,13 @@ func (c *RoleCtrl) AssignMenus(ctx *gin.Context) {
 }
 
 // AssignAPIs 分配角色API权限（直绑，全量替换）
+// @Summary 分配角色API权限
+// @Tags System: Role
+// @Accept json
+// @Produce json
+// @Param body body request.AssignRoleAPIReq true "分配角色API权限请求"
+// @Success 200 {object} response.Response
+// @Router /api/system/role/assign_api [post]
 func (c *RoleCtrl) AssignAPIs(ctx *gin.Context) {
 	var req request.AssignRoleAPIReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {

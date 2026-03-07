@@ -26,6 +26,8 @@ func (r *RoleRouter) InitRoleRouter(router *gin.RouterGroup) {
 		// 列表接口（需在动态路由前注册）
 		roleGroup.GET("list", roleCtrl.GetRoleList)
 
+		// 合并分配角色权限（菜单 + 直绑API）
+		roleGroup.POST("assign_permission", roleCtrl.AssignPermissions)
 		// 分配菜单权限（需在:id前注册，避免路由冲突）
 		roleGroup.POST("assign_menu", roleCtrl.AssignMenus)
 		// 分配角色API权限（直绑，全量替换）

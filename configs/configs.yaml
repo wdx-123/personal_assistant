@@ -25,7 +25,7 @@ system:
   bind_cool_down_hours: 48 # 换绑冷却时间（小时），防止频繁换绑
 zap:
   level: warn #  日志级别为error：仅记录错误信息，不包含info和debug信息
-  filename: log/go_blog.log # 日志文件存储路径及名称：日志会写入项目根目录下的log文件夹，文件名为go_blog.log，便于统一管理和查找
+  filename: log/assist_backed_app.log # 日志文件存储路径及名称：日志会写入项目根目录下的log文件夹，文件名为go_blog.log，便于统一管理和查找
   max_size: 200 # 单个日志文件最大容量为200MB（依赖lumberjack库）：当文件达到200MB时自动切割为旧日志（如go_blog.log.1），避免单文件过大导致查看/备份困难
   max_backups: 30 # 最多保留30个旧日志文件（依赖lumberjack库）：超过30个时自动删除最旧的日志，防止历史日志占用过多磁盘空间
   max_age: 5 # 旧日志文件最多保留5天（依赖lumberjack库）：无论文件是否达到max_backups数量，超过5天的旧日志都会自动清理，控制日志存储周期
