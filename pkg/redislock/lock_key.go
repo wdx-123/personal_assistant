@@ -17,6 +17,7 @@ const (
 	LockKeyOutboxRelayProcess = "outbox:relay:process"
 
 	lockKeyRoleMenuAssignFmt = "role:menu:assign:%d" // 角色菜单分配锁
+	lockKeyRolePermissionAssignFmt   = "role:permission:assign:%d"    // 角色权限分配锁
 )
 
 func LockKeyLuoguBindUser(userID uint) string {
@@ -35,7 +36,8 @@ func LockKeyLeetcodeSyncSingleUser(identifier string) string {
 	return fmt.Sprintf(lockKeyLeetcodeUserSyncSingleFmt, identifier)
 }
 
-// LockKeyRoleMenuAssign 生成角色菜单分配锁Key
-func LockKeyRoleMenuAssign(roleID uint) string {
-	return fmt.Sprintf(lockKeyRoleMenuAssignFmt, roleID)
+// LockKeyRolePermissionAssign 生成角色权限分配锁 Key。
+// 菜单权限与角色直绑 API 权限都会触发 Casbin 全量刷新，因此按 role 维度串行化。
+func LockKeyRolePermissionAssign(roleID uint) string {
+	return fmt.Sprintf(lockKeyRolePermissionAssignFmt, roleID)
 }

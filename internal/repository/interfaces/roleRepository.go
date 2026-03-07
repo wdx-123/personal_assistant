@@ -51,6 +51,8 @@ type RoleRepository interface {
 	ClearRoleMenus(ctx context.Context, roleID uint) error
 	// ReplaceRoleAPIs 全量替换角色直绑API权限（事务）
 	ReplaceRoleAPIs(ctx context.Context, roleID uint, apiIDs []uint) error
+	// ReplaceRolePermissions 单事务全量替换角色菜单和直绑API权限
+	ReplaceRolePermissions(ctx context.Context, roleID uint, menuIDs []uint, apiIDs []uint) error
 	// GetRoleAPIIDs 获取角色直绑的API ID列表
 	GetRoleAPIIDs(ctx context.Context, roleID uint) ([]uint, error)
 	// ClearRoleAPIs 清空角色的所有API直绑关联

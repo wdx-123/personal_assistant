@@ -81,10 +81,12 @@ func (l *RedisLock) LockWithRetry(
 		if err == nil {
 			return nil
 		}
+
+		lastErr = err
+		// 锁占用可重试，其他异常（如 Redis 超时/断连）直接返回。
 		if !errors.Is(err, ErrLockFailed) {
 			return err
 		}
-		lastErr = err
 
 		if i < maxRetries-1 {
 			time.Sleep(retryInterval)
@@ -143,6 +145,15 @@ func (l *RedisLock) Unlock() error {
 	if l.rdb == nil {
 		return fmt.Errorf("redis client is nil")
 	}
+	return l.UnlockWithContext(l.ctx)
+}
+
+// UnlockWithContext 使用指定上下文释放锁，适合请求超时后兜底解锁。
+func (l *RedisLock) UnlockWithContext(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	// 停止续期
 	l.mutex.Lock()
 	if l.renewStarted {
@@ -160,7 +171,7 @@ func (l *RedisLock) Unlock() error {
 		end
 	`
 
-	result, err := l.rdb.Eval(l.ctx, luaScript, []string{l.key}, l.value).Result()
+	result, err := l.rdb.Eval(ctx, luaScript, []string{l.key}, l.value).Result()
 	if err != nil {
 		return fmt.Errorf("执行lua脚本失败: %w", err)
 	}

@@ -17,6 +17,7 @@ import (
 	resp "personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
 	serviceContract "personal_assistant/internal/service/contract"
+	bizerrors "personal_assistant/pkg/errors"
 	"personal_assistant/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -48,7 +49,7 @@ func (c *RoleCtrl) GetRoleList(ctx *gin.Context) {
 	var filter request.RoleListFilter
 	if err := ctx.ShouldBindQuery(&filter); err != nil {
 		global.Log.Error("角色列表参数绑定失败", zap.Error(err))
-		response.BizFailWithMessage("参数错误", ctx)
+		failInvalidParams(ctx, "参数错误")
 		return
 	}
 
@@ -87,7 +88,7 @@ func (c *RoleCtrl) CreateRole(ctx *gin.Context) {
 	var req request.CreateRoleReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		global.Log.Error("创建角色参数绑定失败", zap.Error(err))
-		response.BizFailWithMessage("参数错误", ctx)
+		failInvalidParams(ctx, "参数错误")
 		return
 	}
 
@@ -112,14 +113,14 @@ func (c *RoleCtrl) UpdateRole(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		response.BizFailWithMessage("ID格式错误", ctx)
+		failInvalidParams(ctx, "ID格式错误")
 		return
 	}
 
 	var req request.UpdateRoleReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		global.Log.Error("更新角色参数绑定失败", zap.Error(err))
-		response.BizFailWithMessage("参数错误", ctx)
+		failInvalidParams(ctx, "参数错误")
 		return
 	}
 
@@ -155,6 +156,38 @@ func (c *RoleCtrl) DeleteRole(ctx *gin.Context) {
 	response.BizOkWithMessage("删除成功", ctx)
 }
 
+// AssignPermissions 分配角色权限（菜单 + 直绑API，全量替换）
+// @Summary 分配角色权限
+// @Tags System: Role
+// @Accept json
+// @Produce json
+// @Param body body request.AssignRolePermissionReq true "分配角色权限请求"
+// @Success 200 {object} response.Response
+// @Router /api/system/role/assign_permission [post]
+func (c *RoleCtrl) AssignPermissions(ctx *gin.Context) {
+	var req request.AssignRolePermissionReq
+	if err := ctx.ShouldBindJSON(&req); err != nil {
+		global.Log.Error("分配角色权限参数绑定失败", zap.Error(err))
+		failInvalidParams(ctx, "参数错误")
+		return
+	}
+	if req.MenuIDs == nil {
+		failInvalidParams(ctx, "menu_ids 必须传入（可为空数组）")
+		return
+	}
+	if req.DirectAPIIDs == nil {
+		failInvalidParams(ctx, "direct_api_ids 必须传入（可为空数组）")
+		return
+	}
+
+	if err := c.roleService.AssignPermissions(ctx.Request.Context(), req.RoleID, req.MenuIDs, req.DirectAPIIDs); err != nil {
+		global.Log.Error("分配角色权限失败", zap.Uint("roleID", req.RoleID), zap.Error(err))
+		response.BizFailWithError(err, ctx)
+		return
+	}
+	response.BizOkWithMessage("分配成功", ctx)
+}
+
 // AssignMenus 分配菜单权限
 // @Summary 分配菜单权限
 // @Tags System: Role
@@ -167,7 +200,7 @@ func (c *RoleCtrl) AssignMenus(ctx *gin.Context) {
 	var req request.AssignRoleMenuReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		global.Log.Error("分配菜单权限参数绑定失败", zap.Error(err))
-		response.BizFailWithMessage("参数错误", ctx)
+		failInvalidParams(ctx, "参数错误")
 		return
 	}
 
@@ -180,15 +213,22 @@ func (c *RoleCtrl) AssignMenus(ctx *gin.Context) {
 }
 
 // AssignAPIs 分配角色API权限（直绑，全量替换）
+// @Summary 分配角色API权限
+// @Tags System: Role
+// @Accept json
+// @Produce json
+// @Param body body request.AssignRoleAPIReq true "分配角色API权限请求"
+// @Success 200 {object} response.Response
+// @Router /api/system/role/assign_api [post]
 func (c *RoleCtrl) AssignAPIs(ctx *gin.Context) {
 	var req request.AssignRoleAPIReq
 	if err := ctx.ShouldBindJSON(&req); err != nil {
 		global.Log.Error("分配角色API权限参数绑定失败", zap.Error(err))
-		response.BizFailWithMessage("参数错误", ctx)
+		failInvalidParams(ctx, "参数错误")
 		return
 	}
 	if req.APIIDs == nil {
-		response.BizFailWithMessage("api_ids 必须传入（可为空数组）", ctx)
+		failInvalidParams(ctx, "api_ids 必须传入（可为空数组）")
 		return
 	}
 
@@ -212,7 +252,7 @@ func (c *RoleCtrl) GetRoleMenuIDs(ctx *gin.Context) {
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		response.BizFailWithMessage("ID格式错误", ctx)
+		failInvalidParams(ctx, "ID格式错误")
 		return
 	}
 
@@ -230,14 +270,14 @@ func (c *RoleCtrl) GetRoleMenuAPIMap(ctx *gin.Context) {
 	var query request.GetRoleMenuAPIMapQuery
 	if err := ctx.ShouldBindQuery(&query); err != nil {
 		global.Log.Error("获取角色菜单/API映射参数绑定失败", zap.Error(err))
-		response.BizFailWithMessage("参数错误", ctx)
+		failInvalidParams(ctx, "参数错误")
 		return
 	}
 
 	idStr := ctx.Param("id")
 	id, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
-		response.BizFailWithMessage("ID格式错误", ctx)
+		failInvalidParams(ctx, "ID格式错误")
 		return
 	}
 
@@ -263,4 +303,8 @@ func entityToRoleItem(role *entity.Role) *resp.RoleItem {
 		CreatedAt: role.CreatedAt,
 		UpdatedAt: role.UpdatedAt,
 	}
+}
+
+func failInvalidParams(ctx *gin.Context, message string) {
+	response.BizFailWithCodeMsg(bizerrors.CodeInvalidParams, message, ctx)
 }

@@ -59,6 +59,16 @@ type AssignRoleAPIReq struct {
 	APIIDs []uint `json:"api_ids"`
 }
 
+// AssignRolePermissionReq 分配角色权限请求（菜单 + 直绑API，全量替换）
+type AssignRolePermissionReq struct {
+	// 角色ID，必填
+	RoleID uint `json:"role_id" binding:"required"`
+	// 菜单ID列表（必传，可为空数组；空表示清空角色菜单权限）
+	MenuIDs []uint `json:"menu_ids"`
+	// 角色直绑API ID列表（必传，可为空数组；空表示清空角色直绑API权限）
+	DirectAPIIDs []uint `json:"direct_api_ids"`
+}
+
 // GetRoleMenuAPIMapQuery 获取角色菜单/API映射查询参数
 type GetRoleMenuAPIMapQuery struct {
 	// 菜单树最大层级，根节点层级为1；不传表示返回全量树

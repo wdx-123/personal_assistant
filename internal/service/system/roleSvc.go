@@ -30,6 +30,13 @@ import (
 	"gorm.io/gorm"
 )
 
+const (
+	rolePermissionAssignLockTTL           = 10 * time.Second
+	rolePermissionAssignLockRetryCount    = 50
+	rolePermissionAssignLockRetryInterval = 100 * time.Millisecond
+	rolePermissionAssignUnlockTimeout     = 2 * time.Second
+)
+
 // RoleService 角色管理服务
 type RoleService struct {
 	roleRepo          interfaces.RoleRepository
@@ -211,17 +218,11 @@ func (s *RoleService) AssignMenus(
 	menuIDs []uint,
 ) error {
 	// 1. 获取分布式锁，防止并发修改同一角色的菜单
-	lockKey := redislock.LockKeyRoleMenuAssign(roleID)
-	lock := redislock.NewRedisLock(ctx, lockKey, 10*time.Second)
-	if err := lock.Lock(); err != nil {
-		global.Log.Warn("获取角色菜单分配锁失败", zap.Uint("roleID", roleID), zap.Error(err))
-		return errors.NewWithMsg(errors.CodeTooManyRequests, "操作过于频繁，请稍后重试")
+	lock, err := s.acquireRolePermissionAssignLock(ctx, roleID, "菜单")
+	if err != nil {
+		return err
 	}
-	defer func() {
-		if releaseErr := lock.Unlock(); releaseErr != nil {
-			global.Log.Warn("释放角色菜单分配锁失败", zap.Uint("roleID", roleID), zap.Error(releaseErr))
-		}
-	}()
+	defer s.releaseRolePermissionAssignLock(roleID, "菜单", lock)
 
 	// 2. 校验角色存在
 	role, err := s.roleRepo.GetByID(ctx, roleID)
@@ -233,12 +234,9 @@ func (s *RoleService) AssignMenus(
 	}
 
 	// 3. 过滤有效的菜单ID
-	validMenuIDs := make([]uint, 0, len(menuIDs))
-	for _, menuID := range menuIDs {
-		menu, err := s.menuRepo.GetByID(ctx, menuID)
-		if err == nil && menu != nil && menu.ID > 0 {
-			validMenuIDs = append(validMenuIDs, menuID)
-		}
+	validMenuIDs, err := s.filterValidMenuIDs(ctx, menuIDs)
+	if err != nil {
+		return err
 	}
 
 	// 4. 全量替换菜单权限
@@ -264,17 +262,12 @@ func (s *RoleService) AssignAPIs(
 		return errors.New(errors.CodeInvalidParams)
 	}
 
-	lockKey := redislock.LockKeyRoleMenuAssign(roleID)
-	lock := redislock.NewRedisLock(ctx, lockKey, 10*time.Second)
-	if err := lock.Lock(); err != nil {
-		global.Log.Warn("获取角色API分配锁失败", zap.Uint("roleID", roleID), zap.Error(err))
-		return errors.NewWithMsg(errors.CodeTooManyRequests, "操作过于频繁，请稍后重试")
+	lock, err := s.acquireRolePermissionAssignLock(ctx, roleID, "API")
+	if err != nil {
+		return err
 	}
-	defer func() {
-		if releaseErr := lock.Unlock(); releaseErr != nil {
-			global.Log.Warn("释放角色API分配锁失败", zap.Uint("roleID", roleID), zap.Error(releaseErr))
-		}
-	}()
+	defer s.releaseRolePermissionAssignLock(roleID, "API", lock)
+
 	// 校验角色存在
 	role, err := s.roleRepo.GetByID(ctx, roleID)
 	if err != nil {
@@ -284,18 +277,9 @@ func (s *RoleService) AssignAPIs(
 		return errors.New(errors.CodeRoleNotFound)
 	}
 	// 过滤有效的API ID
-	validAPIIDs := make([]uint, 0, len(apiIDs))
-	for _, apiID := range normalizeIDs(apiIDs) {
-		api, getErr := s.apiRepo.GetByID(ctx, apiID)
-		if getErr != nil {
-			if stderrors.Is(getErr, gorm.ErrRecordNotFound) {
-				continue
-			}
-			return errors.Wrap(errors.CodeDBError, getErr)
-		}
-		if api != nil && api.ID > 0 {
-			validAPIIDs = append(validAPIIDs, apiID)
-		}
+	validAPIIDs, err := s.filterValidAPIIDs(ctx, apiIDs)
+	if err != nil {
+		return err
 	}
 
 	// 全量替换角色直绑API关联
@@ -304,6 +288,49 @@ func (s *RoleService) AssignAPIs(
 	}
 
 	// 同步刷新权限（立即生效）
+	if err := s.permissionService.RefreshAllPermissions(ctx); err != nil {
+		return errors.Wrap(errors.CodeInternalError, err)
+	}
+	return nil
+}
+
+// AssignPermissions 分配角色菜单和直绑API权限（全量覆盖，单次刷新）
+func (s *RoleService) AssignPermissions(
+	ctx context.Context,
+	roleID uint,
+	menuIDs []uint,
+	directAPIIDs []uint,
+) error {
+	if roleID == 0 {
+		return errors.New(errors.CodeInvalidParams)
+	}
+
+	lock, err := s.acquireRolePermissionAssignLock(ctx, roleID, "权限")
+	if err != nil {
+		return err
+	}
+	defer s.releaseRolePermissionAssignLock(roleID, "权限", lock)
+
+	role, err := s.roleRepo.GetByID(ctx, roleID)
+	if err != nil {
+		return errors.Wrap(errors.CodeDBError, err)
+	}
+	if role == nil || role.ID == 0 {
+		return errors.New(errors.CodeRoleNotFound)
+	}
+
+	validMenuIDs, err := s.filterValidMenuIDs(ctx, menuIDs)
+	if err != nil {
+		return err
+	}
+	validAPIIDs, err := s.filterValidAPIIDs(ctx, directAPIIDs)
+	if err != nil {
+		return err
+	}
+
+	if err := s.roleRepo.ReplaceRolePermissions(ctx, roleID, validMenuIDs, validAPIIDs); err != nil {
+		return errors.Wrap(errors.CodeDBError, err)
+	}
 	if err := s.permissionService.RefreshAllPermissions(ctx); err != nil {
 		return errors.Wrap(errors.CodeInternalError, err)
 	}
@@ -344,16 +371,18 @@ func (s *RoleService) GetRoleMenuAPIMap(
 	if err != nil {
 		return nil, errors.Wrap(errors.CodeDBError, err)
 	}
-	assignedAPIIDs := append(menuAPIIDs, directAPIIDs...)
+	assignedAPIIDs := normalizeIDs(append(append([]uint{}, menuAPIIDs...), directAPIIDs...))
 
 	assignedMenuIDs = normalizeIDs(assignedMenuIDs)
-	assignedAPIIDs = normalizeIDs(assignedAPIIDs)
+	directAPIIDs = normalizeIDs(directAPIIDs)
 	sort.Slice(assignedMenuIDs, func(i, j int) bool { return assignedMenuIDs[i] < assignedMenuIDs[j] })
+	sort.Slice(directAPIIDs, func(i, j int) bool { return directAPIIDs[i] < directAPIIDs[j] })
 	sort.Slice(assignedAPIIDs, func(i, j int) bool { return assignedAPIIDs[i] < assignedAPIIDs[j] })
 
 	return &response.RoleMenuAPIMappingItem{
 		MenuTree:        s.buildRoleMenuTree(menus, 0, 1, maxLevel),
 		AssignedMenuIDs: assignedMenuIDs,
+		DirectAPIIDs:    directAPIIDs,
 		AssignedAPIIDs:  assignedAPIIDs,
 	}, nil
 }
@@ -395,6 +424,73 @@ func normalizeIDs(ids []uint) []uint {
 		out = append(out, id)
 	}
 	return out
+}
+
+func (s *RoleService) acquireRolePermissionAssignLock(
+	ctx context.Context,
+	roleID uint,
+	scene string,
+) (*redislock.RedisLock, error) {
+	lockKey := redislock.LockKeyRolePermissionAssign(roleID)
+	lock := redislock.NewRedisLock(ctx, lockKey, rolePermissionAssignLockTTL)
+	if err := lock.LockWithRetry(rolePermissionAssignLockRetryCount, rolePermissionAssignLockRetryInterval); err != nil {
+		if stderrors.Is(err, redislock.ErrLockFailed) {
+			global.Log.Warn("获取角色"+scene+"分配锁失败", zap.Uint("roleID", roleID), zap.Error(err))
+			return nil, errors.NewWithMsg(errors.CodeTooManyRequests, "操作过于频繁，请稍后重试")
+		}
+		global.Log.Error("获取角色"+scene+"分配锁异常", zap.Uint("roleID", roleID), zap.Error(err))
+		return nil, errors.Wrap(errors.CodeRedisError, err)
+	}
+	return lock, nil
+}
+
+func (s *RoleService) releaseRolePermissionAssignLock(
+	roleID uint,
+	scene string,
+	lock *redislock.RedisLock,
+) {
+	if lock == nil {
+		return
+	}
+	unlockCtx, cancel := context.WithTimeout(context.Background(), rolePermissionAssignUnlockTimeout)
+	defer cancel()
+	if releaseErr := lock.UnlockWithContext(unlockCtx); releaseErr != nil {
+		global.Log.Warn("释放角色"+scene+"分配锁失败", zap.Uint("roleID", roleID), zap.Error(releaseErr))
+	}
+}
+
+func (s *RoleService) filterValidMenuIDs(ctx context.Context, menuIDs []uint) ([]uint, error) {
+	validMenuIDs := make([]uint, 0, len(menuIDs))
+	for _, menuID := range normalizeIDs(menuIDs) {
+		menu, err := s.menuRepo.GetByID(ctx, menuID)
+		if err != nil {
+			if stderrors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			return nil, errors.Wrap(errors.CodeDBError, err)
+		}
+		if menu != nil && menu.ID > 0 {
+			validMenuIDs = append(validMenuIDs, menuID)
+		}
+	}
+	return validMenuIDs, nil
+}
+
+func (s *RoleService) filterValidAPIIDs(ctx context.Context, apiIDs []uint) ([]uint, error) {
+	validAPIIDs := make([]uint, 0, len(apiIDs))
+	for _, apiID := range normalizeIDs(apiIDs) {
+		api, err := s.apiRepo.GetByID(ctx, apiID)
+		if err != nil {
+			if stderrors.Is(err, gorm.ErrRecordNotFound) {
+				continue
+			}
+			return nil, errors.Wrap(errors.CodeDBError, err)
+		}
+		if api != nil && api.ID > 0 {
+			validAPIIDs = append(validAPIIDs, apiID)
+		}
+	}
+	return validAPIIDs, nil
 }
 
 func (s *RoleService) buildRoleMenuTree(

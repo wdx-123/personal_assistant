@@ -207,28 +207,7 @@ func (r *roleRepository) ReplaceRoleMenus(
 	menuIDs []uint,
 ) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// 1. 删除旧关联 (硬删除关联表记录)
-		if err := tx.Exec("DELETE FROM role_menus WHERE role_id = ?", roleID).Error; err != nil {
-			return err
-		}
-
-		// 2. 批量插入新关联
-		if len(menuIDs) == 0 {
-			return nil
-		}
-
-		// 3. 构造 Role 对象并使用 Association 更新，这样更安全且兼容性好
-		role := entity.Role{}
-		role.ID = roleID
-
-		menus := make([]entity.Menu, len(menuIDs))
-		for i, id := range menuIDs {
-			menus[i].ID = id
-		}
-
-		// 使用 GORM 的 Association 模式，它会自动处理中间表的插入
-		// 由于我们刚才已经手动 DELETE 清空了，这里 Append 即可
-		return tx.Model(&role).Association("Menus").Append(menus)
+		return r.replaceRoleMenus(tx, roleID, menuIDs)
 	})
 }
 
@@ -244,21 +223,22 @@ func (r *roleRepository) ReplaceRoleAPIs(
 	apiIDs []uint,
 ) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Exec("DELETE FROM role_apis WHERE role_id = ?", roleID).Error; err != nil {
+		return r.replaceRoleAPIs(tx, roleID, apiIDs)
+	})
+}
+
+// ReplaceRolePermissions 单事务全量替换角色菜单和直绑API权限。
+func (r *roleRepository) ReplaceRolePermissions(
+	ctx context.Context,
+	roleID uint,
+	menuIDs []uint,
+	apiIDs []uint,
+) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := r.replaceRoleMenus(tx, roleID, menuIDs); err != nil {
 			return err
 		}
-		if len(apiIDs) == 0 {
-			return nil
-		}
-
-		var values []string
-		var args []interface{}
-		for _, apiID := range apiIDs {
-			values = append(values, "(?, ?)")
-			args = append(args, roleID, apiID)
-		}
-		sql := "INSERT IGNORE INTO role_apis (role_id, api_id) VALUES " + strings.Join(values, ",")
-		return tx.Exec(sql, args...).Error
+		return r.replaceRoleAPIs(tx, roleID, apiIDs)
 	})
 }
 
@@ -279,6 +259,49 @@ func (r *roleRepository) GetRoleAPIIDs(
 // ClearRoleAPIs 清空角色的所有API直绑关联
 func (r *roleRepository) ClearRoleAPIs(ctx context.Context, roleID uint) error {
 	return r.db.WithContext(ctx).Exec("DELETE FROM role_apis WHERE role_id = ?", roleID).Error
+}
+
+func (r *roleRepository) replaceRoleMenus(tx *gorm.DB, roleID uint, menuIDs []uint) error {
+	// 1. 删除旧关联 (硬删除关联表记录)
+	if err := tx.Exec("DELETE FROM role_menus WHERE role_id = ?", roleID).Error; err != nil {
+		return err
+	}
+
+	// 2. 批量插入新关联
+	if len(menuIDs) == 0 {
+		return nil
+	}
+
+	// 3. 构造 Role 对象并使用 Association 更新，这样更安全且兼容性好
+	role := entity.Role{}
+	role.ID = roleID
+
+	menus := make([]entity.Menu, len(menuIDs))
+	for i, id := range menuIDs {
+		menus[i].ID = id
+	}
+
+	// 使用 GORM 的 Association 模式，它会自动处理中间表的插入
+	// 由于我们刚才已经手动 DELETE 清空了，这里 Append 即可
+	return tx.Model(&role).Association("Menus").Append(menus)
+}
+
+func (r *roleRepository) replaceRoleAPIs(tx *gorm.DB, roleID uint, apiIDs []uint) error {
+	if err := tx.Exec("DELETE FROM role_apis WHERE role_id = ?", roleID).Error; err != nil {
+		return err
+	}
+	if len(apiIDs) == 0 {
+		return nil
+	}
+
+	var values []string
+	var args []interface{}
+	for _, apiID := range apiIDs {
+		values = append(values, "(?, ?)")
+		args = append(args, roleID, apiID)
+	}
+	sql := "INSERT IGNORE INTO role_apis (role_id, api_id) VALUES " + strings.Join(values, ",")
+	return tx.Exec(sql, args...).Error
 }
 
 // RemoveAPIFromAllRoles 从所有角色中移除指定API（删除API前解绑）
