@@ -2,12 +2,17 @@ package messaging
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v8"
 	"go.uber.org/zap"
 
 	"personal_assistant/global"
+	"personal_assistant/pkg/observability/contextid"
+	obstrace "personal_assistant/pkg/observability/trace"
+	"personal_assistant/pkg/observability/w3c"
 )
 
 // RedisStreamSubscriber 基于 Redis Stream 的订阅者实现
@@ -83,13 +88,68 @@ func (s *RedisStreamSubscriber) Subscribe(
 					parsedMsg := s.parseMessage(msg)
 					parsedMsg.Topic = topic
 
+					msgCtx := ctx
+					ids := contextid.FromContext(msgCtx)
+					if ids.RequestID == "" {
+						ids.RequestID = strings.TrimSpace(parsedMsg.Metadata["request_id"])
+					}
+
+					traceparent := strings.TrimSpace(parsedMsg.Metadata["traceparent"])
+					if parsedTC, ok := w3c.ParseTraceparent(traceparent); ok {
+						parsedTC.TraceState = strings.TrimSpace(parsedMsg.Metadata["tracestate"])
+						ids.TraceID = parsedTC.TraceID
+						msgCtx = contextid.IntoTraceContext(msgCtx, contextid.TraceContext(parsedTC))
+						msgCtx = contextid.WithIncomingParentSpanID(msgCtx, parsedTC.SpanID)
+					} else {
+						if ids.TraceID == "" {
+							// 兼容旧消息字段，防止切换窗口内断链。
+							ids.TraceID = strings.TrimSpace(parsedMsg.Metadata["trace_id"])
+						}
+						msgCtx = contextid.WithIncomingParentSpanID(msgCtx, "")
+					}
+
+					msgCtx = contextid.IntoContext(msgCtx, ids)
+					msgCtx, _ = contextid.EnsureIDs(msgCtx)
+
+					var spanEvent *obstrace.SpanEvent
+					if global.ObservabilityTraces != nil {
+						serviceName := ""
+						if global.Config != nil {
+							serviceName = strings.TrimSpace(global.Config.Observability.ServiceName)
+						}
+						msgCtx, spanEvent = obstrace.StartSpan(msgCtx, obstrace.StartOptions{
+							Service: serviceName,
+							Stage:   "consumer",
+							Name:    "redis.stream.consume",
+							Kind:    "consumer",
+							Tags: map[string]string{
+								"topic":    topic,
+								"group":    s.group,
+								"consumer": s.name,
+								"msg_id":   msg.ID,
+							},
+						})
+					}
+
 					// 调用处理函数
-					if err := handler(ctx, parsedMsg); err != nil {
+					if err := handler(msgCtx, parsedMsg); err != nil {
+						if spanEvent != nil && global.ObservabilityTraces != nil {
+							spanEvent.WithErrorDetail(buildConsumerErrorDetail(topic, s.group, s.name, msg.ID, err))
+							if v := strings.TrimSpace(parsedMsg.Metadata["panic_stack"]); v != "" {
+								spanEvent.WithErrorStack(v)
+							}
+							span := spanEvent.End(obstrace.SpanStatusError, "consumer_handler_error", err.Error(), nil)
+							_ = global.ObservabilityTraces.RecordSpan(msgCtx, span)
+						}
 						s.logger.Error("处理消息失败",
 							zap.String("msg_id", msg.ID),
 							zap.Error(err))
 						// 这里可以实现死信队列或重试逻辑
 						continue
+					}
+					if spanEvent != nil && global.ObservabilityTraces != nil {
+						span := spanEvent.End(obstrace.SpanStatusOK, "", "", nil)
+						_ = global.ObservabilityTraces.RecordSpan(msgCtx, span)
 					}
 
 					// 确认消息 (ACK)
@@ -137,4 +197,21 @@ func (s *RedisStreamSubscriber) parseMessage(xMsg redis.XMessage) *Message {
 
 func (s *RedisStreamSubscriber) Close() error {
 	return nil
+}
+
+func buildConsumerErrorDetail(topic, group, consumer, msgID string, err error) string {
+	payload := map[string]string{
+		"topic":    strings.TrimSpace(topic),
+		"group":    strings.TrimSpace(group),
+		"consumer": strings.TrimSpace(consumer),
+		"msg_id":   strings.TrimSpace(msgID),
+	}
+	if err != nil {
+		payload["error"] = strings.TrimSpace(err.Error())
+	}
+	data, marshalErr := json.Marshal(payload)
+	if marshalErr != nil {
+		return ""
+	}
+	return string(data)
 }

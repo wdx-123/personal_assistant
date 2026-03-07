@@ -20,5 +20,6 @@ type RouterGroup struct {
 	RoleRouter // 角色管理路由
 
 	// 资源管理
-	ImageRouter // 图片管理路由
+	ImageRouter         // 图片管理路由
+	ObservabilityRouter // 观测查询路由
 }

@@ -89,6 +89,34 @@
 - 业务无关工具放入 `pkg/util`。
 - 跨模块、无业务上下文依赖逻辑从 Service 下沉到 `pkg`。
 
+## 12. 新增独立基础设施能力
+
+- 适用范围：
+  - Trace、Metric、Audit、限流适配、消息客户端等可跨模块复用能力。
+- 目录与职责：
+  - 初始化、连接创建、生命周期管理放在 `internal/core`。
+  - `internal/init/init.go` 仅做依赖编排与启动顺序控制。
+  - 通用封装放在 `pkg/*`，避免在多个业务模块重复实现。
+  - 若需暴露设施路由（如 `/metrics`），在 `internal/router/system` 定义，`internal/router/router.go` 只做挂载。
+- 接入边界：
+  - Controller 禁止直接依赖第三方基础设施 SDK。
+  - Service 禁止直接 `new` 第三方客户端；统一通过 `pkg/*` 或已初始化实例接入。
+  - Repository 仅负责数据访问，不承担基础设施编排。
+- 配置约束：
+  - endpoint、timeout、batch、采样率、开关等可变参数定义在 `internal/model/config`。
+  - 运行时统一通过 `global.Config` 读取，仅保留必要零值兜底。
+  - `pkg/*` 若需可复用配置，定义模块内 `Options`；由 `core`/`init` 将 `global.Config` 映射后注入。
+  - 禁止在 `pkg/*` 直接依赖 `viper` 或 `global.Config`。
+- Redis/MySQL 等基础资源边界：
+  - 连接初始化、连接池参数、健康检查和关闭动作属于运行时基础设施，放在 `internal/core`（或等价基础设施启动层）。
+  - 业务 CRUD/JOIN 仍只允许在 `internal/repository`，禁止下沉到基础设施通用层。
+  - Service 通过 Repository 或 `pkg/*` 抽象能力使用资源，不直接编排底层连接细节。
+- 错误策略：
+  - 初始化失败返回原始 `error`，由上层决定是否 fail-fast。
+  - 可降级的运行失败必须记录 `global.Log.Error`，禁止静默吞错。
+- 推荐实现顺序：
+  - `Config -> Core -> Init -> pkg封装/中间件 -> Service接入（如需要） -> Router暴露（如需要）`
+
 ## 提问引用规范
 
 在实现或评审过程中需要向用户澄清时，追加一行：

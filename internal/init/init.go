@@ -56,6 +56,15 @@ func Init() {
 	mysqlAdapter := &adapter.MySQLAdapter{}
 	mysqlAdapter.SetConnection(global.DB) // 使用现有的数据库连接
 	repository.InitRepositoryGroupWithAdapter(mysqlAdapter)
+	// 初始化观测基础设施（指标聚合 + 全链路追踪）
+	if err := core.InitObservability(
+		context.Background(),
+		repository.GroupApp.SystemRepositorySupplier.GetObservabilityMetricRepository(),
+		repository.GroupApp.SystemRepositorySupplier.GetObservabilityTraceRepository(),
+	); err != nil {
+		global.Log.Error("init observability failed", zap.Error(err))
+		os.Exit(1)
+	}
 	// 题库预热，luogu题库所有题目进行存储
 	core.StartLuoguQuestionBankWarmup(
 		context.Background(),
@@ -78,7 +87,7 @@ func Init() {
 	// 为初始化操作设置30秒超时，避免启动时卡死
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	system.LoadAllWithRepository(ctx, repository.GroupApp)
+	core.LoadJWTBlacklistWithRepository(ctx, repository.GroupApp)
 
 	// 业务函数--单例
 	service.GroupApp = &service.Group{

@@ -4,17 +4,19 @@ import (
 	"net/http"
 	"reflect"
 
-	"personal_assistant/global"
+	bizerrors "personal_assistant/pkg/errors"
+	"personal_assistant/pkg/observability/contextid"
 
 	"github.com/gin-gonic/gin"
 )
 
 // Response 用于封装 API 响应结构，支持泛型转换和分页等功能
 type Response[T any, R any] struct {
-	Trans  Transformer[T, R]
-	Ctx    *gin.Context
-	Code   global.AppCode
-	layout gin.H
+	Trans   Transformer[T, R]
+	Ctx     *gin.Context
+	Code    bizerrors.BizCode
+	hasCode bool
+	layout  gin.H
 }
 
 func NewResponse[T any, R any](c *gin.Context) *Response[T, R] {
@@ -22,8 +24,9 @@ func NewResponse[T any, R any](c *gin.Context) *Response[T, R] {
 }
 
 // SetCode 设置响应体
-func (r *Response[T, R]) SetCode(code global.AppCode) *Response[T, R] {
+func (r *Response[T, R]) SetCode(code bizerrors.BizCode) *Response[T, R] {
 	r.Code = code
+	r.hasCode = true
 	return r
 }
 
@@ -33,9 +36,9 @@ func (r *Response[T, R]) SetTrans(t Transformer[T, R]) *Response[T, R] {
 	return r
 }
 
-func (r *Response[T, R]) getCode() global.AppCode {
-	if r.Code == 0 {
-		r.Code = global.StatusOK
+func (r *Response[T, R]) getCode() bizerrors.BizCode {
+	if !r.hasCode {
+		return bizerrors.CodeSuccess
 	}
 	return r.Code
 }
@@ -44,16 +47,18 @@ func (r *Response[T, R]) getCode() global.AppCode {
 func (r *Response[T, R]) Success(msg string, data any) {
 	r.buildLayout(data)
 	r.withMessage(msg)
+	r.Ctx.Set(contextid.GinKeyErrorCode, bizerrors.CodeSuccess.Int())
 	r.Ctx.JSON(http.StatusOK, r.layout)
 }
 
 // Failed 返回带错误信息的失败响应
 func (r *Response[T, R]) Failed(err string, data any) {
-	if r.Code == 0 {
-		r.SetCode(global.StatusInternalServerError)
+	if !r.hasCode {
+		r.SetCode(bizerrors.CodeInternalError)
 	}
 	r.buildLayout(data)
 	r.withError(err)
+	r.Ctx.Set(contextid.GinKeyErrorCode, r.getCode().Int())
 	r.Ctx.JSON(http.StatusOK, r.layout)
 }
 

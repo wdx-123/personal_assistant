@@ -16,7 +16,6 @@ import (
 	"github.com/go-redis/redis/v8"
 
 	"github.com/gofrs/uuid"
-	"go.uber.org/zap"
 )
 
 type JWTService struct {
@@ -82,7 +81,7 @@ func (j *JWTService) GetUserFromJWT(ctx context.Context, token string) (user *en
 	}
 	if user.Freeze {
 		return user, &erro.JWTError{
-			Code:    global.StatusUserFrozen,
+			Code:    erro.CodeUserFrozen,
 			Message: "用户已被冻结",
 			Err:     errors.New("user has been frozen"),
 		}
@@ -105,7 +104,7 @@ func (j *JWTService) GetAccessToken(ctx context.Context, token string) (resR *re
 	Token, err := jwtTool.CreateAccessToken(claims)
 	if err != nil {
 		return nil, &erro.JWTError{
-			Code:    global.StatusInternalServerError,
+			Code:    erro.CodeInternalError,
 			Message: "生成Token失败",
 			Err:     errors.New("create token failed"),
 		}
@@ -124,7 +123,7 @@ func (j *JWTService) IssueLoginTokens(
 ) (*response.LoginResponse, string, int64, *erro.JWTError) {
 	if user.Freeze {
 		return nil, "", 0, &erro.JWTError{
-			Code:    global.StatusUserFrozen,
+			Code:    erro.CodeUserFrozen,
 			Message: "用户已被冻结",
 			Err:     errors.New("user frozen"),
 		}
@@ -138,7 +137,7 @@ func (j *JWTService) IssueLoginTokens(
 	accessToken, err := jwtTool.CreateAccessToken(accessClaims)
 	if err != nil {
 		return nil, "", 0, &erro.JWTError{
-			Code:    global.StatusInternalServerError,
+			Code:    erro.CodeInternalError,
 			Message: "生成访问令牌失败",
 			Err:     err,
 		}
@@ -149,7 +148,7 @@ func (j *JWTService) IssueLoginTokens(
 	refreshToken, err := jwtTool.CreateRefreshToken(refreshClaims)
 	if err != nil {
 		return nil, "", 0, &erro.JWTError{
-			Code:    global.StatusInternalServerError,
+			Code:    erro.CodeInternalError,
 			Message: "生成刷新令牌失败",
 			Err:     err,
 		}
@@ -164,7 +163,7 @@ func (j *JWTService) IssueLoginTokens(
 			// 无旧记录（Redis中不存在该用户的token），这属于正常情况，直接设置新的刷新令牌
 			if err := j.SetRedisJWT(refreshToken, user.UUID); err != nil {
 				return nil, "", 0, &erro.JWTError{
-					Code:    global.StatusInternalServerError,
+					Code:    erro.CodeInternalError,
 					Message: "设置登录状态失败",
 					Err:     err,
 				}
@@ -172,7 +171,7 @@ func (j *JWTService) IssueLoginTokens(
 		} else if err != nil {
 			// 读取Redis失败（真正的错误，如连接超时、认证失败等）
 			return nil, "", 0, &erro.JWTError{
-				Code:    global.StatusInternalServerError,
+				Code:    erro.CodeInternalError,
 				Message: "读取登录状态失败",
 				Err:     err,
 			}
@@ -181,7 +180,7 @@ func (j *JWTService) IssueLoginTokens(
 			bl := entity.JwtBlacklist{JWT: old}
 			if err = j.JoinInBlacklist(ctx, bl); err != nil {
 				return nil, "", 0, &erro.JWTError{
-					Code:    global.StatusInternalServerError,
+					Code:    erro.CodeInternalError,
 					Message: "旧令牌加入黑名单失败",
 					Err:     err,
 				}
@@ -189,7 +188,7 @@ func (j *JWTService) IssueLoginTokens(
 			// 写入新令牌
 			if err = j.SetRedisJWT(refreshToken, user.UUID); err != nil {
 				return nil, "", 0, &erro.JWTError{
-					Code:    global.StatusInternalServerError,
+					Code:    erro.CodeInternalError,
 					Message: "设置登录状态失败",
 					Err:     err,
 				}
@@ -205,36 +204,4 @@ func (j *JWTService) IssueLoginTokens(
 		RefreshToken:         refreshToken,
 	}
 	return res, refreshToken, refreshClaims.ExpiresAt.Unix() * 1000, nil
-}
-
-// LoadAll 从数据库加载所有的JWT黑名单并加入缓存
-func LoadAll() {
-	// 注意：这个函数在init阶段调用，此时Repository还未初始化
-	// 所以暂时保持使用global.DB，后续可以考虑重构
-	var data []string
-	// 从数据库中获取所有的黑名单JWT
-	if err := global.DB.Model(&entity.JwtBlacklist{}).Pluck("jwt", &data).Error; err != nil {
-		// 如果获取失败，记录错误日志
-		global.Log.Error("Failed to load JWT blacklist from the entity", zap.Error(err))
-		return
-	}
-	// 将所有JWT添加到BlackCache缓存中
-	for i := 0; i < len(data); i++ {
-		global.BlackCache.SetDefault(data[i], struct{}{})
-	}
-}
-
-// LoadAllWithRepository 使用Repository加载所有的JWT黑名单并加入缓存
-func LoadAllWithRepository(ctx context.Context, repositoryGroup *repository.Group) {
-	jwtRepo := repositoryGroup.SystemRepositorySupplier.GetJWTRepository()
-	data, err := jwtRepo.GetAllJwtBlacklist(ctx)
-	if err != nil {
-		// 如果获取失败，记录错误日志
-		global.Log.Error("Failed to load JWT blacklist from the repository", zap.Error(err))
-		return
-	}
-	// 将所有JWT添加到BlackCache缓存中
-	for i := 0; i < len(data); i++ {
-		global.BlackCache.SetDefault(data[i], struct{}{})
-	}
 }

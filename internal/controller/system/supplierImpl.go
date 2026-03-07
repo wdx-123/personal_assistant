@@ -1,16 +1,17 @@
 package system
 
 type controllerSupplier struct {
-	refreshTokenCtrl *RefreshTokenCtrl
-	baseCtrl         *BaseCtrl
-	healthCtrl       *HealthCtrl
-	userCtrl         *UserCtrl
-	orgCtrl          *OrgCtrl
-	ojCtrl           *OJCtrl
-	apiCtrl          *ApiCtrl
-	menuCtrl         *MenuCtrl
-	roleCtrl         *RoleCtrl
-	imageCtrl        *ImageCtrl
+	refreshTokenCtrl  *RefreshTokenCtrl
+	baseCtrl          *BaseCtrl
+	healthCtrl        *HealthCtrl
+	userCtrl          *UserCtrl
+	orgCtrl           *OrgCtrl
+	ojCtrl            *OJCtrl
+	apiCtrl           *ApiCtrl
+	menuCtrl          *MenuCtrl
+	roleCtrl          *RoleCtrl
+	imageCtrl         *ImageCtrl
+	observabilityCtrl *ObservabilityCtrl
 }
 
 func (c *controllerSupplier) GetRefreshTokenCtrl() *RefreshTokenCtrl {
@@ -47,4 +48,8 @@ func (c *controllerSupplier) GetRoleCtrl() *RoleCtrl {
 
 func (c *controllerSupplier) GetImageCtrl() *ImageCtrl {
 	return c.imageCtrl
+}
+
+func (c *controllerSupplier) GetObservabilityCtrl() *ObservabilityCtrl {
+	return c.observabilityCtrl
 }

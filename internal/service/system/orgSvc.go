@@ -5,7 +5,6 @@ import (
 	"net/url"
 	"strings"
 
-	"personal_assistant/global"
 	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/dto/response"
@@ -14,12 +13,11 @@ import (
 	"personal_assistant/internal/repository/interfaces"
 	"personal_assistant/pkg/errors"
 	"personal_assistant/pkg/imageops"
-
-	"gorm.io/gorm"
 )
 
 // OrgService 组织管理服务
 type OrgService struct {
+	txRunner  repository.TxRunner
 	orgRepo   interfaces.OrgRepository
 	userRepo  interfaces.UserRepository
 	roleRepo  interfaces.RoleRepository
@@ -29,6 +27,7 @@ type OrgService struct {
 // NewOrgService 创建组织服务实例
 func NewOrgService(repositoryGroup *repository.Group) *OrgService {
 	return &OrgService{
+		txRunner:  repositoryGroup,
 		orgRepo:   repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
 		userRepo:  repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
 		roleRepo:  repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
@@ -166,7 +165,12 @@ func (s *OrgService) CreateOrg(
 	}
 
 	// 开启事务
-	return global.DB.Transaction(func(tx *gorm.DB) error {
+	return s.txRunner.InTx(ctx, func(tx any) error {
+		txOrgRepo := s.orgRepo.WithTx(tx)
+		txRoleRepo := s.roleRepo.WithTx(tx)
+		txUserRepo := s.userRepo.WithTx(tx)
+		txImageRepo := s.imageRepo.WithTx(tx)
+
 		// 1. 创建组织
 		org := &entity.Org{
 			Name:        name,
@@ -177,25 +181,24 @@ func (s *OrgService) CreateOrg(
 			OwnerID:     userID,
 		}
 		// 使用 Repository 的事务方法
-		if err := s.orgRepo.WithTx(tx).Create(ctx, org); err != nil {
+		if err := txOrgRepo.Create(ctx, org); err != nil {
 			return errors.Wrap(errors.CodeDBError, err)
 		}
 
 		// 2. 自动将创建者设为组织管理员
-		orgAdminRole, roleErr := s.roleRepo.GetByCode(ctx, consts.RoleCodeOrgAdmin)
+		orgAdminRole, roleErr := txRoleRepo.GetByCode(ctx, consts.RoleCodeOrgAdmin)
 		if roleErr == nil && orgAdminRole != nil && orgAdminRole.ID > 0 {
-			// 使用 Repository 的事务方法
-			if err := s.roleRepo.WithTx(tx).AssignRoleToUserInOrg(ctx, userID, org.ID, orgAdminRole.ID); err != nil {
+			if err := txRoleRepo.AssignRoleToUserInOrg(ctx, userID, org.ID, orgAdminRole.ID); err != nil {
 				return errors.Wrap(errors.CodeDBError, err)
 			}
 		}
 
 		// 3. 设置为用户的当前组织
-		if err := s.userRepo.WithTx(tx).UpdateCurrentOrgID(ctx, userID, &org.ID); err != nil {
+		if err := txUserRepo.UpdateCurrentOrgID(ctx, userID, &org.ID); err != nil {
 			return errors.Wrap(errors.CodeDBError, err)
 		}
 		if avatarID != nil {
-			if err := s.imageRepo.WithTx(tx).UpdateCategoryByID(ctx, *avatarID, consts.CatAvatar); err != nil {
+			if err := txImageRepo.UpdateCategoryByID(ctx, *avatarID, consts.CatAvatar); err != nil {
 				return errors.Wrap(errors.CodeDBError, err)
 			}
 		}
@@ -212,8 +215,7 @@ func (s *OrgService) UpdateOrg(
 	req *request.UpdateOrgReq, // 更新参数（支持部分更新/可选字段）
 ) error {
 	// 开启事务：回调返回 nil -> commit；返回 error -> rollback。
-	return global.DB.Transaction(func(tx *gorm.DB) error {
-		// 使用同一事务句柄创建仓储实例，确保所有写操作落在同一事务中。
+	return s.txRunner.InTx(ctx, func(tx any) error {
 		txOrgRepo := s.orgRepo.WithTx(tx)
 		txImageRepo := s.imageRepo.WithTx(tx)
 
@@ -410,14 +412,16 @@ func (s *OrgService) DeleteOrg(ctx context.Context, userID, orgID uint, force bo
 	}
 
 	// 开启事务
-	return global.DB.Transaction(func(tx *gorm.DB) error {
+	return s.txRunner.InTx(ctx, func(tx any) error {
+		txOrgRepo := s.orgRepo.WithTx(tx)
+
 		// 1. 删除所有成员关联
-		if err := tx.WithContext(ctx).Exec("DELETE FROM user_org_roles WHERE org_id = ?", orgID).Error; err != nil {
+		if err := txOrgRepo.RemoveAllMembers(ctx, orgID); err != nil {
 			return errors.Wrap(errors.CodeDBError, err)
 		}
 
 		// 2. 执行删除组织
-		if err := tx.WithContext(ctx).Delete(&entity.Org{}, orgID).Error; err != nil {
+		if err := txOrgRepo.Delete(ctx, orgID); err != nil {
 			return errors.Wrap(errors.CodeDBError, err)
 		}
 		return nil

@@ -8,7 +8,7 @@ import (
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
-	serviceSystem "personal_assistant/internal/service/system"
+	serviceContract "personal_assistant/internal/service/contract"
 	"personal_assistant/pkg/jwt"
 	"personal_assistant/pkg/response"
 
@@ -18,11 +18,11 @@ import (
 
 // OrgCtrl 组织管理控制器
 type OrgCtrl struct {
-	orgService *serviceSystem.OrgService
+	orgService serviceContract.OrgServiceContract
 }
 
 // NewOrgCtrl 创建组织控制器实例
-func NewOrgCtrl(orgService *serviceSystem.OrgService) *OrgCtrl {
+func NewOrgCtrl(orgService serviceContract.OrgServiceContract) *OrgCtrl {
 	return &OrgCtrl{
 		orgService: orgService,
 	}

@@ -1,8 +1,16 @@
 package system
 
-import "personal_assistant/internal/repository/interfaces"
+import (
+	"context"
+	"errors"
+
+	"personal_assistant/internal/repository/interfaces"
+
+	"gorm.io/gorm"
+)
 
 type RepositorySupplier struct {
+	db             *gorm.DB
 	userRepository interfaces.UserRepository
 	jwtRepository  interfaces.JWTRepository
 	roleRepository interfaces.RoleRepository
@@ -18,6 +26,9 @@ type RepositorySupplier struct {
 	luoguUserQuestionRepository    interfaces.LuoguUserQuestionRepository
 	outboxRepository               interfaces.OutboxRepository
 	imageRepository                interfaces.ImageRepository
+	observabilityMetricRepository  interfaces.ObservabilityMetricRepository
+	observabilityTraceRepository   interfaces.ObservabilityTraceRepository
+	observabilityRuntimeRepository interfaces.ObservabilityRuntimeRepository
 }
 
 func (r *RepositorySupplier) GetUserRepository() interfaces.UserRepository {
@@ -75,3 +86,46 @@ func (r *RepositorySupplier) GetOutboxRepository() interfaces.OutboxRepository {
 func (r *RepositorySupplier) GetImageRepository() interfaces.ImageRepository {
 	return r.imageRepository
 }
+
+func (r *RepositorySupplier) GetObservabilityMetricRepository() interfaces.ObservabilityMetricRepository {
+	return r.observabilityMetricRepository
+}
+
+func (r *RepositorySupplier) GetObservabilityTraceRepository() interfaces.ObservabilityTraceRepository {
+	return r.observabilityTraceRepository
+}
+
+func (r *RepositorySupplier) GetObservabilityRuntimeRepository() interfaces.ObservabilityRuntimeRepository {
+	return r.observabilityRuntimeRepository
+}
+
+func (r *RepositorySupplier) InTx(ctx context.Context, fn func(tx any) error) error {
+	if r == nil || r.db == nil {
+		return errors.New("repository db is nil")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return fn(tx)
+	})
+}
+
+func (r *RepositorySupplier) Ping(ctx context.Context) error {
+	if r == nil || r.db == nil {
+		return errors.New("repository db is nil")
+	}
+	sqlDB, err := r.db.DB()
+	if err != nil {
+		return err
+	}
+	if ctx == nil {
+		return sqlDB.Ping()
+	}
+	return sqlDB.PingContext(ctx)
+}
+
+var _ interface {
+	Ping(context.Context) error
+	InTx(context.Context, func(any) error) error
+} = (*RepositorySupplier)(nil)

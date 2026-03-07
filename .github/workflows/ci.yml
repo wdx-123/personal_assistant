@@ -26,6 +26,9 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Check legacy error tracking guard
+        run: bash scripts/check_no_legacy_error_tracking.sh
+
       - name: Run tests
         run: go test ./...
 

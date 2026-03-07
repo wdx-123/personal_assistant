@@ -22,7 +22,7 @@ func (a *AuthResponse) ToResponse(input *AuthResponse) *AuthResponse {
 
 /*
 	{
-	  "code": 4010,
+	  "code": 11003,
 	  "data": {
 		"message": "Invalid access token",
 		"reload": true

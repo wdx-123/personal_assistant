@@ -14,11 +14,9 @@ import (
 	bizerrors "personal_assistant/pkg/errors"
 	"personal_assistant/pkg/imageops"
 
-	"github.com/gin-gonic/gin"
 	"github.com/gofrs/uuid"
 	"github.com/mojocn/base64Captcha"
 	"go.uber.org/zap"
-	"gorm.io/gorm"
 
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/entity"
@@ -27,6 +25,7 @@ import (
 )
 
 type UserService struct {
+	txRunner          repository.TxRunner
 	userRepo          interfaces.UserRepository  // 依赖接口而不是具体实现
 	roleRepo          interfaces.RoleRepository  // 角色仓储，用于获取默认角色
 	imageRepo         interfaces.ImageRepository // 图片仓储
@@ -38,6 +37,7 @@ func NewUserService(
 	permissionService *PermissionService,
 ) *UserService {
 	return &UserService{
+		txRunner:          repositoryGroup,
 		userRepo:          repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
 		roleRepo:          repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
 		imageRepo:         repositoryGroup.SystemRepositorySupplier.GetImageRepository(),
@@ -47,7 +47,7 @@ func NewUserService(
 
 // Register 注册
 func (u *UserService) Register(
-	ctx *gin.Context,
+	ctx context.Context,
 	req *request.RegisterReq,
 ) (*entity.User, error) {
 	//// 1. 验证图片验证码
@@ -84,9 +84,6 @@ func (u *UserService) Register(
 		return nil, errors.New("必须指定组织")
 	}
 	user.CurrentOrgID = &req.OrgID
-
-	global.Log.Error(user.Password)
-
 	err = u.userRepo.Create(ctx, user)
 	if err != nil {
 		global.Log.Error("创建用户失败",
@@ -183,7 +180,7 @@ func (u *UserService) UpdateProfile(
 	req *request.UpdateProfileReq,
 ) (*entity.User, error) {
 	var user *entity.User
-	err := global.DB.Transaction(func(tx *gorm.DB) error {
+	err := u.txRunner.InTx(ctx, func(tx any) error {
 		txUserRepo := u.userRepo.WithTx(tx)
 		txImageRepo := u.imageRepo.WithTx(tx)
 

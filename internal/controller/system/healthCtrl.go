@@ -2,7 +2,7 @@ package system
 
 import (
 	"personal_assistant/global"
-	serviceSystem "personal_assistant/internal/service/system"
+	serviceContract "personal_assistant/internal/service/contract"
 	"personal_assistant/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -11,7 +11,7 @@ import (
 
 // HealthCtrl 健康检查控制器
 type HealthCtrl struct {
-	healthService *serviceSystem.HealthService
+	healthService serviceContract.HealthServiceContract
 }
 
 // Health 健康检查

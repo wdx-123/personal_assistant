@@ -1,4 +1,4 @@
-﻿mysql:
+mysql:
   host: ""       # 宿主机本地访问 MySQL
   port: 3306
   config: charset=utf8mb4&parseTime=True&loc=Local
@@ -14,7 +14,7 @@ redis:
   db: 0                    # 使用第 0 个数据库
 system:
   host: 0.0.0.0 # 监听所有本地网卡；外部访问用机器实际IP
-  port: 8002 # 服务对外暴露的端口号
+  port: 9000 # 服务对外暴露的端口号
   env: dev # 应用运行环境（release=生产环境；dev=开发环境；test=测试环境等）
   router_prefix: controller # API 接口的统一前缀（所有接口路径会以 /controller 开头）
   auto_migrate: true
@@ -25,7 +25,7 @@ system:
   bind_cool_down_hours: 48 # 换绑冷却时间（小时），防止频繁换绑
 zap:
   level: warn #  日志级别为error：仅记录错误信息，不包含info和debug信息
-  filename: log/go_blog.log # 日志文件存储路径及名称：日志会写入项目根目录下的log文件夹，文件名为go_blog.log，便于统一管理和查找
+  filename: log/assist_backed_app.log # 日志文件存储路径及名称：日志会写入项目根目录下的log文件夹，文件名为go_blog.log，便于统一管理和查找
   max_size: 200 # 单个日志文件最大容量为200MB（依赖lumberjack库）：当文件达到200MB时自动切割为旧日志（如go_blog.log.1），避免单文件过大导致查看/备份困难
   max_backups: 30 # 最多保留30个旧日志文件（依赖lumberjack库）：超过30个时自动删除最旧的日志，防止历史日志占用过多磁盘空间
   max_age: 5 # 旧日志文件最多保留5天（依赖lumberjack库）：无论文件是否达到max_backups数量，超过5天的旧日志都会自动清理，控制日志存储周期
@@ -127,6 +127,7 @@ rate_limit:
 crawler:
   leetcode:
     base_url: "http://180.184.87.86:8001"    # 力扣数据服务地址 (FastAPI/Python 服务)
+    api_prefix: "/v2"                         # 业务接口统一前缀，置空可回退旧路径
     timeout_ms: 10000                         # 单次请求超时时间 (毫秒)，建议 3000-10000
     max_idle_conns: 100                      # 连接池最大空闲连接数 (全局)
     max_idle_conns_per_host: 40             # 连接池单 Host 最大空闲连接数 (重要：高并发复用关键)
@@ -137,6 +138,7 @@ crawler:
     response_body_limit_bytes: 2097152       # 响应体大小限制 (字节)，默认 2MB，防止大包攻击
   luogu:
     base_url: "http://180.184.87.86:8001"    # 洛谷数据服务地址
+    api_prefix: "/v2"
     timeout_ms: 8000                         # 洛谷页面较慢，超时设长一点
     max_idle_conns: 200
     max_idle_conns_per_host: 100
@@ -145,8 +147,22 @@ crawler:
     retry_wait_ms: 200
     retry_max_wait_ms: 2000
     response_body_limit_bytes: 4194304       # 洛谷题目内容可能较多，放宽到 4MB
+  lanqiao:
+    base_url: "http://180.184.87.86:8001"    # 蓝桥数据服务地址
+    api_prefix: "/v2"
+    timeout_ms: 10000
+    max_idle_conns: 100
+    max_idle_conns_per_host: 40
+    idle_conn_timeout_sec: 90
+    retry_count: 2
+    retry_wait_ms: 200
+    retry_max_wait_ms: 2000
+    response_body_limit_bytes: 4194304
 task:
-  outbox_cleanup_retention_days: 7
+  outbox_cleanup_retention_days: 7 # 成功消息保留一周，便于监控和审计
+  outbox_failed_cleanup_retention_days: 30 # 失败消息保留更久，便于排查和补救
+  distributed_lock_enabled: true # 是否启用分布式锁（如 Redlock）来协调定时任务，防止多实例重复执行
+  distributed_lock_ttl_seconds: 30 # 分布式锁 TTL，单位秒，需略大于单次任务执行预估时间，防止死锁
   image_orphan_cleanup_cron: "@daily"  # 孤儿图片清理周期
   luogu_question_bank_warmup_enabled: true
   luogu_question_bank_warmup_batch_size: 500
@@ -161,9 +177,71 @@ task:
 messaging:
   redis_stream_read_count: 1
   redis_stream_block_ms: 5000
+  outbox_relay_lock_enabled: true
+  outbox_relay_lock_ttl_seconds: 15
   luogu_bind_topic: "luogu.bind"
   luogu_bind_group: "luogu_bind_group"
   luogu_bind_consumer: "luogu_bind_consumer"
   leetcode_bind_topic: "leetcode.bind"
   leetcode_bind_group: "leetcode_bind_group"
   leetcode_bind_consumer: "leetcode_bind_consumer"
+observability:
+  enabled: true                      # 总开关
+  service_name: "personal_assistant" # 服务名维度（需稳定）
+  service_trace:
+    enabled: true
+    modules:
+      - "jwt"
+      - "user"
+      - "oj"
+      - "image"
+      - "observability"
+  propagation:
+    enabled: true
+    request_id_header: "X-Request-ID" # 本地日志排障 ID
+    parse_w3c: true
+    inject_w3c: true
+
+  metrics:
+    flush_interval_ms: 1000          # 内存桶刷库间隔
+    db_batch_size: 500               # 每批写库行数
+    fine_retention_days: 45          # 1m/5m 保留天数
+    day_retention_days: 365          # 1d 保留天数
+    week_retention_days: 0           # 1w 保留天数（0=不保留/不启用，按实现）
+    rollup_cron: "10 2 * * *"        # rollup+清理定时
+
+  traces:
+    enabled: true                    # trace spans 开关
+    # traces:stream 为 Go + Python(crawler_center) 共享的 Redis Stream。
+    # Python 侧以 service="crawler_center" 推送 Span，Go consumer 统一消费入库。
+    stream_key: "traces:stream"      # Redis Stream key (shared: Go producer + Python producer -> Go consumer)
+    stream_group: "traces_persist_group" # consumer group
+    stream_consumer: "go_trace_consumer" # consumer 名（建议实例唯一）
+    stream_read_count: 200           # 单次读/claim 条数
+    stream_block_ms: 1000            # 阻塞读取时长
+    pending_idle_ms: 60000           # pending 回收阈值
+    db_batch_size: 100               # spans 落库批量
+    db_flush_interval_ms: 800        # spans 刷新间隔
+    normal_queue_size: 4096          # 成功/非关键队列容量（满则丢）
+    critical_queue_size: 1024        # 错误/关键队列容量
+    enqueue_timeout_ms: 30           # 关键入队等待上限
+    success_sample_rate: 1           # 成功采样率（1=全量）
+    drop_success_on_overload: true   # 过载丢成功，保错误
+    capture_error_payload: true      # 仅错误采集 payload
+    max_payload_bytes: 4096          # payload 截断字节数
+    capture_error_stack: true        # 错误 span 是否采集栈
+    capture_error_detail: true       # 错误 span 是否采集结构化明细
+    max_stack_bytes: 8192            # stack 截断字节数
+    max_detail_bytes: 4096           # detail 截断字节数
+    redact_keys:                     # 明细脱敏关键字
+      - "password"
+      - "token"
+      - "authorization"
+      - "cookie"
+      - "secret"
+      - "apikey"
+      - "access_token"
+      - "refresh_token"
+    success_retention_days: 5        # 成功 spans 保留天数
+    error_retention_days: 10         # 错误 spans 保留天数
+    cleanup_cron: "30 2 * * *"       # traces 清理定时

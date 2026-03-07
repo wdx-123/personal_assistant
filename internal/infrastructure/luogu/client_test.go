@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"personal_assistant/internal/model/config"
 )
 
 func TestClient_GetPractice_OK(t *testing.T) {
@@ -76,6 +78,96 @@ func TestClient_GetPractice_OK(t *testing.T) {
 	}
 	if resp.Data.Passed[0].PID != "P1001" {
 		t.Fatalf("unexpected pid: %s", resp.Data.Passed[0].PID)
+	}
+}
+
+func TestClient_GetPractice_WithAPIPrefix_OK(t *testing.T) {
+	t.Parallel()
+
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.Path != "/v2/luogu/practice" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok": true,
+			"data": map[string]any{
+				"user": map[string]any{
+					"uid":    12345,
+					"name":   "user1",
+					"avatar": "http://avatar.com/1.png",
+				},
+				"passed": []map[string]any{},
+			},
+		})
+	}))
+	defer s.Close()
+
+	c, err := NewFromConfig(config.LuoguCrawler{
+		BaseURL:   s.URL,
+		APIPrefix: "/v2",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := c.GetPractice(context.Background(), 12345, 0.1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected OK=true")
+	}
+}
+
+func TestClient_GetPractice_EmptyPrefixFallback_OK(t *testing.T) {
+	t.Parallel()
+
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.Path != "/luogu/practice" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok": true,
+			"data": map[string]any{
+				"user": map[string]any{
+					"uid":    12345,
+					"name":   "user1",
+					"avatar": "http://avatar.com/1.png",
+				},
+				"passed": []map[string]any{},
+			},
+		})
+	}))
+	defer s.Close()
+
+	c, err := NewFromConfig(config.LuoguCrawler{
+		BaseURL:   s.URL,
+		APIPrefix: "",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := c.GetPractice(context.Background(), 12345, 0.1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected OK=true")
 	}
 }
 

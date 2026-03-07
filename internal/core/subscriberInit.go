@@ -9,14 +9,15 @@ import (
 
 	"personal_assistant/global"
 	"personal_assistant/internal/infrastructure/messaging"
-	"personal_assistant/internal/service/system"
+	eventdto "personal_assistant/internal/model/dto/event"
+	"personal_assistant/internal/service/contract"
 
 	"go.uber.org/zap"
 )
 
 // InitSubscribers 初始化所有事件订阅器
 // 目前仅保留空实现，等待后续业务模块接入
-func InitSubscribers(ctx context.Context, ojSvc *system.OJService) error {
+func InitSubscribers(ctx context.Context, ojSvc contract.OJServiceContract) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -46,7 +47,7 @@ func InitSubscribers(ctx context.Context, ojSvc *system.OJService) error {
 				return errors.New("invalid luogu bind aggregate id")
 			}
 			// 绑定数据
-			var payload system.LuoguBindPayload
+			var payload eventdto.LuoguBindPayload
 			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
 				return err
 			}

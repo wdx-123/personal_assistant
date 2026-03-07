@@ -9,6 +9,7 @@ import (
 	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/service"
+	bizerrors "personal_assistant/pkg/errors"
 	"personal_assistant/pkg/response"
 
 	"github.com/gin-gonic/gin"
@@ -120,7 +121,7 @@ func (a *permissionAuth) extractUserInfo() bool {
 			zap.String("path", a.c.Request.URL.Path),
 			zap.String("method", a.c.Request.Method))
 		response.NewResponse[any, any](a.c).
-			SetCode(global.StatusUnauthorized).
+			SetCode(bizerrors.CodeLoginRequired).
 			Failed("用户未登录", errors.New("用户未登录"))
 
 		a.c.Abort()
@@ -132,7 +133,7 @@ func (a *permissionAuth) extractUserInfo() bool {
 	if !ok {
 		global.Log.Error("权限验证失败：用户信息类型错误")
 		response.NewResponse[any, any](a.c).
-			SetCode(global.StatusUnauthorized).
+			SetCode(bizerrors.CodeUnauthorized).
 			Failed("用户无权限", errors.New("用户无权限"))
 		a.c.Abort()
 		return false
@@ -154,7 +155,7 @@ func (a *permissionAuth) loadUserRoles() bool {
 			zap.Uint("userID", a.userID),
 			zap.Error(err))
 		response.NewResponse[any, any](a.c).
-			SetCode(global.StatusInternalServerError).
+			SetCode(bizerrors.CodeInternalError).
 			Failed("获取用户角色失败", errors.New("获取用户角色失败"))
 		a.c.Abort()
 		return false
@@ -216,7 +217,7 @@ func (a *permissionAuth) checkAPIPermission() bool {
 			zap.Strings("roles", a.userRoles),
 			zap.Error(err))
 		response.NewResponse[any, any](a.c).
-			SetCode(global.StatusInternalServerError).
+			SetCode(bizerrors.CodeInternalError).
 			Failed("API权限验证失败", errors.New("API权限验证失败"))
 		a.c.Abort()
 		return false
@@ -229,7 +230,7 @@ func (a *permissionAuth) checkAPIPermission() bool {
 			zap.String("method", a.c.Request.Method),
 			zap.Strings("roles", a.userRoles))
 		response.NewResponse[any, any](a.c).
-			SetCode(global.StatusUnauthorized).
+			SetCode(bizerrors.CodePermissionDenied).
 			Failed("用户无权限访问API", errors.New("用户无权限访问API"))
 		a.c.Abort()
 		return false

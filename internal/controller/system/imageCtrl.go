@@ -7,7 +7,7 @@ package system
 import (
 	"personal_assistant/global"
 	"personal_assistant/internal/model/dto/request"
-	serviceSystem "personal_assistant/internal/service/system"
+	serviceContract "personal_assistant/internal/service/contract"
 	"personal_assistant/pkg/jwt"
 	"personal_assistant/pkg/response"
 
@@ -17,11 +17,11 @@ import (
 
 // ImageCtrl 图片管理控制器
 type ImageCtrl struct {
-	imageService *serviceSystem.ImageService
+	imageService serviceContract.ImageServiceContract
 }
 
 // NewImageCtrl 创建图片控制器实例
-func NewImageCtrl(imageService *serviceSystem.ImageService) *ImageCtrl {
+func NewImageCtrl(imageService serviceContract.ImageServiceContract) *ImageCtrl {
 	return &ImageCtrl{imageService: imageService}
 }
 

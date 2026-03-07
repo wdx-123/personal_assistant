@@ -7,7 +7,8 @@ import (
 	"personal_assistant/global"
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
-	serviceSystem "personal_assistant/internal/service/system"
+	serviceContract "personal_assistant/internal/service/contract"
+	bizerrors "personal_assistant/pkg/errors"
 	"personal_assistant/pkg/jwt"
 	"personal_assistant/pkg/response"
 
@@ -16,7 +17,7 @@ import (
 )
 
 type OJCtrl struct {
-	ojService *serviceSystem.OJService
+	ojService serviceContract.OJServiceContract
 }
 
 func (ctrl *OJCtrl) BindOJAccount(c *gin.Context) {
@@ -24,7 +25,7 @@ func (ctrl *OJCtrl) BindOJAccount(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		global.Log.Error("绑定数据错误", zap.Error(err))
 		response.NewResponse[any, any](c).
-			SetCode(global.StatusBadRequest).
+			SetCode(bizerrors.CodeBindFailed).
 			Failed(fmt.Sprintf("绑定数据错误: %v", err), nil)
 		return
 	}
@@ -32,18 +33,20 @@ func (ctrl *OJCtrl) BindOJAccount(c *gin.Context) {
 	userID := jwt.GetUserID(c)
 	if userID == 0 {
 		response.NewResponse[resp.AuthResponse, resp.AuthResponse](c).
-			SetCode(global.StatusUnauthorized).
+			SetCode(bizerrors.CodeLoginRequired).
 			Failed("用户未登录", &resp.AuthResponse{Message: "用户未登录", Reload: true})
 		return
 	}
 
 	out, err := ctrl.ojService.BindOJAccount(c.Request.Context(), userID, &req)
 	if err != nil {
-		code := global.StatusInternalServerError
-		if errors.Is(err, serviceSystem.ErrInvalidPlatform) || errors.Is(err, serviceSystem.ErrInvalidIdentifier) {
-			code = global.StatusBadRequest
-		} else if errors.Is(err, serviceSystem.ErrBindCoolDown) {
-			code = global.StatusTooManyRequests
+		code := bizerrors.CodeInternalError
+		if errors.Is(err, serviceContract.ErrInvalidPlatform) {
+			code = bizerrors.CodeOJPlatformInvalid
+		} else if errors.Is(err, serviceContract.ErrInvalidIdentifier) {
+			code = bizerrors.CodeOJIdentifierInvalid
+		} else if errors.Is(err, serviceContract.ErrBindCoolDown) {
+			code = bizerrors.CodeOJBindCoolDown
 		}
 		global.Log.Error("绑定OJ账号失败",
 			zap.Uint("user_id", userID),
@@ -56,7 +59,7 @@ func (ctrl *OJCtrl) BindOJAccount(c *gin.Context) {
 	}
 
 	response.NewResponse[resp.BindOJAccountResp, resp.BindOJAccountResp](c).
-		SetCode(global.StatusOK).
+		SetCode(bizerrors.CodeSuccess).
 		Success("绑定成功", out)
 }
 
@@ -65,7 +68,7 @@ func (ctrl *OJCtrl) GetRankingList(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		global.Log.Error("参数绑定失败", zap.Error(err))
 		response.NewResponse[any, any](c).
-			SetCode(global.StatusBadRequest).
+			SetCode(bizerrors.CodeBindFailed).
 			Failed(fmt.Sprintf("参数错误: %v", err), nil)
 		return
 	}
@@ -73,16 +76,16 @@ func (ctrl *OJCtrl) GetRankingList(c *gin.Context) {
 	userID := jwt.GetUserID(c)
 	if userID == 0 {
 		response.NewResponse[resp.AuthResponse, resp.AuthResponse](c).
-			SetCode(global.StatusUnauthorized).
+			SetCode(bizerrors.CodeLoginRequired).
 			Failed("用户未登录", &resp.AuthResponse{Message: "用户未登录", Reload: true})
 		return
 	}
 
 	out, err := ctrl.ojService.GetRankingList(c.Request.Context(), userID, &req)
 	if err != nil {
-		code := global.StatusInternalServerError
-		if errors.Is(err, serviceSystem.ErrInvalidPlatform) {
-			code = global.StatusBadRequest
+		code := bizerrors.CodeInternalError
+		if errors.Is(err, serviceContract.ErrInvalidPlatform) {
+			code = bizerrors.CodeOJPlatformInvalid
 		}
 		global.Log.Error("获取排行榜失败",
 			zap.Uint("user_id", userID),
@@ -94,7 +97,7 @@ func (ctrl *OJCtrl) GetRankingList(c *gin.Context) {
 	}
 
 	response.NewResponse[resp.OJRankingListResp, resp.OJRankingListResp](c).
-		SetCode(global.StatusOK).
+		SetCode(bizerrors.CodeSuccess).
 		Success("获取成功", out)
 }
 
@@ -103,7 +106,7 @@ func (ctrl *OJCtrl) GetStats(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		global.Log.Error("参数绑定失败", zap.Error(err))
 		response.NewResponse[any, any](c).
-			SetCode(global.StatusBadRequest).
+			SetCode(bizerrors.CodeBindFailed).
 			Failed(fmt.Sprintf("参数错误: %v", err), nil)
 		return
 	}
@@ -111,21 +114,29 @@ func (ctrl *OJCtrl) GetStats(c *gin.Context) {
 	userID := jwt.GetUserID(c)
 	if userID == 0 {
 		response.NewResponse[resp.AuthResponse, resp.AuthResponse](c).
-			SetCode(global.StatusUnauthorized).
+			SetCode(bizerrors.CodeLoginRequired).
 			Failed("用户未登录", &resp.AuthResponse{Message: "用户未登录", Reload: true})
 		return
 	}
 
 	out, err := ctrl.ojService.GetUserStats(c.Request.Context(), userID, &req)
 	if err != nil {
-		code := global.StatusInternalServerError
-		if errors.Is(err, serviceSystem.ErrInvalidPlatform) || errors.Is(err, serviceSystem.ErrOJAccountNotBound) {
-			code = global.StatusBadRequest
+		code := bizerrors.CodeInternalError
+		if errors.Is(err, serviceContract.ErrInvalidPlatform) {
+			code = bizerrors.CodeOJPlatformInvalid
+		} else if errors.Is(err, serviceContract.ErrOJAccountNotBound) {
+			code = bizerrors.CodeOJAccountNotBound
 		}
-		global.Log.Error("获取用户卡片信息失败",
+		logFields := []zap.Field{
 			zap.Uint("user_id", userID),
 			zap.String("platform", req.Platform),
-			zap.Error(err))
+			zap.Error(err),
+		}
+		if errors.Is(err, serviceContract.ErrOJAccountNotBound) {
+			global.Log.Warn("用户未绑定 OJ 账号", logFields...)
+		} else {
+			global.Log.Error("获取用户卡片信息失败", logFields...)
+		}
 		response.NewResponse[any, any](c).
 			SetCode(code).
 			Failed(fmt.Sprintf("获取用户卡片信息失败: %v", err), nil)
@@ -133,6 +144,6 @@ func (ctrl *OJCtrl) GetStats(c *gin.Context) {
 	}
 
 	response.NewResponse[resp.BindOJAccountResp, resp.BindOJAccountResp](c).
-		SetCode(global.StatusOK).
+		SetCode(bizerrors.CodeSuccess).
 		Success("获取成功", out)
 }

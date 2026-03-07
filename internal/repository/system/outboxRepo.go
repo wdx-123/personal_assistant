@@ -73,3 +73,34 @@ func (r *outboxRepository) DeletePublishedBefore(ctx context.Context, before tim
 		Where("status = ? AND published_at IS NOT NULL AND published_at < ?", entity.OutboxEventStatusPublished, before).
 		Delete(&entity.OutboxEvent{}).Error
 }
+
+func (r *outboxRepository) DeleteFailedBefore(ctx context.Context, before time.Time) error {
+	return r.db.WithContext(ctx).
+		Where("status = ? AND updated_at < ?", entity.OutboxEventStatusFailed, before).
+		Delete(&entity.OutboxEvent{}).Error
+}
+
+func (r *outboxRepository) CountByStatus(ctx context.Context) (map[string]int64, error) {
+	type statusRow struct {
+		Status string
+		Count  int64
+	}
+
+	var rows []*statusRow
+	if err := r.db.WithContext(ctx).
+		Model(&entity.OutboxEvent{}).
+		Select("status, COUNT(1) AS count").
+		Group("status").
+		Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]int64, len(rows))
+	for _, row := range rows {
+		if row == nil {
+			continue
+		}
+		result[row.Status] = row.Count
+	}
+	return result, nil
+}

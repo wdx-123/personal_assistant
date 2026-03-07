@@ -55,5 +55,6 @@ type RoleSimpleItem struct {
 type RoleMenuAPIMappingItem struct {
 	MenuTree        []*MenuItem `json:"menu_tree"`         // 全量菜单树（节点包含已绑定APIs）
 	AssignedMenuIDs []uint      `json:"assigned_menu_ids"` // 角色已分配菜单ID集合
+	DirectAPIIDs    []uint      `json:"direct_api_ids"`    // 角色直绑API ID集合
 	AssignedAPIIDs  []uint      `json:"assigned_api_ids"`  // 角色最终API ID集合（菜单链路+直绑并集）
 }

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"personal_assistant/pkg/errors"
+	"personal_assistant/pkg/observability/contextid"
 
 	"github.com/gin-gonic/gin"
 )
@@ -31,6 +32,9 @@ type PageData struct {
 
 // BizResult 构建响应并返回
 func BizResult(code errors.BizCode, data any, message string, c *gin.Context) {
+	if c != nil {
+		c.Set(contextid.GinKeyErrorCode, code.Int())
+	}
 	c.JSON(http.StatusOK, BizResponse{
 		Code:      code.Int(),
 		Success:   code == errors.CodeSuccess,
@@ -118,6 +122,7 @@ func BizFailWithErrorData(err error, data any, c *gin.Context) {
 
 // BizNoAuth 未授权响应（HTTP 401）
 func BizNoAuth(message string, c *gin.Context) {
+	c.Set(contextid.GinKeyErrorCode, errors.CodeUnauthorized.Int())
 	c.JSON(http.StatusUnauthorized, BizResponse{
 		Code:      errors.CodeUnauthorized.Int(),
 		Success:   false,
@@ -129,6 +134,7 @@ func BizNoAuth(message string, c *gin.Context) {
 
 // BizNoAuthWithReload 未授权响应（需要前端刷新）
 func BizNoAuthWithReload(message string, c *gin.Context) {
+	c.Set(contextid.GinKeyErrorCode, errors.CodeUnauthorized.Int())
 	c.JSON(http.StatusUnauthorized, BizResponse{
 		Code:      errors.CodeUnauthorized.Int(),
 		Success:   false,

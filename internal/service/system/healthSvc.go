@@ -5,14 +5,17 @@ import (
 
 	"personal_assistant/global"
 	"personal_assistant/internal/model/dto/response"
+	"personal_assistant/internal/repository"
 )
 
 // HealthService 提供服务健康检查能力
-type HealthService struct{}
+type HealthService struct {
+	repositoryGroup *repository.Group
+}
 
 // NewHealthService 创建健康服务
-func NewHealthService() *HealthService {
-	return &HealthService{}
+func NewHealthService(repositoryGroup *repository.Group) *HealthService {
+	return &HealthService{repositoryGroup: repositoryGroup}
 }
 
 // Health 返回服务健康状态
@@ -24,11 +27,8 @@ func (s *HealthService) Health(ctx context.Context) (*response.HealthResponse, e
 	}
 
 	// Check DB
-	if global.DB != nil {
-		sqlDB, err := global.DB.DB()
-		if err == nil && sqlDB.Ping() == nil {
-			res.DB = "UP"
-		}
+	if s.repositoryGroup != nil && s.repositoryGroup.Ping(ctx) == nil {
+		res.DB = "UP"
 	}
 
 	// Check Redis

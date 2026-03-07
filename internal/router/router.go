@@ -65,6 +65,8 @@ func InitRouter() *gin.Engine {
 		systemRouter.InitRoleRouter(SystemGroup)
 		// 组织管理
 		systemRouter.InitOrgAuthRouter(SystemGroup)
+		// 观测查询
+		systemRouter.InitObservabilityRouter(SystemGroup)
 	}
 	// 业务路由组 - 需要JWT，但不需严格的权限控制
 	BusinessGroup := Router.Group("")
@@ -83,6 +85,8 @@ func InitRouter() *gin.Engine {
 
 // attachCoreMiddlewares 应用核心中间件（日志、恢复、CORS）
 func attachCoreMiddlewares(r *gin.Engine) {
+	r.Use(middleware.RequestIDMiddleware())
+	r.Use(middleware.ObservabilityMiddleware())
 	r.Use(middleware.GinLogger(), middleware.GinRecovery(true))
 	r.Use(middleware.CORSMiddleware())
 }

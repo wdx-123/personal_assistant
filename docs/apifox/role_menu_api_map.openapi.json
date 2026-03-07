@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "personal_assistant - 角色菜单/API映射接口",
-    "description": "用于获取指定角色的菜单树与API授权映射。\n\n说明：\n1. 该接口位于受保护路由，需携带 JWT Bearer Token。\n2. 返回体采用统一 BizResponse 结构：code/success/message/data/timestamp。\n3. `max_level` 为可选层级裁剪参数，根节点层级定义为 1；不传则返回全量菜单树。\n4. `assigned_menu_ids` 与 `assigned_api_ids` 始终返回角色授权全集，不受 `max_level` 影响。",
+    "description": "用于获取指定角色的菜单树与API授权映射。\n\n说明：\n1. 该接口位于受保护路由，需携带 JWT Bearer Token。\n2. 返回体采用统一 BizResponse 结构：code/success/message/data/timestamp。\n3. `max_level` 为可选层级裁剪参数，根节点层级定义为 1；不传则返回全量菜单树。\n4. `assigned_menu_ids`、`direct_api_ids` 与 `assigned_api_ids` 始终返回角色授权全集，不受 `max_level` 影响。\n5. `direct_api_ids` 表示角色直绑 API；`assigned_api_ids` 表示菜单链路 + 直绑 API 的最终生效并集，不可直接作为直绑保存入参。",
     "version": "1.0.0"
   },
   "servers": [
@@ -29,7 +29,7 @@
           "系统-角色管理"
         ],
         "summary": "获取角色菜单/API映射",
-        "description": "返回角色配置页面所需的大对象：`menu_tree`、`assigned_menu_ids`、`assigned_api_ids`。\n\n`max_level` 行为：\n- 不传：返回全量树\n- 传 1：仅返回根层\n- 传 N：返回到第 N 层，达到上限层节点不再返回 `children` 字段",
+        "description": "返回角色配置页面所需的大对象：`menu_tree`、`assigned_menu_ids`、`direct_api_ids`、`assigned_api_ids`。\n\n`max_level` 行为：\n- 不传：返回全量树\n- 传 1：仅返回根层\n- 传 N：返回到第 N 层，达到上限层节点不再返回 `children` 字段",
         "operationId": "GetRoleMenuAPIMap",
         "parameters": [
           {
@@ -132,6 +132,9 @@
                           13,
                           14
                         ],
+                        "direct_api_ids": [
+                          99
+                        ],
                         "assigned_api_ids": [
                           10,
                           11,
@@ -171,6 +174,9 @@
                           13,
                           14
                         ],
+                        "direct_api_ids": [
+                          99
+                        ],
                         "assigned_api_ids": [
                           10,
                           11,
@@ -183,7 +189,7 @@
                   "参数错误": {
                     "summary": "max_level 非法或格式错误",
                     "value": {
-                      "code": 10004,
+                      "code": 10001,
                       "success": false,
                       "message": "参数错误",
                       "data": null,
@@ -278,7 +284,7 @@
         "properties": {
           "code": {
             "type": "integer",
-            "example": 10004
+            "example": 10001
           },
           "success": {
             "type": "boolean",
@@ -304,6 +310,7 @@
         "required": [
           "menu_tree",
           "assigned_menu_ids",
+          "direct_api_ids",
           "assigned_api_ids"
         ],
         "properties": {
@@ -327,9 +334,21 @@
               14
             ]
           },
+          "direct_api_ids": {
+            "type": "array",
+            "description": "角色直绑API ID集合（全量，仅用于回填直绑保存态）",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": [
+              99
+            ]
+          },
           "assigned_api_ids": {
             "type": "array",
-            "description": "角色最终API ID集合（菜单链路+直绑并集，全量）",
+            "description": "角色最终API ID集合（菜单链路+直绑并集，全量，不可直接作为直绑保存入参）",
             "items": {
               "type": "integer",
               "format": "int64",

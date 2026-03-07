@@ -7,16 +7,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"personal_assistant/global"
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
-	serviceSystem "personal_assistant/internal/service/system"
+	serviceContract "personal_assistant/internal/service/contract"
+	bizerrors "personal_assistant/pkg/errors"
 	"personal_assistant/pkg/jwt"
 	"personal_assistant/pkg/response"
 )
 
 type RefreshTokenCtrl struct {
-	jwtService *serviceSystem.JWTService
+	jwtService serviceContract.JWTServiceContract
 }
 
 func (r *RefreshTokenCtrl) RefreshToken(c *gin.Context) {
@@ -33,7 +33,7 @@ func (r *RefreshTokenCtrl) RefreshToken(c *gin.Context) {
 		} else if err != io.EOF {
 			helper.HandleBindError(err)
 			response.NewResponse[resp.AuthResponse, resp.AuthResponse](c).
-				SetCode(global.StatusBadRequest).Failed(err.Error(), "参数错误")
+				SetCode(bizerrors.CodeBindFailed).Failed(err.Error(), "参数错误")
 			return
 		}
 	}
@@ -41,14 +41,14 @@ func (r *RefreshTokenCtrl) RefreshToken(c *gin.Context) {
 		err1 := errors.New("RefreshToken token is required")
 		helper.HandleBindError(err1)
 		response.NewResponse[resp.AuthResponse, resp.AuthResponse](c).
-			SetCode(global.StatusBadRequest).Failed(err1.Error(), "未携带 RefreshToken Token")
+			SetCode(bizerrors.CodeInvalidParams).Failed(err1.Error(), "未携带 RefreshToken Token")
 		return
 	}
 
 	// 检查refresh token是否在黑名单中
 	if r.jwtService.IsInBlacklist(refreshToken) {
-		helper.CommonError("token is blacklist", global.StatusUnauthorized, nil)
-		response.NewResponse[resp.AuthResponse, resp.AuthResponse](c).SetCode(global.StatusUnauthorized).
+		helper.CommonError("token is blacklist", bizerrors.CodeTokenBlacklisted, nil)
+		response.NewResponse[resp.AuthResponse, resp.AuthResponse](c).SetCode(bizerrors.CodeTokenBlacklisted).
 			Failed("token is blacklist", &resp.AuthResponse{
 				Message: "token is blacklist",
 				Reload:  true})

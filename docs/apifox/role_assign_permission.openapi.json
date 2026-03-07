@@ -1,0 +1,268 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "personal_assistant - 角色权限合并保存接口",
+    "description": "用于一次性保存指定角色的菜单权限与角色直绑 API 权限。\n\n说明：\n1. 该接口位于受保护路由，需携带 JWT Bearer Token。\n2. 返回体采用统一 BizResponse 结构：code/success/message/data/timestamp。\n3. `menu_ids` 与 `direct_api_ids` 必须传入，可为空数组；空数组表示清空对应权限。\n4. 接口内部会按 role 维度加锁，并在保存成功后触发一次全量权限刷新。",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:9000",
+      "description": "本地开发环境（请按实际服务地址修改）"
+    }
+  ],
+  "tags": [
+    {
+      "name": "系统-角色管理",
+      "description": "对应 internal/router/system/roleRouter.go 中的角色接口"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/system/role/assign_permission": {
+      "post": {
+        "tags": [
+          "系统-角色管理"
+        ],
+        "summary": "分配角色权限",
+        "description": "一次性全量替换角色的菜单权限与角色直绑 API 权限，并在成功后同步刷新 Casbin 权限。",
+        "operationId": "AssignRolePermission",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignRolePermissionReq"
+              },
+              "examples": {
+                "保存角色权限": {
+                  "summary": "角色菜单与直绑 API 一次提交",
+                  "value": {
+                    "role_id": 3,
+                    "menu_ids": [
+                      13,
+                      14
+                    ],
+                    "direct_api_ids": [
+                      99,
+                      100
+                    ]
+                  }
+                },
+                "清空角色权限": {
+                  "summary": "清空菜单与直绑 API",
+                  "value": {
+                    "role_id": 3,
+                    "menu_ids": [],
+                    "direct_api_ids": []
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功/业务失败均返回 HTTP 200，具体以 code 判断",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseMessage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizResponseError"
+                    }
+                  ]
+                },
+                "examples": {
+                  "保存成功": {
+                    "summary": "角色权限更新成功",
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "分配成功",
+                      "data": null,
+                      "timestamp": 1770645001001
+                    }
+                  },
+                  "参数错误": {
+                    "summary": "menu_ids 或 direct_api_ids 未传",
+                    "value": {
+                      "code": 10001,
+                      "success": false,
+                      "message": "参数错误",
+                      "data": null,
+                      "timestamp": 1770645001002
+                    }
+                  },
+                  "角色不存在": {
+                    "summary": "role_id 对应角色不存在",
+                    "value": {
+                      "code": 30101,
+                      "success": false,
+                      "message": "角色不存在",
+                      "data": null,
+                      "timestamp": 1770645001003
+                    }
+                  },
+                  "锁冲突": {
+                    "summary": "同一角色存在并发保存",
+                    "value": {
+                      "code": 10008,
+                      "success": false,
+                      "message": "操作过于频繁，请稍后重试",
+                      "data": null,
+                      "timestamp": 1770645001004
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录或 Token 无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseError"
+                },
+                "example": {
+                  "code": 11000,
+                  "success": false,
+                  "message": "未授权访问",
+                  "data": null,
+                  "timestamp": 1770645001005
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "在 Authorization 头中传入：Bearer <token>"
+      }
+    },
+    "schemas": {
+      "AssignRolePermissionReq": {
+        "type": "object",
+        "required": [
+          "role_id",
+          "menu_ids",
+          "direct_api_ids"
+        ],
+        "properties": {
+          "role_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "角色ID",
+            "example": 3
+          },
+          "menu_ids": {
+            "type": "array",
+            "description": "角色菜单ID列表，全量替换；空数组表示清空菜单权限",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": [
+              13,
+              14
+            ]
+          },
+          "direct_api_ids": {
+            "type": "array",
+            "description": "角色直绑API ID列表，全量替换；空数组表示清空直绑API权限",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": [
+              99,
+              100
+            ]
+          }
+        }
+      },
+      "BizResponseMessage": {
+        "type": "object",
+        "required": [
+          "code",
+          "success",
+          "message",
+          "timestamp"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "分配成功"
+          },
+          "data": {
+            "nullable": true,
+            "example": null
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1770645001001
+          }
+        }
+      },
+      "BizResponseError": {
+        "type": "object",
+        "required": [
+          "code",
+          "success",
+          "message",
+          "timestamp"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 10001
+          },
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "参数错误"
+          },
+          "data": {
+            "nullable": true,
+            "example": null
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1770645001002
+          }
+        }
+      }
+    }
+  }
+}

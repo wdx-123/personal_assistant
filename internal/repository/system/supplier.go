@@ -22,10 +22,14 @@ type Supplier interface {
 	GetLuoguUserQuestionRepository() interfaces.LuoguUserQuestionRepository
 	GetOutboxRepository() interfaces.OutboxRepository
 	GetImageRepository() interfaces.ImageRepository
+	GetObservabilityMetricRepository() interfaces.ObservabilityMetricRepository
+	GetObservabilityTraceRepository() interfaces.ObservabilityTraceRepository
+	GetObservabilityRuntimeRepository() interfaces.ObservabilityRuntimeRepository
 }
 
 // SetUp 工厂函数，统一管理 - 现在支持配置驱动
 func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
+	var gormDB *gorm.DB
 	var userRepo interfaces.UserRepository
 	var jwtRepo interfaces.JWTRepository
 	var roleRepo interfaces.RoleRepository
@@ -40,10 +44,14 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 	var luoguUserQuestionRepo interfaces.LuoguUserQuestionRepository
 	var outboxRepo interfaces.OutboxRepository
 	var imageRepo interfaces.ImageRepository
+	var observabilityMetricRepo interfaces.ObservabilityMetricRepository
+	var observabilityTraceRepo interfaces.ObservabilityTraceRepository
+	var observabilityRuntimeRepo interfaces.ObservabilityRuntimeRepository
 
 	switch factoryConfig.DatabaseType {
 	case adapter.MySQL:
 		if db, ok := factoryConfig.Connection.(*gorm.DB); ok {
+			gormDB = db
 			userRepo = NewUserRepository(db)
 			jwtRepo = NewJwtRepository(db)
 			roleRepo = NewRoleRepository(db)
@@ -58,6 +66,9 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			luoguUserQuestionRepo = NewLuoguUserQuestionRepository(db)
 			outboxRepo = NewOutboxRepository(db)
 			imageRepo = NewImageRepository(db)
+			observabilityMetricRepo = NewObservabilityMetricRepository(db)
+			observabilityTraceRepo = NewObservabilityTraceRepository(db)
+			observabilityRuntimeRepo = NewObservabilityRuntimeRepository(db)
 		}
 	case adapter.MongoDB:
 		// 未来可以添加Mongo	DB实现
@@ -68,6 +79,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 	default:
 		// 默认MySQL
 		if db, ok := factoryConfig.Connection.(*gorm.DB); ok {
+			gormDB = db
 			userRepo = NewUserRepository(db)
 			jwtRepo = NewJwtRepository(db)
 			roleRepo = NewRoleRepository(db)
@@ -82,9 +94,13 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			luoguUserQuestionRepo = NewLuoguUserQuestionRepository(db)
 			outboxRepo = NewOutboxRepository(db)
 			imageRepo = NewImageRepository(db)
+			observabilityMetricRepo = NewObservabilityMetricRepository(db)
+			observabilityTraceRepo = NewObservabilityTraceRepository(db)
+			observabilityRuntimeRepo = NewObservabilityRuntimeRepository(db)
 		}
 	}
 	return &RepositorySupplier{
+		db:                             gormDB,
 		userRepository:                 userRepo,
 		jwtRepository:                  jwtRepo,
 		roleRepository:                 roleRepo,
@@ -99,5 +115,8 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 		luoguUserQuestionRepository:    luoguUserQuestionRepo,
 		outboxRepository:               outboxRepo,
 		imageRepository:                imageRepo,
+		observabilityMetricRepository:  observabilityMetricRepo,
+		observabilityTraceRepository:   observabilityTraceRepo,
+		observabilityRuntimeRepository: observabilityRuntimeRepo,
 	}
 }
