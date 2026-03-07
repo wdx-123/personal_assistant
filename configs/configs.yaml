@@ -1,4 +1,4 @@
-﻿mysql:
+mysql:
   host: ""       # 宿主机本地访问 MySQL
   port: 3306
   config: charset=utf8mb4&parseTime=True&loc=Local
@@ -199,7 +199,9 @@ observability:
 
   traces:
     enabled: true                    # trace spans 开关
-    stream_key: "traces:stream"      # Redis Stream key
+    # traces:stream 为 Go + Python(crawler_center) 共享的 Redis Stream。
+    # Python 侧以 service="crawler_center" 推送 Span，Go consumer 统一消费入库。
+    stream_key: "traces:stream"      # Redis Stream key (shared: Go producer + Python producer -> Go consumer)
     stream_group: "traces_persist_group" # consumer group
     stream_consumer: "go_trace_consumer" # consumer 名（建议实例唯一）
     stream_read_count: 200           # 单次读/claim 条数

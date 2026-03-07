@@ -97,7 +97,7 @@ type RoleServiceContract interface {
 	DeleteRole(ctx context.Context, id uint) error
 	AssignMenus(ctx context.Context, roleID uint, menuIDs []uint) error
 	AssignAPIs(ctx context.Context, roleID uint, apiIDs []uint) error
-	GetRoleMenuAPIMap(ctx context.Context, roleID uint) (*resp.RoleMenuAPIMappingItem, error)
+	GetRoleMenuAPIMap(ctx context.Context, roleID uint, maxLevel *int) (*resp.RoleMenuAPIMappingItem, error)
 	GetRoleMenuIDs(ctx context.Context, roleID uint) ([]uint, error)
 }
 
