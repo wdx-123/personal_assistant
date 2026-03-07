@@ -2,6 +2,7 @@ package infrastructure
 
 import (
 	"personal_assistant/global"
+	"personal_assistant/internal/infrastructure/lanqiao"
 	"personal_assistant/internal/infrastructure/leetcode"
 	"personal_assistant/internal/infrastructure/luogu"
 )
@@ -13,6 +14,9 @@ var (
 
 	// luoguClient 全局单例 Luogu 客户端
 	luoguClient *luogu.Client
+
+	// lanqiaoClient 全局单例 Lanqiao 客户端
+	lanqiaoClient *lanqiao.Client
 )
 
 // Init 初始化基础设施层的所有外部服务客户端
@@ -38,6 +42,14 @@ func Init() {
 		global.Log.Panic("failed to init luogu client: " + err.Error())
 	}
 	luoguClient = lg
+
+	// 3. 初始化 Lanqiao 客户端
+	lanqiaoCfg := global.Config.Crawler.Lanqiao
+	lq, err := lanqiao.NewFromConfig(lanqiaoCfg, lanqiao.WithLogger(global.Log))
+	if err != nil {
+		global.Log.Panic("failed to init lanqiao client: " + err.Error())
+	}
+	lanqiaoClient = lq
 }
 
 // LeetCode 获取全局单例的 LeetCode 客户端
@@ -50,4 +62,9 @@ func LeetCode() *leetcode.Client {
 // 供 Service 层或 Task 层调用，执行 GetPractice 等操作
 func Luogu() *luogu.Client {
 	return luoguClient
+}
+
+// Lanqiao 获取全局单例的 Lanqiao 客户端
+func Lanqiao() *lanqiao.Client {
+	return lanqiaoClient
 }

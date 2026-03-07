@@ -5,12 +5,14 @@ package config
 type Crawler struct {
 	LeetCode LeetCodeCrawler `json:"leetcode" yaml:"leetcode"` // 力扣服务配置
 	Luogu    LuoguCrawler    `json:"luogu" yaml:"luogu"`       // 洛谷服务配置
+	Lanqiao  LanqiaoCrawler  `json:"lanqiao" yaml:"lanqiao"`   // 蓝桥服务配置
 }
 
 // LeetCodeCrawler 力扣客户端详细配置
 // 对应 configs.yaml 中的 crawler.leetcode 节点
 type LeetCodeCrawler struct {
 	BaseURL                string `json:"base_url" yaml:"base_url"`                                   // 下游服务地址 (必填)
+	APIPrefix              string `json:"api_prefix" yaml:"api_prefix"`                               // API 路由前缀（默认 /v2）
 	TimeoutMs              int    `json:"timeout_ms" yaml:"timeout_ms"`                               // 请求超时 (毫秒)
 	MaxIdleConns           int    `json:"max_idle_conns" yaml:"max_idle_conns"`                       // HTTP Client MaxIdleConns
 	MaxIdleConnsPerHost    int    `json:"max_idle_conns_per_host" yaml:"max_idle_conns_per_host"`     // HTTP Client MaxIdleConnsPerHost (高并发核心参数)
@@ -26,6 +28,22 @@ type LeetCodeCrawler struct {
 // 结构与 LeetCodeCrawler 保持一致，但支持独立配置，便于后续差异化调优
 type LuoguCrawler struct {
 	BaseURL                string `json:"base_url" yaml:"base_url"`
+	APIPrefix              string `json:"api_prefix" yaml:"api_prefix"`
+	TimeoutMs              int    `json:"timeout_ms" yaml:"timeout_ms"`
+	MaxIdleConns           int    `json:"max_idle_conns" yaml:"max_idle_conns"`
+	MaxIdleConnsPerHost    int    `json:"max_idle_conns_per_host" yaml:"max_idle_conns_per_host"`
+	IdleConnTimeoutSec     int    `json:"idle_conn_timeout_sec" yaml:"idle_conn_timeout_sec"`
+	RetryCount             int    `json:"retry_count" yaml:"retry_count"`
+	RetryWaitMs            int    `json:"retry_wait_ms" yaml:"retry_wait_ms"`
+	RetryMaxWaitMs         int    `json:"retry_max_wait_ms" yaml:"retry_max_wait_ms"`
+	ResponseBodyLimitBytes int64  `json:"response_body_limit_bytes" yaml:"response_body_limit_bytes"`
+}
+
+// LanqiaoCrawler 蓝桥客户端详细配置
+// 对应 configs.yaml 中的 crawler.lanqiao 节点
+type LanqiaoCrawler struct {
+	BaseURL                string `json:"base_url" yaml:"base_url"`
+	APIPrefix              string `json:"api_prefix" yaml:"api_prefix"`
 	TimeoutMs              int    `json:"timeout_ms" yaml:"timeout_ms"`
 	MaxIdleConns           int    `json:"max_idle_conns" yaml:"max_idle_conns"`
 	MaxIdleConnsPerHost    int    `json:"max_idle_conns_per_host" yaml:"max_idle_conns_per_host"`

@@ -155,6 +155,7 @@ func NewConfig() *Config {
 	_crawler := &Crawler{
 		LeetCode: LeetCodeCrawler{
 			BaseURL:                viper.GetString("crawler.leetcode.base_url"),
+			APIPrefix:              getCrawlerAPIPrefix("crawler.leetcode.api_prefix"),
 			TimeoutMs:              viper.GetInt("crawler.leetcode.timeout_ms"),
 			MaxIdleConns:           viper.GetInt("crawler.leetcode.max_idle_conns"),
 			MaxIdleConnsPerHost:    viper.GetInt("crawler.leetcode.max_idle_conns_per_host"),
@@ -166,6 +167,7 @@ func NewConfig() *Config {
 		},
 		Luogu: LuoguCrawler{
 			BaseURL:                viper.GetString("crawler.luogu.base_url"),
+			APIPrefix:              getCrawlerAPIPrefix("crawler.luogu.api_prefix"),
 			TimeoutMs:              viper.GetInt("crawler.luogu.timeout_ms"),
 			MaxIdleConns:           viper.GetInt("crawler.luogu.max_idle_conns"),
 			MaxIdleConnsPerHost:    viper.GetInt("crawler.luogu.max_idle_conns_per_host"),
@@ -174,6 +176,18 @@ func NewConfig() *Config {
 			RetryWaitMs:            viper.GetInt("crawler.luogu.retry_wait_ms"),
 			RetryMaxWaitMs:         viper.GetInt("crawler.luogu.retry_max_wait_ms"),
 			ResponseBodyLimitBytes: viper.GetInt64("crawler.luogu.response_body_limit_bytes"),
+		},
+		Lanqiao: LanqiaoCrawler{
+			BaseURL:                viper.GetString("crawler.lanqiao.base_url"),
+			APIPrefix:              getCrawlerAPIPrefix("crawler.lanqiao.api_prefix"),
+			TimeoutMs:              viper.GetInt("crawler.lanqiao.timeout_ms"),
+			MaxIdleConns:           viper.GetInt("crawler.lanqiao.max_idle_conns"),
+			MaxIdleConnsPerHost:    viper.GetInt("crawler.lanqiao.max_idle_conns_per_host"),
+			IdleConnTimeoutSec:     viper.GetInt("crawler.lanqiao.idle_conn_timeout_sec"),
+			RetryCount:             viper.GetInt("crawler.lanqiao.retry_count"),
+			RetryWaitMs:            viper.GetInt("crawler.lanqiao.retry_wait_ms"),
+			RetryMaxWaitMs:         viper.GetInt("crawler.lanqiao.retry_max_wait_ms"),
+			ResponseBodyLimitBytes: viper.GetInt64("crawler.lanqiao.response_body_limit_bytes"),
 		},
 	}
 
@@ -293,4 +307,11 @@ func NewConfig() *Config {
 		RateLimit:     *_rateLimit,
 		Observability: *_observability,
 	}
+}
+
+func getCrawlerAPIPrefix(key string) string {
+	if !viper.IsSet(key) {
+		return "/v2"
+	}
+	return viper.GetString(key)
 }

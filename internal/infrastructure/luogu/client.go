@@ -64,7 +64,7 @@ func NewFromConfig(cfg config.LuoguCrawler, opts ...Option) (*Client, error) {
 	}
 
 	// 1. 创建基础 Client
-	c, err := NewClient(cfg.BaseURL, opts...)
+	c, err := NewClient(joinBaseURLWithPrefix(cfg.BaseURL, cfg.APIPrefix), opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -327,6 +327,22 @@ func outboundInjectOptions() obsprophttp.InjectOptions {
 	opt.InjectW3C = global.Config.Observability.Propagation.Enabled &&
 		global.Config.Observability.Propagation.InjectW3C
 	return opt
+}
+
+func joinBaseURLWithPrefix(baseURL, apiPrefix string) string {
+	baseURL = strings.TrimSpace(baseURL)
+	apiPrefix = strings.TrimSpace(apiPrefix)
+	if apiPrefix == "" {
+		return baseURL
+	}
+	if !strings.HasPrefix(apiPrefix, "/") {
+		apiPrefix = "/" + apiPrefix
+	}
+	apiPrefix = strings.TrimRight(apiPrefix, "/")
+	if apiPrefix == "" {
+		return baseURL
+	}
+	return strings.TrimRight(baseURL, "/") + apiPrefix
 }
 
 func (c *Client) logError(msg string, err error, endpoint string, statusCode int) {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"personal_assistant/internal/model/config"
 	"testing"
 	"time"
 )
@@ -61,6 +62,94 @@ func TestClient_PublicProfile_OK(t *testing.T) {
 	}
 	if resp.Data.Profile.UserSlug != "u1" {
 		t.Fatalf("unexpected userSlug: %s", resp.Data.Profile.UserSlug)
+	}
+}
+
+func TestClient_PublicProfile_WithAPIPrefix_OK(t *testing.T) {
+	t.Parallel()
+
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.Path != "/v2/leetcode/public_profile" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok": true,
+			"data": map[string]any{
+				"profile": map[string]any{
+					"userSlug":   "u1",
+					"realName":   "n1",
+					"userAvatar": "a1",
+				},
+			},
+		})
+	}))
+	defer s.Close()
+
+	c, err := NewFromConfig(config.LeetCodeCrawler{
+		BaseURL:   s.URL,
+		APIPrefix: "/v2",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := c.PublicProfile(context.Background(), "u1", 0.2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected OK=true")
+	}
+}
+
+func TestClient_PublicProfile_EmptyPrefixFallback_OK(t *testing.T) {
+	t.Parallel()
+
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.Path != "/leetcode/public_profile" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"ok": true,
+			"data": map[string]any{
+				"profile": map[string]any{
+					"userSlug":   "u1",
+					"realName":   "n1",
+					"userAvatar": "a1",
+				},
+			},
+		})
+	}))
+	defer s.Close()
+
+	c, err := NewFromConfig(config.LeetCodeCrawler{
+		BaseURL:   s.URL,
+		APIPrefix: "",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := c.PublicProfile(context.Background(), "u1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !resp.OK {
+		t.Fatalf("expected OK=true")
 	}
 }
 

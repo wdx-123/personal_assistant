@@ -127,6 +127,7 @@ rate_limit:
 crawler:
   leetcode:
     base_url: "http://180.184.87.86:8001"    # 力扣数据服务地址 (FastAPI/Python 服务)
+    api_prefix: "/v2"                         # 业务接口统一前缀，置空可回退旧路径
     timeout_ms: 10000                         # 单次请求超时时间 (毫秒)，建议 3000-10000
     max_idle_conns: 100                      # 连接池最大空闲连接数 (全局)
     max_idle_conns_per_host: 40             # 连接池单 Host 最大空闲连接数 (重要：高并发复用关键)
@@ -137,6 +138,7 @@ crawler:
     response_body_limit_bytes: 2097152       # 响应体大小限制 (字节)，默认 2MB，防止大包攻击
   luogu:
     base_url: "http://180.184.87.86:8001"    # 洛谷数据服务地址
+    api_prefix: "/v2"
     timeout_ms: 8000                         # 洛谷页面较慢，超时设长一点
     max_idle_conns: 200
     max_idle_conns_per_host: 100
@@ -145,6 +147,17 @@ crawler:
     retry_wait_ms: 200
     retry_max_wait_ms: 2000
     response_body_limit_bytes: 4194304       # 洛谷题目内容可能较多，放宽到 4MB
+  lanqiao:
+    base_url: "http://180.184.87.86:8001"    # 蓝桥数据服务地址
+    api_prefix: "/v2"
+    timeout_ms: 10000
+    max_idle_conns: 100
+    max_idle_conns_per_host: 40
+    idle_conn_timeout_sec: 90
+    retry_count: 2
+    retry_wait_ms: 200
+    retry_max_wait_ms: 2000
+    response_body_limit_bytes: 4194304
 task:
   outbox_cleanup_retention_days: 7 # 成功消息保留一周，便于监控和审计
   outbox_failed_cleanup_retention_days: 30 # 失败消息保留更久，便于排查和补救
