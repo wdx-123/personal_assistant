@@ -122,10 +122,16 @@ func (ctrl *OJCtrl) GetStats(c *gin.Context) {
 		if errors.Is(err, serviceSystem.ErrInvalidPlatform) || errors.Is(err, serviceSystem.ErrOJAccountNotBound) {
 			code = global.StatusBadRequest
 		}
-		global.Log.Error("获取用户卡片信息失败",
+		logFields := []zap.Field{
 			zap.Uint("user_id", userID),
 			zap.String("platform", req.Platform),
-			zap.Error(err))
+			zap.Error(err),
+		}
+		if errors.Is(err, serviceSystem.ErrOJAccountNotBound) {
+			global.Log.Warn("用户未绑定 OJ 账号", logFields...)
+		} else {
+			global.Log.Error("获取用户卡片信息失败", logFields...)
+		}
 		response.NewResponse[any, any](c).
 			SetCode(code).
 			Failed(fmt.Sprintf("获取用户卡片信息失败: %v", err), nil)

@@ -1,4 +1,4 @@
-﻿mysql:
+mysql:
   host: ""       # 宿主机本地访问 MySQL
   port: 3306
   config: charset=utf8mb4&parseTime=True&loc=Local
@@ -14,7 +14,7 @@ redis:
   db: 0                    # 使用第 0 个数据库
 system:
   host: 0.0.0.0 # 监听所有本地网卡；外部访问用机器实际IP
-  port: 8002 # 服务对外暴露的端口号
+  port: 9000 # 服务对外暴露的端口号
   env: dev # 应用运行环境（release=生产环境；dev=开发环境；test=测试环境等）
   router_prefix: controller # API 接口的统一前缀（所有接口路径会以 /controller 开头）
   auto_migrate: true
