@@ -34,6 +34,7 @@ const (
 	rolePermissionAssignLockTTL           = 10 * time.Second
 	rolePermissionAssignLockRetryCount    = 50
 	rolePermissionAssignLockRetryInterval = 100 * time.Millisecond
+	rolePermissionAssignUnlockTimeout     = 2 * time.Second
 )
 
 // RoleService 角色管理服务
@@ -217,17 +218,11 @@ func (s *RoleService) AssignMenus(
 	menuIDs []uint,
 ) error {
 	// 1. 获取分布式锁，防止并发修改同一角色的菜单
-	lockKey := redislock.LockKeyRolePermissionAssign(roleID)
-	lock := redislock.NewRedisLock(ctx, lockKey, rolePermissionAssignLockTTL)
-	if err := lock.LockWithRetry(rolePermissionAssignLockRetryCount, rolePermissionAssignLockRetryInterval); err != nil {
-		global.Log.Warn("获取角色菜单分配锁失败", zap.Uint("roleID", roleID), zap.Error(err))
-		return errors.NewWithMsg(errors.CodeTooManyRequests, "操作过于频繁，请稍后重试")
+	lock, err := s.acquireRolePermissionAssignLock(ctx, roleID, "菜单")
+	if err != nil {
+		return err
 	}
-	defer func() {
-		if releaseErr := lock.Unlock(); releaseErr != nil {
-			global.Log.Warn("释放角色菜单分配锁失败", zap.Uint("roleID", roleID), zap.Error(releaseErr))
-		}
-	}()
+	defer s.releaseRolePermissionAssignLock(roleID, "菜单", lock)
 
 	// 2. 校验角色存在
 	role, err := s.roleRepo.GetByID(ctx, roleID)
@@ -267,17 +262,12 @@ func (s *RoleService) AssignAPIs(
 		return errors.New(errors.CodeInvalidParams)
 	}
 
-	lockKey := redislock.LockKeyRolePermissionAssign(roleID)
-	lock := redislock.NewRedisLock(ctx, lockKey, rolePermissionAssignLockTTL)
-	if err := lock.LockWithRetry(rolePermissionAssignLockRetryCount, rolePermissionAssignLockRetryInterval); err != nil {
-		global.Log.Warn("获取角色API分配锁失败", zap.Uint("roleID", roleID), zap.Error(err))
-		return errors.NewWithMsg(errors.CodeTooManyRequests, "操作过于频繁，请稍后重试")
+	lock, err := s.acquireRolePermissionAssignLock(ctx, roleID, "API")
+	if err != nil {
+		return err
 	}
-	defer func() {
-		if releaseErr := lock.Unlock(); releaseErr != nil {
-			global.Log.Warn("释放角色API分配锁失败", zap.Uint("roleID", roleID), zap.Error(releaseErr))
-		}
-	}()
+	defer s.releaseRolePermissionAssignLock(roleID, "API", lock)
+
 	// 校验角色存在
 	role, err := s.roleRepo.GetByID(ctx, roleID)
 	if err != nil {
@@ -315,17 +305,11 @@ func (s *RoleService) AssignPermissions(
 		return errors.New(errors.CodeInvalidParams)
 	}
 
-	lockKey := redislock.LockKeyRolePermissionAssign(roleID)
-	lock := redislock.NewRedisLock(ctx, lockKey, rolePermissionAssignLockTTL)
-	if err := lock.LockWithRetry(rolePermissionAssignLockRetryCount, rolePermissionAssignLockRetryInterval); err != nil {
-		global.Log.Warn("获取角色权限分配锁失败", zap.Uint("roleID", roleID), zap.Error(err))
-		return errors.NewWithMsg(errors.CodeTooManyRequests, "操作过于频繁，请稍后重试")
+	lock, err := s.acquireRolePermissionAssignLock(ctx, roleID, "权限")
+	if err != nil {
+		return err
 	}
-	defer func() {
-		if releaseErr := lock.Unlock(); releaseErr != nil {
-			global.Log.Warn("释放角色权限分配锁失败", zap.Uint("roleID", roleID), zap.Error(releaseErr))
-		}
-	}()
+	defer s.releaseRolePermissionAssignLock(roleID, "权限", lock)
 
 	role, err := s.roleRepo.GetByID(ctx, roleID)
 	if err != nil {
@@ -440,6 +424,39 @@ func normalizeIDs(ids []uint) []uint {
 		out = append(out, id)
 	}
 	return out
+}
+
+func (s *RoleService) acquireRolePermissionAssignLock(
+	ctx context.Context,
+	roleID uint,
+	scene string,
+) (*redislock.RedisLock, error) {
+	lockKey := redislock.LockKeyRolePermissionAssign(roleID)
+	lock := redislock.NewRedisLock(ctx, lockKey, rolePermissionAssignLockTTL)
+	if err := lock.LockWithRetry(rolePermissionAssignLockRetryCount, rolePermissionAssignLockRetryInterval); err != nil {
+		if stderrors.Is(err, redislock.ErrLockFailed) {
+			global.Log.Warn("获取角色"+scene+"分配锁失败", zap.Uint("roleID", roleID), zap.Error(err))
+			return nil, errors.NewWithMsg(errors.CodeTooManyRequests, "操作过于频繁，请稍后重试")
+		}
+		global.Log.Error("获取角色"+scene+"分配锁异常", zap.Uint("roleID", roleID), zap.Error(err))
+		return nil, errors.Wrap(errors.CodeRedisError, err)
+	}
+	return lock, nil
+}
+
+func (s *RoleService) releaseRolePermissionAssignLock(
+	roleID uint,
+	scene string,
+	lock *redislock.RedisLock,
+) {
+	if lock == nil {
+		return
+	}
+	unlockCtx, cancel := context.WithTimeout(context.Background(), rolePermissionAssignUnlockTimeout)
+	defer cancel()
+	if releaseErr := lock.UnlockWithContext(unlockCtx); releaseErr != nil {
+		global.Log.Warn("释放角色"+scene+"分配锁失败", zap.Uint("roleID", roleID), zap.Error(releaseErr))
+	}
 }
 
 func (s *RoleService) filterValidMenuIDs(ctx context.Context, menuIDs []uint) ([]uint, error) {
