@@ -227,13 +227,13 @@ func (s *Service) QueryTrace(
 }
 
 // QueryRuntimeMetrics 提供运行时
-// 
+//
 // 指标查询接口
 // 支持任务执行总数
 // 任务执行耗时
 // 事件消费总数
 // 事件消费耗时
-// 
+//
 // 等多种指标类型，满足不同维度的观测需求。
 func (s *Service) QueryRuntimeMetrics(
 	ctx context.Context,
@@ -581,7 +581,6 @@ func (s *Service) queryRuntimeEventCount(
 	}
 	return buildRuntimeSeriesResp(metric, rows, nil), nil
 }
-
 
 // queryRuntimeEventDuration 查询事件耗时系列数据，包含平均耗时、最大耗时和百分位数等统计信息。
 func (s *Service) queryRuntimeEventDuration(

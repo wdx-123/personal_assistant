@@ -16,8 +16,8 @@ const (
 	// Outbox Relay 调度锁，确保任何时候，只有一个outbox实例在运行
 	LockKeyOutboxRelayProcess = "outbox:relay:process"
 
-	lockKeyRoleMenuAssignFmt = "role:menu:assign:%d" // 角色菜单分配锁
-	lockKeyRolePermissionAssignFmt   = "role:permission:assign:%d"    // 角色权限分配锁
+	lockKeyRoleMenuAssignFmt       = "role:menu:assign:%d"       // 角色菜单分配锁
+	lockKeyRolePermissionAssignFmt = "role:permission:assign:%d" // 角色权限分配锁
 )
 
 func LockKeyLuoguBindUser(userID uint) string {

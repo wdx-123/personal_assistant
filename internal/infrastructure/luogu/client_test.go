@@ -6,9 +6,10 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
-	"personal_assistant/internal/model/config"
 	"testing"
 	"time"
+
+	"personal_assistant/internal/model/config"
 )
 
 func TestClient_GetPractice_OK(t *testing.T) {
