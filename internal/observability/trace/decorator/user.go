@@ -7,9 +7,6 @@ import (
 	resp "personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/service/contract"
-	"personal_assistant/pkg/observability/servicetrace"
-
-	"github.com/gin-gonic/gin"
 )
 
 type tracedUserService struct {
@@ -23,16 +20,10 @@ func WrapUserService(next contract.UserServiceContract) contract.UserServiceCont
 	return &tracedUserService{next: next}
 }
 
-func (t *tracedUserService) Register(ctx *gin.Context, req *request.RegisterReq) (*entity.User, error) {
-	if ctx == nil || ctx.Request == nil {
-		return t.next.Register(ctx, req)
-	}
-	opt := newTraceOptions("user", "Register")
-	spanCtx, spanEvent := servicetrace.Start(ctx.Request.Context(), opt)
-	ctx.Request = ctx.Request.WithContext(spanCtx)
-	out, err := t.next.Register(ctx, req)
-	servicetrace.Finish(spanCtx, opt, spanEvent, err)
-	return out, err
+func (t *tracedUserService) Register(ctx context.Context, req *request.RegisterReq) (*entity.User, error) {
+	return runTraced(ctx, "user", "Register", func(inner context.Context) (*entity.User, error) {
+		return t.next.Register(inner, req)
+	})
 }
 
 func (t *tracedUserService) PhoneLogin(ctx context.Context, req *request.LoginReq) (*entity.User, error) {

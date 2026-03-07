@@ -132,7 +132,7 @@ func (ctrl *OJCtrl) GetStats(c *gin.Context) {
 			zap.String("platform", req.Platform),
 			zap.Error(err),
 		}
-		if errors.Is(err, serviceSystem.ErrOJAccountNotBound) {
+		if errors.Is(err, serviceContract.ErrOJAccountNotBound) {
 			global.Log.Warn("用户未绑定 OJ 账号", logFields...)
 		} else {
 			global.Log.Error("获取用户卡片信息失败", logFields...)

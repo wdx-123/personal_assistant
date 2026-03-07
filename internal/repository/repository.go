@@ -1,9 +1,16 @@
 package repository
 
 import (
+	"context"
+	"errors"
+
 	"personal_assistant/internal/repository/adapter"
 	"personal_assistant/internal/repository/system"
 )
+
+type TxRunner interface {
+	InTx(ctx context.Context, fn func(tx any) error) error
+}
 
 type Group struct {
 	SystemRepositorySupplier system.Supplier
@@ -18,6 +25,32 @@ func InitRepositoryGroupWithAdapter(dbAdapter adapter.DatabaseAdapter) {
 		SystemRepositorySupplier: system.SetUp(factoryConfig),
 	}
 }
+
+func (g *Group) InTx(ctx context.Context, fn func(tx any) error) error {
+	if g == nil || g.SystemRepositorySupplier == nil {
+		return errors.New("repository group is nil")
+	}
+	txRunner, ok := g.SystemRepositorySupplier.(TxRunner)
+	if !ok {
+		return errors.New("repository supplier does not support transactions")
+	}
+	return txRunner.InTx(ctx, fn)
+}
+
+func (g *Group) Ping(ctx context.Context) error {
+	if g == nil || g.SystemRepositorySupplier == nil {
+		return errors.New("repository group is nil")
+	}
+	pinger, ok := g.SystemRepositorySupplier.(interface {
+		Ping(context.Context) error
+	})
+	if !ok {
+		return errors.New("repository supplier does not support ping")
+	}
+	return pinger.Ping(ctx)
+}
+
+var _ TxRunner = (*Group)(nil)
 
 /*// InitRepositoryGroup 初始化Repository组 - 兼容现有代码
 func InitRepositoryGroup() {

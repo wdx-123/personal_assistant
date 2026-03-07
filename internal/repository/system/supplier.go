@@ -29,6 +29,7 @@ type Supplier interface {
 
 // SetUp 工厂函数，统一管理 - 现在支持配置驱动
 func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
+	var gormDB *gorm.DB
 	var userRepo interfaces.UserRepository
 	var jwtRepo interfaces.JWTRepository
 	var roleRepo interfaces.RoleRepository
@@ -50,6 +51,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 	switch factoryConfig.DatabaseType {
 	case adapter.MySQL:
 		if db, ok := factoryConfig.Connection.(*gorm.DB); ok {
+			gormDB = db
 			userRepo = NewUserRepository(db)
 			jwtRepo = NewJwtRepository(db)
 			roleRepo = NewRoleRepository(db)
@@ -77,6 +79,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 	default:
 		// 默认MySQL
 		if db, ok := factoryConfig.Connection.(*gorm.DB); ok {
+			gormDB = db
 			userRepo = NewUserRepository(db)
 			jwtRepo = NewJwtRepository(db)
 			roleRepo = NewRoleRepository(db)
@@ -97,6 +100,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 		}
 	}
 	return &RepositorySupplier{
+		db:                             gormDB,
 		userRepository:                 userRepo,
 		jwtRepository:                  jwtRepo,
 		roleRepository:                 roleRepo,

@@ -38,7 +38,7 @@ type HealthServiceContract interface {
 }
 
 type UserServiceContract interface {
-	Register(ctx *gin.Context, req *request.RegisterReq) (*entity.User, error)
+	Register(ctx context.Context, req *request.RegisterReq) (*entity.User, error)
 	PhoneLogin(ctx context.Context, req *request.LoginReq) (*entity.User, error)
 	UpdateProfile(ctx context.Context, userID uint, req *request.UpdateProfileReq) (*entity.User, error)
 	ChangePhone(ctx context.Context, userID uint, req *request.ChangePhoneReq) (*entity.User, error)
@@ -95,6 +95,7 @@ type RoleServiceContract interface {
 	CreateRole(ctx context.Context, req *request.CreateRoleReq) error
 	UpdateRole(ctx context.Context, id uint, req *request.UpdateRoleReq) error
 	DeleteRole(ctx context.Context, id uint) error
+	AssignPermissions(ctx context.Context, roleID uint, menuIDs []uint, directAPIIDs []uint) error
 	AssignMenus(ctx context.Context, roleID uint, menuIDs []uint) error
 	AssignAPIs(ctx context.Context, roleID uint, apiIDs []uint) error
 	GetRoleMenuAPIMap(ctx context.Context, roleID uint, maxLevel *int) (*resp.RoleMenuAPIMappingItem, error)

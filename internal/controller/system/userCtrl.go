@@ -37,7 +37,7 @@ func (u *UserCtrl) Register(ctx *gin.Context) {
 	}
 
 	// 执行注册
-	user, err := u.userService.Register(ctx, &req)
+	user, err := u.userService.Register(ctx.Request.Context(), &req)
 	if err != nil {
 		global.Log.Error(
 			"用户注册失败",

@@ -25,7 +25,7 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 	rawJWT := NewJWTService(repositoryGroup)
 	rawPermission := NewPermissionService(repositoryGroup)
 	rawBase := NewBaseService()
-	rawHealth := NewHealthService()
+	rawHealth := NewHealthService(repositoryGroup)
 	rawUser := NewUserService(repositoryGroup, rawPermission)
 	rawOrg := NewOrgService(repositoryGroup)
 	rawOJ := NewOJService(repositoryGroup)
