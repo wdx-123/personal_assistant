@@ -189,7 +189,7 @@
                   "参数错误": {
                     "summary": "max_level 非法或格式错误",
                     "value": {
-                      "code": 10004,
+                      "code": 10001,
                       "success": false,
                       "message": "参数错误",
                       "data": null,
@@ -284,7 +284,7 @@
         "properties": {
           "code": {
             "type": "integer",
-            "example": 10004
+            "example": 10001
           },
           "success": {
             "type": "boolean",
