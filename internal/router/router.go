@@ -65,6 +65,8 @@ func InitRouter() *gin.Engine {
 		systemRouter.InitRoleRouter(SystemGroup)
 		// 组织管理
 		systemRouter.InitOrgAuthRouter(SystemGroup)
+		// 用户管理
+		systemRouter.InitUserAuthRouter(SystemGroup)
 		// 观测查询
 		systemRouter.InitObservabilityRouter(SystemGroup)
 	}
@@ -79,6 +81,8 @@ func InitRouter() *gin.Engine {
 		systemRouter.InitImageRouter(BusinessGroup, uploadRateLimitMW)
 		// 组织路由：登录即可切换组织、查看我的组织
 		systemRouter.InitOrgBusinessRouter(BusinessGroup)
+		// 用户业务路由：登录即可维护个人资料、登出
+		systemRouter.InitUserBusinessRouter(BusinessGroup)
 	}
 	return Router
 }
