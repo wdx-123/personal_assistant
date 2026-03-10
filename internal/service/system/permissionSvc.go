@@ -2,6 +2,7 @@ package system
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -12,8 +13,10 @@ import (
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository"
 	"personal_assistant/pkg/casbin"
+	bizerrors "personal_assistant/pkg/errors"
 
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 // PermissionService 权限管理服务
@@ -251,6 +254,9 @@ func (p *PermissionService) CheckSubjectCapability(subject string, capabilityCod
 	if strings.TrimSpace(subject) == "" || strings.TrimSpace(capabilityCode) == "" {
 		return false, fmt.Errorf("subject 或 capabilityCode 为空")
 	}
+	if p == nil || p.casbinSvc == nil || p.casbinSvc.Enforcer == nil {
+		return false, fmt.Errorf("casbin enforcer 未初始化")
+	}
 	ok, err := p.casbinSvc.Enforcer.Enforce(subject, capabilityCode, "operate")
 	if err != nil {
 		return false, fmt.Errorf("capability 权限检查失败: %w", err)
@@ -267,6 +273,72 @@ func (p *PermissionService) CheckUserCapabilityInOrg(
 	_ = ctx
 	subject := p.BuildUserOrgSubject(userID, orgID)
 	return p.CheckSubjectCapability(subject, capabilityCode)
+}
+
+// CanOperateOrgCapability 判断用户是否可在目标组织中执行指定 capability。
+func (p *PermissionService) CanOperateOrgCapability(
+	ctx context.Context,
+	operatorID, orgID uint,
+	capabilityCode string,
+) (bool, error) {
+	// 权限检查：只有组织管理员或具有 OrgMemberAssignRole 能力的用户才能分配角色
+	if p == nil || p.repositoryGroup == nil || p.repositoryGroup.SystemRepositorySupplier == nil {
+		return false, bizerrors.NewWithMsg(bizerrors.CodeInternalError, "权限服务未初始化")
+	}
+	if strings.TrimSpace(capabilityCode) == "" {
+		return false, bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "capability_code 不能为空")
+	}
+	// 组织管理员和超级管理员绕过权限检查直接放行
+	orgRepo := p.repositoryGroup.SystemRepositorySupplier.GetOrgRepository()
+	org, err := orgRepo.GetByID(ctx, orgID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return false, bizerrors.New(bizerrors.CodeOrgNotFound)
+		}
+		return false, bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	if org == nil {
+		return false, bizerrors.New(bizerrors.CodeOrgNotFound)
+	}
+	if operatorID == org.OwnerID {
+		return true, nil
+	}
+
+	// 超级管理员绕过权限检查直接放行
+	roleRepo := p.repositoryGroup.SystemRepositorySupplier.GetRoleRepository()
+	globalRoles, err := roleRepo.GetUserGlobalRoles(ctx, operatorID)
+	if err != nil {
+		return false, bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	for _, role := range globalRoles {
+		if role.Code == consts.RoleCodeSuperAdmin {
+			return true, nil
+		}
+	}
+
+	// 其他用户进行权限检查
+	ok, err := p.CheckUserCapabilityInOrg(ctx, operatorID, orgID, capabilityCode)
+	if err != nil {
+		return false, bizerrors.Wrap(bizerrors.CodeInternalError, err)
+	}
+	return ok, nil
+}
+
+// AuthorizeOrgCapability 校验用户是否具备组织内指定 capability。
+func (p *PermissionService) AuthorizeOrgCapability(
+	ctx context.Context,
+	operatorID, orgID uint,
+	capabilityCode string,
+) error {
+	// 权限检查：只有组织管理员或具有 OrgMemberAssignRole 能力的用户才能分配角色
+	ok, err := p.CanOperateOrgCapability(ctx, operatorID, orgID, capabilityCode)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return bizerrors.New(bizerrors.CodePermissionDenied)
+	}
+	return nil
 }
 
 func (p *PermissionService) AssignRoleToUserInOrg(

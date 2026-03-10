@@ -250,13 +250,17 @@ func (s *OrgService) CreateOrg(
 	})
 }
 
-// UpdateOrg 更新组织信息（仅组织所有者可操作）
+// UpdateOrg 更新组织信息（owner / super_admin / 具备组织管理能力的角色可操作）
 // 设计要点：使用事务保证“组织更新 + 头像分类更新 + 旧头像软删除”要么全部成功，要么全部回滚。
 func (s *OrgService) UpdateOrg(
 	ctx context.Context, // 请求上下文（用于超时/取消/链路追踪）
 	userID, orgID uint, // 当前用户ID、目标组织ID
 	req *request.UpdateOrgReq, // 更新参数（支持部分更新/可选字段）
 ) error {
+	if err := s.authorizeOrgAction(ctx, userID, orgID, consts.OrgActionUpdate); err != nil {
+		return err
+	}
+
 	// 开启事务：回调返回 nil -> commit；返回 error -> rollback。
 	return s.txRunner.InTx(ctx, func(tx any) error {
 		txOrgRepo := s.orgRepo.WithTx(tx)
@@ -265,12 +269,10 @@ func (s *OrgService) UpdateOrg(
 		// 读取组织信息（不存在则返回“组织不存在”）。
 		org, err := txOrgRepo.GetByID(ctx, orgID)
 		if err != nil {
-			return errors.Wrap(errors.CodeOrgNotFound, err)
+			return errors.Wrap(errors.CodeDBError, err)
 		}
-
-		// 权限校验：仅组织 owner 可更新。
-		if org.OwnerID != userID {
-			return errors.New(errors.CodeOrgOwnerOnly)
+		if org == nil {
+			return errors.New(errors.CodeOrgNotFound)
 		}
 		if isAllMembersBuiltinOrg(org) {
 			return errors.New(errors.CodeOrgBuiltinProtected)
@@ -445,20 +447,22 @@ func validateAvatarURL(rawURL string) error {
 	return nil // 校验通过
 }
 
-// DeleteOrg 删除组织（仅组织所有者可操作）
+// DeleteOrg 删除组织（owner / super_admin / 具备组织管理能力的角色可操作）
 // force 为 true 时跳过成员数检查
 func (s *OrgService) DeleteOrg(ctx context.Context, userID, orgID uint, force bool) error {
+	if err := s.authorizeOrgAction(ctx, userID, orgID, consts.OrgActionDelete); err != nil {
+		return err
+	}
+
 	org, err := s.orgRepo.GetByID(ctx, orgID)
 	if err != nil {
-		return errors.Wrap(errors.CodeOrgNotFound, err)
+		return errors.Wrap(errors.CodeDBError, err)
+	}
+	if org == nil {
+		return errors.New(errors.CodeOrgNotFound)
 	}
 	if isAllMembersBuiltinOrg(org) {
 		return errors.New(errors.CodeOrgBuiltinProtected)
-	}
-
-	// 校验权限：仅 owner 可操作
-	if org.OwnerID != userID {
-		return errors.New(errors.CodeOrgOwnerOnly)
 	}
 
 	// 非强制删除时，检查组织下是否还有成员（不包括 Owner 自己）
@@ -824,27 +828,6 @@ func (s *OrgService) authorizeOrgMemberAction(
 	operatorID, orgID uint,
 	action string,
 ) error {
-	org, err := s.orgRepo.GetByID(ctx, orgID)
-	if err != nil {
-		return errors.Wrap(errors.CodeOrgNotFound, err)
-	}
-	if org == nil {
-		return errors.New(errors.CodeOrgNotFound)
-	}
-	if operatorID == org.OwnerID {
-		return nil
-	}
-
-	globalRoles, err := s.roleRepo.GetUserGlobalRoles(ctx, operatorID)
-	if err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-	for _, role := range globalRoles {
-		if role.Code == consts.RoleCodeSuperAdmin {
-			return nil
-		}
-	}
-
 	capabilityCode, err := capabilityForOrgMemberAction(action)
 	if err != nil {
 		return err
@@ -852,14 +835,23 @@ func (s *OrgService) authorizeOrgMemberAction(
 	if s.permissionService == nil {
 		return errors.NewWithMsg(errors.CodeInternalError, "权限服务未初始化")
 	}
-	ok, err := s.permissionService.CheckUserCapabilityInOrg(ctx, operatorID, org.ID, capabilityCode)
+	return s.permissionService.AuthorizeOrgCapability(ctx, operatorID, orgID, capabilityCode)
+}
+
+// authorizeOrgAction 校验操作者在目标组织下是否具备指定组织动作 capability。
+func (s *OrgService) authorizeOrgAction(
+	ctx context.Context,
+	operatorID, orgID uint,
+	action string,
+) error {
+	capabilityCode, err := capabilityForOrgAction(action)
 	if err != nil {
-		return errors.Wrap(errors.CodeInternalError, err)
+		return err
 	}
-	if !ok {
-		return errors.New(errors.CodePermissionDenied)
+	if s.permissionService == nil {
+		return errors.NewWithMsg(errors.CodeInternalError, "权限服务未初始化")
 	}
-	return nil
+	return s.permissionService.AuthorizeOrgCapability(ctx, operatorID, orgID, capabilityCode)
 }
 
 func capabilityForOrgMemberAction(action string) (string, error) {
@@ -878,6 +870,17 @@ func capabilityForOrgMemberAction(action string) (string, error) {
 		return consts.CapabilityCodeOrgMemberAssignRole, nil
 	default:
 		return "", errors.NewWithMsg(errors.CodeInvalidParams, "不支持的成员操作动作")
+	}
+}
+
+func capabilityForOrgAction(action string) (string, error) {
+	switch action {
+	case consts.OrgActionUpdate:
+		return consts.CapabilityCodeOrgManageUpdate, nil
+	case consts.OrgActionDelete:
+		return consts.CapabilityCodeOrgManageDelete, nil
+	default:
+		return "", errors.NewWithMsg(errors.CodeInvalidParams, "不支持的组织操作动作")
 	}
 }
 

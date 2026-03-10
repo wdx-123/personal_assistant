@@ -159,6 +159,29 @@ Casbin 使用 `gorm-adapter`，策略持久化在 `casbin_rule`。
 2. 若存在 `super_admin`，直接返回（并在中间件直接放行）
 3. 否则再按 `current_org_id` 查组织内角色并合并
 
+### 6.3 Service / Action 层资源授权
+
+对组织域写操作，除 API 中间件外，Service 层还会做一次资源级授权：
+
+1. 入口统一收口到 `PermissionService.AuthorizeOrgCapability`
+2. 若操作者是目标组织 owner，直接放行
+3. 若操作者拥有全局 `super_admin`，直接放行
+4. 其余按 `subject = userID@orgID` 检查 capability
+5. 无 capability 返回 `CodePermissionDenied`
+
+当前已接入的组织域 capability 分组：
+
+1. `org_member_management`
+   - `org.member.kick`
+   - `org.member.recover`
+   - `org.member.freeze`
+   - `org.member.delete`
+   - `org.member.invite`
+   - `org.member.assign_role`
+2. `org_management`
+   - `org.manage.update`
+   - `org.manage.delete`
+
 ---
 
 ## 7. 权限写入入口与一致性策略

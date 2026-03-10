@@ -529,12 +529,30 @@ func (u *UserService) GetUserRoles(
 // AssignRole 分配角色
 func (u *UserService) AssignRole(
 	ctx context.Context,
+	operatorID uint,
 	req *request.AssignUserRoleReq,
 ) error {
 	// 检查用户是否存在
 	user, err := u.userRepo.GetByID(ctx, req.UserID)
-	if err != nil || user == nil {
-		return errors.New("用户不存在")
+	if err != nil {
+		return bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	if user == nil {
+		return bizerrors.New(bizerrors.CodeUserNotFound)
+	}
+
+	if u.permissionService == nil {
+		return bizerrors.NewWithMsg(bizerrors.CodeInternalError, "权限服务未初始化")
+	}
+
+	// 权限检查：只有组织管理员或具有 OrgMemberAssignRole 能力的用户才能分配角色
+	if err := u.permissionService.AuthorizeOrgCapability(
+		ctx,
+		operatorID,
+		req.OrgID,
+		consts.CapabilityCodeOrgMemberAssignRole,
+	); err != nil {
+		return err
 	}
 
 	active, err := u.orgMemberRepo.IsUserActiveInOrg(ctx, req.UserID, req.OrgID)
@@ -638,8 +656,13 @@ func (u *UserService) CleanupDisabledUsers(ctx context.Context) (int, error) {
 			return cleaned, err
 		}
 
+		// 用户被软删后，从排行榜中移除，并清理活跃态缓存，确保被清理的用户无法再被误判为活跃。
 		if err := u.removeUserFromRankingByOrgIDs(ctx, item.ID, orgIDs); err != nil {
 			return cleaned, bizerrors.Wrap(bizerrors.CodeRedisError, err)
+		}
+		// 清理用户活跃态缓存，确保被清理的用户无法再被误判为活跃。
+		if err := u.syncUserActiveStateCache(ctx, item.ID, false); err != nil {
+			return cleaned, err
 		}
 		cleaned++
 	}
@@ -663,7 +686,7 @@ func (u *UserService) applyUserStatus(
 	}
 
 	if target.Status == status {
-		return nil
+		return u.syncUserActiveStateCache(ctx, targetUserID, status == consts.UserStatusActive)
 	}
 
 	var operatorPtr *uint
@@ -675,6 +698,9 @@ func (u *UserService) applyUserStatus(
 	// 禁用账号时，必须提供理由；启用账号时，理由可选但不允许过长。
 	if err := u.userRepo.UpdateUserStatus(ctx, targetUserID, status, operatorPtr, strings.TrimSpace(reason)); err != nil {
 		return bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	if err := u.syncUserActiveStateCache(ctx, targetUserID, status == consts.UserStatusActive); err != nil {
+		return err
 	}
 
 	// 禁用后立即移除 refresh 会话（access 由 ActiveUserMW 即时拦截）
@@ -689,6 +715,17 @@ func (u *UserService) applyUserStatus(
 		if err := u.removeUserFromRankingByOrgIDs(ctx, targetUserID, nil); err != nil {
 			return bizerrors.Wrap(bizerrors.CodeRedisError, err)
 		}
+	}
+	return nil
+}
+
+func (u *UserService) syncUserActiveStateCache(ctx context.Context, userID uint, active bool) error {
+	if err := u.userRepo.CacheActiveState(ctx, userID, active); err != nil {
+		global.Log.Error("同步用户活跃态缓存失败",
+			zap.Uint("userID", userID),
+			zap.Bool("active", active),
+			zap.Error(err))
+		return bizerrors.Wrap(bizerrors.CodeRedisError, err)
 	}
 	return nil
 }

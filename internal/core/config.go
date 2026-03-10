@@ -17,6 +17,8 @@ func InitConfig(path string) {
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.SetDefault("system.auto_migrate", true)
+	viper.SetDefault("redis.active_user_state_ttl_seconds", 600)        // 用户活跃态缓存默认10分钟过期，配合一定范围内的随机抖动，避免大量用户同时过期导致的缓存击穿问题
+	viper.SetDefault("redis.active_user_state_ttl_jitter_seconds", 120) // 活跃态缓存过期时间的随机抖动范围，单位为秒
 	viper.SetDefault("task.distributed_lock_enabled", true)
 	viper.SetDefault("task.distributed_lock_ttl_seconds", 30)
 	viper.SetDefault("task.outbox_failed_cleanup_retention_days", 30)
@@ -141,6 +143,8 @@ func InitConfig(path string) {
 	_ = viper.BindEnv("redis.address", "REDIS_ADDRESS")
 	_ = viper.BindEnv("redis.password", "REDIS_PASSWORD")
 	_ = viper.BindEnv("redis.db", "REDIS_DB")
+	_ = viper.BindEnv("redis.active_user_state_ttl_seconds", "REDIS_ACTIVE_USER_STATE_TTL_SECONDS")
+	_ = viper.BindEnv("redis.active_user_state_ttl_jitter_seconds", "REDIS_ACTIVE_USER_STATE_TTL_JITTER_SECONDS")
 
 	_ = viper.BindEnv("task.outbox_cleanup_retention_days", "TASK_OUTBOX_CLEANUP_RETENTION_DAYS")
 	_ = viper.BindEnv("task.outbox_failed_cleanup_retention_days", "TASK_OUTBOX_FAILED_CLEANUP_RETENTION_DAYS")

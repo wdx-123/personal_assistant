@@ -42,6 +42,10 @@ type UserRepository interface {
 	ExistsByPhone(ctx context.Context, phone string) (bool, error)
 	// GetActiveUsers 获取所有活跃用户
 	GetActiveUsers(ctx context.Context) ([]*entity.User, error)
+	// GetCachedActiveState 从缓存中读取用户活跃态；found=false 表示未命中缓存。
+	GetCachedActiveState(ctx context.Context, userID uint) (active bool, found bool, err error)
+	// CacheActiveState 写入用户活跃态缓存。
+	CacheActiveState(ctx context.Context, userID uint, active bool) error
 	// UpdateUserStatus 更新账号状态及禁用元数据
 	UpdateUserStatus(ctx context.Context, userID uint, status consts.UserStatus, disabledBy *uint, disabledReason string) error
 	// ListDisabledUsersBefore 分页查询到期可清理的禁用用户
