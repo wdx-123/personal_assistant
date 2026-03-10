@@ -572,7 +572,7 @@ func (u *UserService) UpdateUserStatus(
 		return bizerrors.New(bizerrors.CodeInvalidParams)
 	}
 
-	status := consts.UserStatusActive
+	var status consts.UserStatus
 	switch strings.ToLower(strings.TrimSpace(req.Status)) {
 	case "active":
 		status = consts.UserStatusActive
