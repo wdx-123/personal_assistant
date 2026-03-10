@@ -43,22 +43,6 @@ type UpdateRoleReq struct {
 	Status *int `json:"status"`
 }
 
-// AssignRoleMenuReq 分配菜单权限请求
-type AssignRoleMenuReq struct {
-	// 角色ID，必填
-	RoleID uint `json:"role_id" binding:"required"`
-	// 菜单ID列表（全量替换），必填
-	MenuIDs []uint `json:"menu_ids" binding:"required"`
-}
-
-// AssignRoleAPIReq 分配角色API权限请求（全量替换）
-type AssignRoleAPIReq struct {
-	// 角色ID，必填
-	RoleID uint `json:"role_id" binding:"required"`
-	// API ID列表（允许空数组，空表示清空角色直绑API权限）
-	APIIDs []uint `json:"api_ids"`
-}
-
 // AssignRolePermissionReq 分配角色权限请求（菜单 + 直绑API，全量替换）
 type AssignRolePermissionReq struct {
 	// 角色ID，必填
@@ -67,6 +51,8 @@ type AssignRolePermissionReq struct {
 	MenuIDs []uint `json:"menu_ids"`
 	// 角色直绑API ID列表（必传，可为空数组；空表示清空角色直绑API权限）
 	DirectAPIIDs []uint `json:"direct_api_ids"`
+	// Capability code 列表（必传，可为空数组；空表示清空角色 capability 权限）
+	CapabilityCodes []string `json:"capability_codes"`
 }
 
 // GetRoleMenuAPIMapQuery 获取角色菜单/API映射查询参数

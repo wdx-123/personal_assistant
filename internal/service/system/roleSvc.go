@@ -39,7 +39,9 @@ const (
 
 // RoleService 角色管理服务
 type RoleService struct {
+	txRunner          repository.TxRunner
 	roleRepo          interfaces.RoleRepository
+	capabilityRepo    interfaces.CapabilityRepository
 	menuRepo          interfaces.MenuRepository
 	apiRepo           interfaces.APIRepository
 	permissionService *PermissionService
@@ -48,7 +50,9 @@ type RoleService struct {
 // NewRoleService 创建角色服务实例
 func NewRoleService(repositoryGroup *repository.Group, permissionService *PermissionService) *RoleService {
 	return &RoleService{
+		txRunner:          repositoryGroup,
 		roleRepo:          repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
+		capabilityRepo:    repositoryGroup.SystemRepositorySupplier.GetCapabilityRepository(),
 		menuRepo:          repositoryGroup.SystemRepositorySupplier.GetMenuRepository(),
 		apiRepo:           repositoryGroup.SystemRepositorySupplier.GetAPIRepository(),
 		permissionService: permissionService,
@@ -211,95 +215,13 @@ func (s *RoleService) DeleteRole(ctx context.Context, id uint) error {
 
 // ==================== 菜单权限分配 ====================
 
-// AssignMenus 分配菜单权限（全量覆盖，使用分布式锁防止并发）
-func (s *RoleService) AssignMenus(
-	ctx context.Context,
-	roleID uint,
-	menuIDs []uint,
-) error {
-	// 1. 获取分布式锁，防止并发修改同一角色的菜单
-	lock, err := s.acquireRolePermissionAssignLock(ctx, roleID, "菜单")
-	if err != nil {
-		return err
-	}
-	defer s.releaseRolePermissionAssignLock(roleID, "菜单", lock)
-
-	// 2. 校验角色存在
-	role, err := s.roleRepo.GetByID(ctx, roleID)
-	if err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-	if role == nil || role.ID == 0 {
-		return errors.New(errors.CodeRoleNotFound)
-	}
-
-	// 3. 过滤有效的菜单ID
-	validMenuIDs, err := s.filterValidMenuIDs(ctx, menuIDs)
-	if err != nil {
-		return err
-	}
-
-	// 4. 全量替换菜单权限
-	if err := s.roleRepo.ReplaceRoleMenus(ctx, roleID, validMenuIDs); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-
-	// 5. 同步刷新权限（立即生效）
-	if err := s.permissionService.RefreshAllPermissions(ctx); err != nil {
-		return errors.Wrap(errors.CodeInternalError, err)
-	}
-
-	return nil
-}
-
-// AssignAPIs 分配角色直绑API权限（全量覆盖，使用分布式锁防止并发）
-func (s *RoleService) AssignAPIs(
-	ctx context.Context,
-	roleID uint,
-	apiIDs []uint,
-) error {
-	if roleID == 0 {
-		return errors.New(errors.CodeInvalidParams)
-	}
-
-	lock, err := s.acquireRolePermissionAssignLock(ctx, roleID, "API")
-	if err != nil {
-		return err
-	}
-	defer s.releaseRolePermissionAssignLock(roleID, "API", lock)
-
-	// 校验角色存在
-	role, err := s.roleRepo.GetByID(ctx, roleID)
-	if err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-	if role == nil || role.ID == 0 {
-		return errors.New(errors.CodeRoleNotFound)
-	}
-	// 过滤有效的API ID
-	validAPIIDs, err := s.filterValidAPIIDs(ctx, apiIDs)
-	if err != nil {
-		return err
-	}
-
-	// 全量替换角色直绑API关联
-	if err := s.roleRepo.ReplaceRoleAPIs(ctx, roleID, validAPIIDs); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-
-	// 同步刷新权限（立即生效）
-	if err := s.permissionService.RefreshAllPermissions(ctx); err != nil {
-		return errors.Wrap(errors.CodeInternalError, err)
-	}
-	return nil
-}
-
 // AssignPermissions 分配角色菜单和直绑API权限（全量覆盖，单次刷新）
 func (s *RoleService) AssignPermissions(
 	ctx context.Context,
 	roleID uint,
 	menuIDs []uint,
 	directAPIIDs []uint,
+	capabilityCodes []string,
 ) error {
 	if roleID == 0 {
 		return errors.New(errors.CodeInvalidParams)
@@ -327,9 +249,30 @@ func (s *RoleService) AssignPermissions(
 	if err != nil {
 		return err
 	}
+	// 过滤有效的 capability code 列表，并获取对应的 capability 实体列表（包含 ID）
+	validCapabilities, err := s.filterValidCapabilityCodes(ctx, capabilityCodes)
+	if err != nil {
+		return err
+	}
+	capabilityIDs := make([]uint, 0, len(validCapabilities))
+	for _, capability := range validCapabilities {
+		capabilityIDs = append(capabilityIDs, capability.ID)
+	}
 
-	if err := s.roleRepo.ReplaceRolePermissions(ctx, roleID, validMenuIDs, validAPIIDs); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
+	if err := s.txRunner.InTx(ctx, func(tx any) error {
+		txRoleRepo := s.roleRepo.WithTx(tx)
+		txCapabilityRepo := s.capabilityRepo.WithTx(tx)
+		// 全量替换角色菜单关联、直绑API关联和 capability 关联
+		if err := txRoleRepo.ReplaceRolePermissions(ctx, roleID, validMenuIDs, validAPIIDs); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		// 替换角色 capability 关联
+		if err := txCapabilityRepo.ReplaceRoleCapabilities(ctx, roleID, capabilityIDs); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 	if err := s.permissionService.RefreshAllPermissions(ctx); err != nil {
 		return errors.Wrap(errors.CodeInternalError, err)
@@ -378,31 +321,23 @@ func (s *RoleService) GetRoleMenuAPIMap(
 	sort.Slice(assignedMenuIDs, func(i, j int) bool { return assignedMenuIDs[i] < assignedMenuIDs[j] })
 	sort.Slice(directAPIIDs, func(i, j int) bool { return directAPIIDs[i] < directAPIIDs[j] })
 	sort.Slice(assignedAPIIDs, func(i, j int) bool { return assignedAPIIDs[i] < assignedAPIIDs[j] })
+	assignedCapabilityCodes, err := s.permissionService.GetRoleCapabilityCodes(ctx, roleID)
+	if err != nil {
+		return nil, errors.Wrap(errors.CodeDBError, err)
+	}
+	capabilityGroups, err := s.permissionService.GetAllCapabilityGroups(ctx)
+	if err != nil {
+		return nil, errors.Wrap(errors.CodeDBError, err)
+	}
 
 	return &response.RoleMenuAPIMappingItem{
-		MenuTree:        s.buildRoleMenuTree(menus, 0, 1, maxLevel),
-		AssignedMenuIDs: assignedMenuIDs,
-		DirectAPIIDs:    directAPIIDs,
-		AssignedAPIIDs:  assignedAPIIDs,
+		MenuTree:                s.buildRoleMenuTree(menus, 0, 1, maxLevel),
+		AssignedMenuIDs:         assignedMenuIDs,
+		DirectAPIIDs:            directAPIIDs,
+		AssignedAPIIDs:          assignedAPIIDs,
+		CapabilityGroups:        capabilityGroups,
+		AssignedCapabilityCodes: assignedCapabilityCodes,
 	}, nil
-}
-
-// GetRoleMenuIDs 获取角色已分配的菜单ID列表
-func (s *RoleService) GetRoleMenuIDs(ctx context.Context, roleID uint) ([]uint, error) {
-	// 校验角色存在
-	role, err := s.roleRepo.GetByID(ctx, roleID)
-	if err != nil {
-		return nil, errors.Wrap(errors.CodeDBError, err)
-	}
-	if role == nil || role.ID == 0 {
-		return nil, errors.New(errors.CodeRoleNotFound)
-	}
-
-	menuIDs, err := s.roleRepo.GetRoleMenuIDs(ctx, roleID)
-	if err != nil {
-		return nil, errors.Wrap(errors.CodeDBError, err)
-	}
-	return menuIDs, nil
 }
 
 // ==================== 内部方法 ====================
@@ -422,6 +357,30 @@ func normalizeIDs(ids []uint) []uint {
 		}
 		seen[id] = struct{}{}
 		out = append(out, id)
+	}
+	return out
+}
+
+func normalizeCapabilityCodes(codes []string) []string {
+	if len(codes) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(codes))
+	out := make([]string, 0, len(codes))
+	for _, code := range codes {
+		code = strings.TrimSpace(code)
+		if code == "" {
+			continue
+		}
+		if _, ok := seen[code]; ok {
+			continue
+		}
+		seen[code] = struct{}{}
+		out = append(out, code)
+	}
+	sort.Strings(out)
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }
@@ -491,6 +450,25 @@ func (s *RoleService) filterValidAPIIDs(ctx context.Context, apiIDs []uint) ([]u
 		}
 	}
 	return validAPIIDs, nil
+}
+
+func (s *RoleService) filterValidCapabilityCodes(
+	ctx context.Context,
+	codes []string,
+) ([]*entity.Capability, error) {
+	normalized := normalizeCapabilityCodes(codes)
+	if len(normalized) == 0 {
+		return nil, nil
+	}
+
+	capabilities, err := s.capabilityRepo.GetByCodes(ctx, normalized)
+	if err != nil {
+		return nil, errors.Wrap(errors.CodeDBError, err)
+	}
+	if len(capabilities) != len(normalized) {
+		return nil, errors.NewWithMsg(errors.CodeInvalidParams, "存在无效 capability_codes")
+	}
+	return capabilities, nil
 }
 
 func (s *RoleService) buildRoleMenuTree(

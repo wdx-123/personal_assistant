@@ -51,10 +51,27 @@ type RoleSimpleItem struct {
 	Code string `json:"code"`
 }
 
+// CapabilityItem capability 响应项。
+type CapabilityItem struct {
+	Code   string `json:"code"`
+	Name   string `json:"name"`
+	Desc   string `json:"desc"`
+	Status int    `json:"status"`
+}
+
+// CapabilityGroupItem capability 分组响应项。
+type CapabilityGroupItem struct {
+	GroupCode    string           `json:"group_code"`   // 分组代码
+	GroupName    string           `json:"group_name"`   // 分组名称
+	Capabilities []CapabilityItem `json:"capabilities"` // 分组下的 capability 列表
+}
+
 // RoleMenuAPIMappingItem 角色菜单/API映射（配置态）
 type RoleMenuAPIMappingItem struct {
-	MenuTree        []*MenuItem `json:"menu_tree"`         // 全量菜单树（节点包含已绑定APIs）
-	AssignedMenuIDs []uint      `json:"assigned_menu_ids"` // 角色已分配菜单ID集合
-	DirectAPIIDs    []uint      `json:"direct_api_ids"`    // 角色直绑API ID集合
-	AssignedAPIIDs  []uint      `json:"assigned_api_ids"`  // 角色最终API ID集合（菜单链路+直绑并集）
+	MenuTree                []*MenuItem           `json:"menu_tree"`                 // 全量菜单树（节点包含已绑定APIs）
+	AssignedMenuIDs         []uint                `json:"assigned_menu_ids"`         // 角色已分配菜单ID集合
+	DirectAPIIDs            []uint                `json:"direct_api_ids"`            // 角色直绑API ID集合
+	AssignedAPIIDs          []uint                `json:"assigned_api_ids"`          // 角色最终API ID集合（菜单链路+直绑并集）
+	CapabilityGroups        []CapabilityGroupItem `json:"capability_groups"`         // 可分配 capability 分组
+	AssignedCapabilityCodes []string              `json:"assigned_capability_codes"` // 角色已分配 capability code 集合
 }

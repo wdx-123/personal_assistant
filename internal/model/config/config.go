@@ -209,6 +209,9 @@ func NewConfig() *Config {
 		LeetcodeSyncIntervalSeconds:     viper.GetInt("task.leetcode_sync_interval_seconds"),      // 读取力扣全量间隔
 		RankingSyncIntervalSeconds:      viper.GetInt("task.ranking_sync_interval_seconds"),       // 读取排行榜间隔
 		ImageOrphanCleanupCron:          viper.GetString("task.image_orphan_cleanup_cron"),
+		DisabledUserCleanupEnabled:      viper.GetBool("task.disabled_user_cleanup_enabled"),
+		DisabledUserRetentionDays:       viper.GetInt("task.disabled_user_retention_days"),
+		DisabledUserCleanupCron:         viper.GetString("task.disabled_user_cleanup_cron"),
 	}
 
 	// 限流配置初始化

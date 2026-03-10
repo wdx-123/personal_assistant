@@ -33,6 +33,10 @@ func (r *OrgRouter) InitOrgAuthRouter(router *gin.RouterGroup) {
 		orgGroup.PUT(":id", orgCtrl.UpdateOrg)
 		// 删除组织
 		orgGroup.DELETE(":id", orgCtrl.DeleteOrg)
+		// 踢出成员
+		orgGroup.DELETE(":id/member/:userId", orgCtrl.KickMember)
+		// 恢复成员
+		orgGroup.PUT(":id/member/:userId/recover", orgCtrl.RecoverMember)
 	}
 }
 
@@ -42,7 +46,9 @@ func (r *OrgRouter) InitOrgBusinessRouter(router *gin.RouterGroup) {
 	orgGroup := router.Group("system/org")
 	orgCtrl := controller.ApiGroupApp.SystemApiGroup.GetOrgCtrl()
 	{
-		orgGroup.GET("my", orgCtrl.GetMyOrgs)          // 获取我的组织
-		orgGroup.PUT("current", orgCtrl.SetCurrentOrg) // 切换当前组织
+		orgGroup.GET("my", orgCtrl.GetMyOrgs)              // 获取我的组织
+		orgGroup.PUT("current", orgCtrl.SetCurrentOrg)     // 切换当前组织
+		orgGroup.POST("join", orgCtrl.JoinOrgByInviteCode) // 通过邀请码加入组织
+		orgGroup.POST("leave", orgCtrl.LeaveOrg)           // 退出组织
 	}
 }

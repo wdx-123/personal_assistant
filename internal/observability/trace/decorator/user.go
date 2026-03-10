@@ -9,10 +9,12 @@ import (
 	"personal_assistant/internal/service/contract"
 )
 
+// tracedUserService 是 UserServiceContract 的装饰器实现，添加了分布式追踪功能
 type tracedUserService struct {
 	next contract.UserServiceContract
 }
 
+// WrapUserService 包装 UserServiceContract，返回一个带有追踪功能的装饰器实例
 func WrapUserService(next contract.UserServiceContract) contract.UserServiceContract {
 	if next == nil {
 		return nil
@@ -86,6 +88,33 @@ func (t *tracedUserService) GetUserRoles(ctx context.Context, userID, orgID uint
 func (t *tracedUserService) AssignRole(ctx context.Context, req *request.AssignUserRoleReq) error {
 	return runTracedErr(ctx, "user", "AssignRole", func(inner context.Context) error {
 		return t.next.AssignRole(inner, req)
+	})
+}
+
+// DeactivateAccount 注销账号
+func (t *tracedUserService) DeactivateAccount(
+	ctx context.Context,
+	userID uint,
+	req *request.DeactivateAccountReq,
+) error {
+	return runTracedErr(ctx, "user", "DeactivateAccount", func(inner context.Context) error {
+		return t.next.DeactivateAccount(inner, userID, req)
+	})
+}
+
+func (t *tracedUserService) UpdateUserStatus(
+	ctx context.Context,
+	operatorID, targetUserID uint,
+	req *request.AdminUpdateUserStatusReq,
+) error {
+	return runTracedErr(ctx, "user", "UpdateUserStatus", func(inner context.Context) error {
+		return t.next.UpdateUserStatus(inner, operatorID, targetUserID, req)
+	})
+}
+
+func (t *tracedUserService) CleanupDisabledUsers(ctx context.Context) (int, error) {
+	return runTraced(ctx, "user", "CleanupDisabledUsers", func(inner context.Context) (int, error) {
+		return t.next.CleanupDisabledUsers(inner)
 	})
 }
 

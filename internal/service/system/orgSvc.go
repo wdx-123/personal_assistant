@@ -2,36 +2,50 @@ package system
 
 import (
 	"context"
+	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
+	"personal_assistant/global"
 	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/interfaces"
+	"personal_assistant/pkg/casbin"
 	"personal_assistant/pkg/errors"
 	"personal_assistant/pkg/imageops"
+	"personal_assistant/pkg/rediskey"
+
+	"github.com/gofrs/uuid"
 )
 
 // OrgService 组织管理服务
 type OrgService struct {
-	txRunner  repository.TxRunner
-	orgRepo   interfaces.OrgRepository
-	userRepo  interfaces.UserRepository
-	roleRepo  interfaces.RoleRepository
-	imageRepo interfaces.ImageRepository
+	txRunner          repository.TxRunner
+	orgRepo           interfaces.OrgRepository
+	orgMemberRepo     interfaces.OrgMemberRepository
+	userRepo          interfaces.UserRepository
+	roleRepo          interfaces.RoleRepository
+	imageRepo         interfaces.ImageRepository
+	permissionService *PermissionService
+	casbinSvc         *casbin.Service
 }
 
 // NewOrgService 创建组织服务实例
-func NewOrgService(repositoryGroup *repository.Group) *OrgService {
+func NewOrgService(repositoryGroup *repository.Group, permissionService *PermissionService) *OrgService {
 	return &OrgService{
-		txRunner:  repositoryGroup,
-		orgRepo:   repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
-		userRepo:  repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
-		roleRepo:  repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
-		imageRepo: repositoryGroup.SystemRepositorySupplier.GetImageRepository(),
+		txRunner:          repositoryGroup,
+		orgRepo:           repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
+		orgMemberRepo:     repositoryGroup.SystemRepositorySupplier.GetOrgMemberRepository(),
+		userRepo:          repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
+		roleRepo:          repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
+		imageRepo:         repositoryGroup.SystemRepositorySupplier.GetImageRepository(),
+		permissionService: permissionService,
+		casbinSvc:         casbin.NewCasbinService(),
 	}
 }
 
@@ -154,6 +168,23 @@ func (s *OrgService) CreateOrg(
 		id := *req.AvatarID
 		avatarID = &id
 	}
+	// 生成邀请码
+	code := strings.TrimSpace(req.Code)
+	if code == "" {
+		var err error
+		code, err = s.generateInviteCode(ctx)
+		if err != nil {
+			return err
+		}
+	} else {
+		existing, err := s.orgRepo.GetByCode(ctx, code)
+		if err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if existing != nil {
+			return errors.New(errors.CodeOrgAlreadyExists)
+		}
+	}
 
 	// 校验名称唯一性
 	exists, err := s.orgRepo.ExistsByName(ctx, name)
@@ -167,15 +198,16 @@ func (s *OrgService) CreateOrg(
 	// 开启事务
 	return s.txRunner.InTx(ctx, func(tx any) error {
 		txOrgRepo := s.orgRepo.WithTx(tx)
-		txRoleRepo := s.roleRepo.WithTx(tx)
+		txOrgMemberRepo := s.orgMemberRepo.WithTx(tx)
 		txUserRepo := s.userRepo.WithTx(tx)
+		txRoleRepo := s.roleRepo.WithTx(tx)
 		txImageRepo := s.imageRepo.WithTx(tx)
 
 		// 1. 创建组织
 		org := &entity.Org{
 			Name:        name,
 			Description: strings.TrimSpace(req.Description),
-			Code:        strings.TrimSpace(req.Code),
+			Code:        code,
 			Avatar:      avatar,
 			AvatarID:    avatarID,
 			OwnerID:     userID,
@@ -185,7 +217,18 @@ func (s *OrgService) CreateOrg(
 			return errors.Wrap(errors.CodeDBError, err)
 		}
 
-		// 2. 自动将创建者设为组织管理员
+		// 2. 建立组织成员关系（owner 也走成员状态机）
+		if err := txOrgMemberRepo.Create(ctx, &entity.OrgMember{
+			OrgID:        org.ID,
+			UserID:       userID,
+			MemberStatus: consts.OrgMemberStatusActive,
+			JoinedAt:     time.Now(),
+			JoinSource:   string(consts.OrgMemberJoinSourceOrgCreate),
+		}); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+
+		// 3. 自动将创建者设为组织管理员
 		orgAdminRole, roleErr := txRoleRepo.GetByCode(ctx, consts.RoleCodeOrgAdmin)
 		if roleErr == nil && orgAdminRole != nil && orgAdminRole.ID > 0 {
 			if err := txRoleRepo.AssignRoleToUserInOrg(ctx, userID, org.ID, orgAdminRole.ID); err != nil {
@@ -193,7 +236,7 @@ func (s *OrgService) CreateOrg(
 			}
 		}
 
-		// 3. 设置为用户的当前组织
+		// 4. 设置为用户的当前组织
 		if err := txUserRepo.UpdateCurrentOrgID(ctx, userID, &org.ID); err != nil {
 			return errors.Wrap(errors.CodeDBError, err)
 		}
@@ -228,6 +271,9 @@ func (s *OrgService) UpdateOrg(
 		// 权限校验：仅组织 owner 可更新。
 		if org.OwnerID != userID {
 			return errors.New(errors.CodeOrgOwnerOnly)
+		}
+		if isAllMembersBuiltinOrg(org) {
+			return errors.New(errors.CodeOrgBuiltinProtected)
 		}
 
 		// 记录旧头像ID（后续若更换头像，用于软删除旧头像资源）。
@@ -267,7 +313,20 @@ func (s *OrgService) UpdateOrg(
 
 		// 更新 Code：允许为空字符串（表示清空）；仅在字段被提供时才更新。
 		if req.Code != nil {
-			org.Code = strings.TrimSpace(*req.Code)
+			code := strings.TrimSpace(*req.Code)
+			if code == "" {
+				return errors.NewWithMsg(errors.CodeInvalidParams, "邀请码不能为空")
+			}
+			if code != org.Code {
+				existing, checkErr := txOrgRepo.GetByCode(ctx, code)
+				if checkErr != nil {
+					return errors.Wrap(errors.CodeDBError, checkErr)
+				}
+				if existing != nil && existing.ID != org.ID {
+					return errors.New(errors.CodeOrgAlreadyExists)
+				}
+				org.Code = code
+			}
 		}
 
 		// 更新 Avatar/AvatarID：仅在客户端“提供了头像字段对”时才更新（避免误清空）。
@@ -393,6 +452,9 @@ func (s *OrgService) DeleteOrg(ctx context.Context, userID, orgID uint, force bo
 	if err != nil {
 		return errors.Wrap(errors.CodeOrgNotFound, err)
 	}
+	if isAllMembersBuiltinOrg(org) {
+		return errors.New(errors.CodeOrgBuiltinProtected)
+	}
 
 	// 校验权限：仅 owner 可操作
 	if org.OwnerID != userID {
@@ -414,9 +476,18 @@ func (s *OrgService) DeleteOrg(ctx context.Context, userID, orgID uint, force bo
 	// 开启事务
 	return s.txRunner.InTx(ctx, func(tx any) error {
 		txOrgRepo := s.orgRepo.WithTx(tx)
+		txOrgMemberRepo := s.orgMemberRepo.WithTx(tx)
+		txUserRepo := s.userRepo.WithTx(tx)
 
 		// 1. 删除所有成员关联
 		if err := txOrgRepo.RemoveAllMembers(ctx, orgID); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		operator := userID
+		if err := txOrgMemberRepo.SetAllRemovedByOrg(ctx, orgID, &operator, "组织删除"); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if err := txUserRepo.ClearCurrentOrgByOrgID(ctx, orgID); err != nil {
 			return errors.Wrap(errors.CodeDBError, err)
 		}
 
@@ -437,7 +508,7 @@ func (s *OrgService) SetCurrentOrg(ctx context.Context, userID, orgID uint) erro
 	}
 
 	// 校验用户是组织成员
-	isMember, err := s.orgRepo.IsUserInOrg(ctx, userID, orgID)
+	isMember, err := s.orgMemberRepo.IsUserActiveInOrg(ctx, userID, orgID)
 	if err != nil {
 		return errors.Wrap(errors.CodeDBError, err)
 	}
@@ -450,4 +521,454 @@ func (s *OrgService) SetCurrentOrg(ctx context.Context, userID, orgID uint) erro
 		return errors.Wrap(errors.CodeDBError, err)
 	}
 	return nil
+}
+
+// JoinOrgByInviteCode 用户通过邀请码加入组织。
+// 规则：left 可恢复为 active；removed 默认禁止自助加入；重新加入仅授予 member 角色。
+func (s *OrgService) JoinOrgByInviteCode(ctx context.Context, userID uint, inviteCode string) error {
+	inviteCode = strings.TrimSpace(inviteCode)
+	if inviteCode == "" {
+		return errors.New(errors.CodeInvalidParams)
+	}
+
+	org, err := s.orgRepo.GetByCode(ctx, inviteCode)
+	if err != nil {
+		return errors.Wrap(errors.CodeDBError, err)
+	}
+	if org == nil {
+		return errors.New(errors.CodeInviteCodeInvalid)
+	}
+
+	return s.txRunner.InTx(ctx, func(tx any) error {
+		txOrgMemberRepo := s.orgMemberRepo.WithTx(tx)
+		txRoleRepo := s.roleRepo.WithTx(tx)
+		txUserRepo := s.userRepo.WithTx(tx)
+		shouldResetDefaultRole := false
+
+		member, err := txOrgMemberRepo.GetByOrgAndUserForUpdate(ctx, org.ID, userID)
+		if err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+
+		switch {
+		case member == nil:
+			if err := txOrgMemberRepo.Create(ctx, &entity.OrgMember{
+				OrgID:        org.ID,
+				UserID:       userID,
+				MemberStatus: consts.OrgMemberStatusActive,
+				JoinedAt:     time.Now(),
+				JoinSource:   string(consts.OrgMemberJoinSourceInvite),
+			}); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+			shouldResetDefaultRole = true
+		case member.MemberStatus == consts.OrgMemberStatusActive:
+			// 幂等：已加入
+		case member.MemberStatus == consts.OrgMemberStatusRemoved:
+			return errors.New(errors.CodeOrgMemberRemoved)
+		default:
+			if err := txOrgMemberRepo.SetStatus(
+				ctx,
+				org.ID,
+				userID,
+				consts.OrgMemberStatusActive,
+				nil,
+				"",
+				string(consts.OrgMemberJoinSourceInvite),
+			); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+			shouldResetDefaultRole = true
+		}
+
+		// left->active / 首次加入时仅保留默认 member 角色，不恢复历史角色。
+		if shouldResetDefaultRole {
+			if err := txRoleRepo.DeleteUserOrgRoles(ctx, userID, org.ID); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+			if err := s.assignDefaultMemberRole(ctx, txRoleRepo, userID, org.ID); err != nil {
+				return err
+			}
+		}
+
+		if err := txUserRepo.UpdateCurrentOrgID(ctx, userID, &org.ID); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		return nil
+	})
+}
+
+// LeaveOrg 用户主动退出组织。
+func (s *OrgService) LeaveOrg(ctx context.Context, userID, orgID uint, reason string) error {
+	org, err := s.orgRepo.GetByID(ctx, orgID)
+	if err != nil {
+		return errors.Wrap(errors.CodeOrgNotFound, err)
+	}
+	if org == nil {
+		return errors.New(errors.CodeOrgNotFound)
+	}
+	if isAllMembersBuiltinOrg(org) {
+		return errors.New(errors.CodeOrgCannotLeaveBuiltin)
+	}
+	// Owner 无法退出，必须先转移组织所有权或删除组织。
+	if org.OwnerID == userID {
+		return errors.New(errors.CodeOrgOwnerTransferRequired)
+	}
+
+	// 权限校验：仅组织成员可操作（Owner 也算成员）。
+	return s.txRunner.InTx(ctx, func(tx any) error {
+		txOrgMemberRepo := s.orgMemberRepo.WithTx(tx)
+		txRoleRepo := s.roleRepo.WithTx(tx)
+		txUserRepo := s.userRepo.WithTx(tx)
+
+		member, err := txOrgMemberRepo.GetByOrgAndUserForUpdate(ctx, orgID, userID)
+		if err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if member == nil {
+			return errors.New(errors.CodeNotOrgMember)
+		}
+		if member.MemberStatus == consts.OrgMemberStatusLeft {
+			return nil
+		}
+		if member.MemberStatus == consts.OrgMemberStatusRemoved {
+			return errors.New(errors.CodeOrgMemberRemoved)
+		}
+
+		if err := txOrgMemberRepo.SetStatus(
+			ctx,
+			orgID,
+			userID,
+			consts.OrgMemberStatusLeft,
+			nil,
+			reason,
+			"",
+		); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if err := txRoleRepo.DeleteUserOrgRoles(ctx, userID, orgID); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+
+		user, err := txUserRepo.GetByID(ctx, userID)
+		if err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if user != nil && user.CurrentOrgID != nil && *user.CurrentOrgID == orgID {
+			nextOrgID, fixErr := s.pickAnotherActiveOrgID(ctx, txOrgMemberRepo, userID, orgID)
+			if fixErr != nil {
+				return errors.Wrap(errors.CodeDBError, fixErr)
+			}
+			if err := txUserRepo.UpdateCurrentOrgID(ctx, userID, nextOrgID); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
+
+		_ = s.clearUserOrgCasbinRoles(userID, orgID)
+		if err := s.removeUserFromOrgRanking(ctx, orgID, userID); err != nil {
+			return errors.Wrap(errors.CodeRedisError, err)
+		}
+		return nil
+	})
+}
+
+// KickMember 管理员踢出组织成员。
+func (s *OrgService) KickMember(ctx context.Context, operatorID, orgID, targetUserID uint, reason string) error {
+	org, err := s.orgRepo.GetByID(ctx, orgID)
+	if err != nil {
+		return errors.Wrap(errors.CodeOrgNotFound, err)
+	}
+	if org == nil {
+		return errors.New(errors.CodeOrgNotFound)
+	}
+	if err := s.authorizeOrgMemberAction(ctx, operatorID, orgID, consts.OrgMemberActionKick); err != nil {
+		return err
+	}
+	if isAllMembersBuiltinOrg(org) {
+		return errors.New(errors.CodeOrgBuiltinProtected)
+	}
+	if targetUserID == org.OwnerID {
+		return errors.New(errors.CodeOrgOwnerTransferRequired)
+	}
+
+	return s.txRunner.InTx(ctx, func(tx any) error {
+		txOrgMemberRepo := s.orgMemberRepo.WithTx(tx)
+		txRoleRepo := s.roleRepo.WithTx(tx)
+		txUserRepo := s.userRepo.WithTx(tx)
+
+		member, err := txOrgMemberRepo.GetByOrgAndUserForUpdate(ctx, orgID, targetUserID)
+		if err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if member == nil {
+			return errors.New(errors.CodeNotOrgMember)
+		}
+		if member.MemberStatus == consts.OrgMemberStatusRemoved {
+			return nil
+		}
+
+		if err := txOrgMemberRepo.SetStatus(
+			ctx,
+			orgID,
+			targetUserID,
+			consts.OrgMemberStatusRemoved,
+			&operatorID,
+			reason,
+			"",
+		); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if err := txRoleRepo.DeleteUserOrgRoles(ctx, targetUserID, orgID); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+
+		user, err := txUserRepo.GetByID(ctx, targetUserID)
+		if err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if user != nil && user.CurrentOrgID != nil && *user.CurrentOrgID == orgID {
+			nextOrgID, fixErr := s.pickAnotherActiveOrgID(ctx, txOrgMemberRepo, targetUserID, orgID)
+			if fixErr != nil {
+				return errors.Wrap(errors.CodeDBError, fixErr)
+			}
+			if err := txUserRepo.UpdateCurrentOrgID(ctx, targetUserID, nextOrgID); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
+
+		_ = s.clearUserOrgCasbinRoles(targetUserID, orgID)
+		if err := s.removeUserFromOrgRanking(ctx, orgID, targetUserID); err != nil {
+			return errors.Wrap(errors.CodeRedisError, err)
+		}
+		return nil
+	})
+}
+
+// RecoverMember 管理员恢复成员（removed/left -> active），恢复后仅授予 member 角色。
+func (s *OrgService) RecoverMember(
+	ctx context.Context,
+	operatorID, orgID, targetUserID uint,
+	reason string,
+) error {
+	// 权限校验：仅 owner 或 org admin 可操作
+	org, err := s.orgRepo.GetByID(ctx, orgID)
+	if err != nil {
+		return errors.Wrap(errors.CodeOrgNotFound, err)
+	}
+	if org == nil {
+		return errors.New(errors.CodeOrgNotFound)
+	}
+	if err := s.authorizeOrgMemberAction(ctx, operatorID, orgID, consts.OrgMemberActionRecover); err != nil {
+		return err
+	}
+	// 内置组织禁止修改成员状态（如踢人/恢复成员），
+	if isAllMembersBuiltinOrg(org) {
+		return errors.New(errors.CodeOrgBuiltinProtected)
+	}
+
+	// 开启事务，恢复成员状态，并重置为默认 member 角色（删除原有角色）。
+	return s.txRunner.InTx(ctx, func(tx any) error {
+		txOrgMemberRepo := s.orgMemberRepo.WithTx(tx)
+		txRoleRepo := s.roleRepo.WithTx(tx)
+		shouldResetDefaultRole := false
+		// 获取成员记录（行锁），判断状态并执行相应操作。
+		member, err := txOrgMemberRepo.GetByOrgAndUserForUpdate(ctx, orgID, targetUserID)
+		if err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		// 如果成员不存在，则创建新的成员记录。
+		if member == nil {
+			if err := txOrgMemberRepo.Create(ctx, &entity.OrgMember{
+				OrgID:        orgID,
+				UserID:       targetUserID,
+				MemberStatus: consts.OrgMemberStatusActive,
+				JoinedAt:     time.Now(),
+				JoinSource:   string(consts.OrgMemberJoinSourceAdminRecover),
+			}); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+			shouldResetDefaultRole = true
+		} else if member.MemberStatus != consts.OrgMemberStatusActive {
+			if err := txOrgMemberRepo.SetStatus(
+				ctx,
+				orgID,
+				targetUserID,
+				consts.OrgMemberStatusActive,
+				&operatorID,
+				reason,
+				string(consts.OrgMemberJoinSourceAdminRecover),
+			); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+			shouldResetDefaultRole = true
+		}
+		if !shouldResetDefaultRole {
+			// 已是 active，按幂等成功处理，不重置现有角色。
+			return nil
+		}
+
+		// 恢复成员后重置为默认 member 角色：删除原有角色并分配默认 member 角色（不恢复历史角色）。
+		if err := txRoleRepo.DeleteUserOrgRoles(ctx, targetUserID, orgID); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if err := s.assignDefaultMemberRole(ctx, txRoleRepo, targetUserID, orgID); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+// authorizeOrgMemberAction 校验操作者在目标组织下是否具备指定成员动作 capability。
+func (s *OrgService) authorizeOrgMemberAction(
+	ctx context.Context,
+	operatorID, orgID uint,
+	action string,
+) error {
+	org, err := s.orgRepo.GetByID(ctx, orgID)
+	if err != nil {
+		return errors.Wrap(errors.CodeOrgNotFound, err)
+	}
+	if org == nil {
+		return errors.New(errors.CodeOrgNotFound)
+	}
+	if operatorID == org.OwnerID {
+		return nil
+	}
+
+	globalRoles, err := s.roleRepo.GetUserGlobalRoles(ctx, operatorID)
+	if err != nil {
+		return errors.Wrap(errors.CodeDBError, err)
+	}
+	for _, role := range globalRoles {
+		if role.Code == consts.RoleCodeSuperAdmin {
+			return nil
+		}
+	}
+
+	capabilityCode, err := capabilityForOrgMemberAction(action)
+	if err != nil {
+		return err
+	}
+	if s.permissionService == nil {
+		return errors.NewWithMsg(errors.CodeInternalError, "权限服务未初始化")
+	}
+	ok, err := s.permissionService.CheckUserCapabilityInOrg(ctx, operatorID, org.ID, capabilityCode)
+	if err != nil {
+		return errors.Wrap(errors.CodeInternalError, err)
+	}
+	if !ok {
+		return errors.New(errors.CodePermissionDenied)
+	}
+	return nil
+}
+
+func capabilityForOrgMemberAction(action string) (string, error) {
+	switch action {
+	case consts.OrgMemberActionKick:
+		return consts.CapabilityCodeOrgMemberKick, nil
+	case consts.OrgMemberActionRecover:
+		return consts.CapabilityCodeOrgMemberRecover, nil
+	case consts.OrgMemberActionFreeze:
+		return consts.CapabilityCodeOrgMemberFreeze, nil
+	case consts.OrgMemberActionDelete:
+		return consts.CapabilityCodeOrgMemberDelete, nil
+	case consts.OrgMemberActionInvite:
+		return consts.CapabilityCodeOrgMemberInvite, nil
+	case consts.OrgMemberActionAssignRole:
+		return consts.CapabilityCodeOrgMemberAssignRole, nil
+	default:
+		return "", errors.NewWithMsg(errors.CodeInvalidParams, "不支持的成员操作动作")
+	}
+}
+
+// pickAnotherActiveOrgID 在用户离开/被踢出组织后，
+// 尝试为用户切换到另一个活跃的组织（如果有），返回新组织ID；
+// 如果没有其他活跃组织，则返回 nil。
+func (s *OrgService) pickAnotherActiveOrgID(
+	ctx context.Context,
+	repo interfaces.OrgMemberRepository,
+	userID uint,
+	excludeOrgID uint,
+) (*uint, error) {
+	orgIDs, err := repo.ListActiveOrgIDsByUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	for _, id := range orgIDs {
+		if id != excludeOrgID {
+			next := id
+			return &next, nil
+		}
+	}
+	return nil, nil
+}
+
+// assignDefaultMemberRole 给用户分配组织内默认的 member 角色（如首次加入/恢复组织时）。
+func (s *OrgService) assignDefaultMemberRole(
+	ctx context.Context,
+	roleRepo interfaces.RoleRepository,
+	userID, orgID uint,
+) error {
+	memberRole, err := roleRepo.GetByCode(ctx, consts.RoleCodeMember)
+	if err != nil {
+		return errors.Wrap(errors.CodeDBError, err)
+	}
+	if memberRole == nil {
+		return errors.New(errors.CodeRoleNotFound)
+	}
+	if err := roleRepo.AssignRoleToUserInOrg(ctx, userID, orgID, memberRole.ID); err != nil {
+		return errors.Wrap(errors.CodeDBError, err)
+	}
+	subject := fmt.Sprintf("%d@%d", userID, orgID)
+	if s.casbinSvc != nil && s.casbinSvc.Enforcer != nil {
+		_, _ = s.casbinSvc.Enforcer.AddRoleForUser(subject, memberRole.Code)
+	}
+	return nil
+}
+
+// clearUserOrgCasbinRoles 从 Casbin 中清除用户在组织内的所有角色绑定（如离开/被踢出组织时）。
+func (s *OrgService) clearUserOrgCasbinRoles(userID, orgID uint) error {
+	if s.casbinSvc == nil || s.casbinSvc.Enforcer == nil {
+		return nil
+	}
+	subject := fmt.Sprintf("%d@%d", userID, orgID)
+	_, err := s.casbinSvc.Enforcer.DeleteRolesForUser(subject)
+	return err
+}
+
+// removeUserFromOrgRanking 从组织的排行榜中移除用户（如离开/被踢出组织时）。
+func (s *OrgService) removeUserFromOrgRanking(
+	ctx context.Context,
+	orgID, userID uint,
+) error {
+	member := strconv.FormatUint(uint64(userID), 10)
+	if err := global.Redis.ZRem(ctx, rediskey.RankingZSetKey(orgID, "luogu"), member).Err(); err != nil {
+		return err
+	}
+	return global.Redis.ZRem(ctx, rediskey.RankingZSetKey(orgID, "leetcode"), member).Err()
+}
+
+// generateInviteCode 生成唯一的邀请码，格式为 "ORG-" + 10位随机大写字母数字组合。
+func (s *OrgService) generateInviteCode(ctx context.Context) (string, error) {
+	for i := 0; i < 10; i++ {
+		raw := strings.ToUpper(strings.ReplaceAll(uuid.Must(uuid.NewV4()).String(), "-", ""))
+		code := "ORG-" + raw[:10]
+		exists, err := s.orgRepo.GetByCode(ctx, code)
+		if err != nil {
+			return "", errors.Wrap(errors.CodeDBError, err)
+		}
+		if exists == nil {
+			return code, nil
+		}
+	}
+	return "", errors.NewWithMsg(errors.CodeInternalError, "生成邀请码失败")
+}
+
+// isAllMembersBuiltinOrg 判断组织是否为“全员组织”，
+// 即系统内置、不可修改、所有用户默认加入的特殊组织。
+func isAllMembersBuiltinOrg(org *entity.Org) bool {
+	if org == nil {
+		return false
+	}
+	return org.IsBuiltin && org.BuiltinKey != nil && *org.BuiltinKey == consts.OrgBuiltinKeyAllMembers
 }

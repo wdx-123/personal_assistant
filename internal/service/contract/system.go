@@ -25,6 +25,15 @@ type PermissionServiceContract interface {
 	SyncAllPermissionsToCasbin(ctx context.Context) error
 	GetUserRoles(ctx context.Context, userID uint) ([]entity.Role, error)
 	CheckUserAPIPermission(userID uint, apiPath, method string) (bool, error)
+
+	// CheckUserMenuPermission 检查用户是否有访问菜单的权限（基于菜单绑定的 API 权限）
+	CheckUserCapabilityInOrg(ctx context.Context, userID, orgID uint, capabilityCode string) (bool, error)
+
+	// GetUserCapabilitiesInOrg 获取用户在特定组织内的 capability 列表
+	GetAllCapabilityGroups(ctx context.Context) ([]resp.CapabilityGroupItem, error)
+
+	// GetUserCapabilitiesInOrg 获取用户在特定组织内的 capability 列表
+	GetRoleCapabilityCodes(ctx context.Context, roleID uint) ([]string, error)
 }
 
 type BaseServiceContract interface {
@@ -47,6 +56,15 @@ type UserServiceContract interface {
 	GetUserDetail(ctx context.Context, id uint) (*entity.User, error)
 	GetUserRoles(ctx context.Context, userID, orgID uint) ([]*entity.Role, error)
 	AssignRole(ctx context.Context, req *request.AssignUserRoleReq) error
+
+	// DeactivateAccount 注销账号
+	DeactivateAccount(ctx context.Context, userID uint, req *request.DeactivateAccountReq) error
+
+	// UpdateUserStatus 更新账号状态（禁用/启用）
+	UpdateUserStatus(ctx context.Context, operatorID, targetUserID uint, req *request.AdminUpdateUserStatusReq) error
+
+	// CleanupDisabledUsers 清理过期的禁用用户，返回清理的用户数量
+	CleanupDisabledUsers(ctx context.Context) (int, error)
 }
 
 type OrgServiceContract interface {
@@ -57,6 +75,18 @@ type OrgServiceContract interface {
 	DeleteOrg(ctx context.Context, userID, orgID uint, force bool) error
 	SetCurrentOrg(ctx context.Context, userID, orgID uint) error
 	GetMyOrgs(ctx context.Context, userID uint) ([]*resp.MyOrgItem, error)
+
+	// JoinOrgByInviteCode 加入组织
+	JoinOrgByInviteCode(ctx context.Context, userID uint, inviteCode string) error
+
+	// LeaveOrg 退出组织
+	LeaveOrg(ctx context.Context, userID, orgID uint, reason string) error
+
+	// KickMember 踢出成员
+	KickMember(ctx context.Context, operatorID, orgID, targetUserID uint, reason string) error
+
+	// RecoverMember 恢复成员（撤销踢出/移除）
+	RecoverMember(ctx context.Context, operatorID, orgID, targetUserID uint, reason string) error
 }
 
 type OJServiceContract interface {
@@ -95,11 +125,8 @@ type RoleServiceContract interface {
 	CreateRole(ctx context.Context, req *request.CreateRoleReq) error
 	UpdateRole(ctx context.Context, id uint, req *request.UpdateRoleReq) error
 	DeleteRole(ctx context.Context, id uint) error
-	AssignPermissions(ctx context.Context, roleID uint, menuIDs []uint, directAPIIDs []uint) error
-	AssignMenus(ctx context.Context, roleID uint, menuIDs []uint) error
-	AssignAPIs(ctx context.Context, roleID uint, apiIDs []uint) error
+	AssignPermissions(ctx context.Context, roleID uint, menuIDs []uint, directAPIIDs []uint, capabilityCodes []string) error
 	GetRoleMenuAPIMap(ctx context.Context, roleID uint, maxLevel *int) (*resp.RoleMenuAPIMappingItem, error)
-	GetRoleMenuIDs(ctx context.Context, roleID uint) ([]uint, error)
 }
 
 type ImageServiceContract interface {

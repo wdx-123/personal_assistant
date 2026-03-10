@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"personal_assistant/global"
 	"personal_assistant/internal/model/consts"
@@ -13,6 +15,7 @@ import (
 	"personal_assistant/internal/repository/interfaces"
 	bizerrors "personal_assistant/pkg/errors"
 	"personal_assistant/pkg/imageops"
+	"personal_assistant/pkg/rediskey"
 
 	"github.com/gofrs/uuid"
 	"github.com/mojocn/base64Captcha"
@@ -26,8 +29,10 @@ import (
 
 type UserService struct {
 	txRunner          repository.TxRunner
-	userRepo          interfaces.UserRepository  // 依赖接口而不是具体实现
-	roleRepo          interfaces.RoleRepository  // 角色仓储，用于获取默认角色
+	userRepo          interfaces.UserRepository // 依赖接口而不是具体实现
+	roleRepo          interfaces.RoleRepository // 角色仓储，用于获取默认角色
+	orgRepo           interfaces.OrgRepository
+	orgMemberRepo     interfaces.OrgMemberRepository
 	imageRepo         interfaces.ImageRepository // 图片仓储
 	permissionService *PermissionService         // 权限服务，用于RBAC角色分配
 }
@@ -40,6 +45,8 @@ func NewUserService(
 		txRunner:          repositoryGroup,
 		userRepo:          repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
 		roleRepo:          repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
+		orgRepo:           repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
+		orgMemberRepo:     repositoryGroup.SystemRepositorySupplier.GetOrgMemberRepository(),
 		imageRepo:         repositoryGroup.SystemRepositorySupplier.GetImageRepository(),
 		permissionService: permissionService,
 	}
@@ -58,14 +65,49 @@ func (u *UserService) Register(
 	// 2. 检查手机号是否已存在
 	exists, err := u.userRepo.ExistsByPhone(ctx, req.Phone)
 	if err != nil {
-		global.Log.Error("检查手机号是否存在时发生错误",
-			zap.String("phone", req.Phone), zap.Error(err))
-		return nil, errors.New("系统错误，请稍后重试")
+		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
 	}
 	if exists {
-		global.Log.Error("手机号已被注册",
-			zap.String("phone", req.Phone))
-		return nil, errors.New("该手机号已被注册")
+		return nil, bizerrors.New(bizerrors.CodePhoneAlreadyUsed)
+	}
+	// 邀请码必须有效且对应一个组织，且该组织必须是启用状态。
+	inviteCode := strings.TrimSpace(req.InviteCode)
+	if inviteCode == "" {
+		return nil, bizerrors.New(bizerrors.CodeInvalidParams)
+	}
+	// 查询邀请码对应的组织，验证组织状态。
+	targetOrg, err := u.orgRepo.GetByCode(ctx, inviteCode)
+	if err != nil {
+		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	if targetOrg == nil {
+		return nil, bizerrors.New(bizerrors.CodeInviteCodeInvalid)
+	}
+
+	// 获取系统内置的全体成员组织，确保用户注册后能自动加入（如果邀请码组织不是全体成员组织）。
+	allMembersOrg, err := u.orgRepo.GetByBuiltinKey(ctx, consts.OrgBuiltinKeyAllMembers)
+	if err != nil {
+		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	if allMembersOrg == nil {
+		return nil, bizerrors.NewWithMsg(bizerrors.CodeOrgNotFound, "系统内置组织不存在")
+	}
+
+	// 获取默认角色（优先使用系统配置的默认角色code，如果配置无效则回退到 member 角色）。如果默认角色不存在，则注册失败。
+	defaultRoleCode := strings.TrimSpace(global.Config.System.DefaultRoleCode)
+	if defaultRoleCode == "" {
+		defaultRoleCode = consts.RoleCodeMember
+	}
+	// 获取默认角色，如果不存在则注册失败。
+	defaultRole, err := u.roleRepo.GetByCode(ctx, defaultRoleCode)
+	if err != nil || defaultRole == nil {
+		defaultRole, err = u.roleRepo.GetByCode(ctx, consts.RoleCodeMember)
+		if err != nil || defaultRole == nil {
+			if err != nil {
+				return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
+			}
+			return nil, bizerrors.New(bizerrors.CodeRoleNotFound)
+		}
 	}
 
 	// 3. 创建用户实例（不直接设置RoleID，通过权限服务分配）
@@ -76,56 +118,82 @@ func (u *UserService) Register(
 		UUID:     uuid.Must(uuid.NewV4()),
 		Avatar:   "", // 默认头像为空
 		Register: consts.Email,
+		Status:   consts.UserStatusActive,
 		// 不直接设置 RoleID，将通过权限服务分配角色
 	}
+	targetOrgID := targetOrg.ID
+	user.CurrentOrgID = &targetOrgID
 
-	// 4. 处理组织选择
-	if req.OrgID <= 0 {
-		return nil, errors.New("必须指定组织")
-	}
-	user.CurrentOrgID = &req.OrgID
-	err = u.userRepo.Create(ctx, user)
+	// 4. 开启事务，创建用户、成员记录，并分配默认角色
+	err = u.txRunner.InTx(ctx, func(tx any) error {
+		txUserRepo := u.userRepo.WithTx(tx)
+		txOrgMemberRepo := u.orgMemberRepo.WithTx(tx)
+		txRoleRepo := u.roleRepo.WithTx(tx)
+
+		// 创建用户
+		if err := txUserRepo.Create(ctx, user); err != nil {
+			return bizerrors.Wrap(bizerrors.CodeDBError, err)
+		}
+		now := time.Now()
+		// 创建成员记录，加入邀请码组织和全体成员组织（如果不同）。默认状态为 active，来源分别标记为 Register 和 SystemBackfill。
+		if err := txOrgMemberRepo.Create(ctx, &entity.OrgMember{
+			OrgID:        targetOrg.ID,
+			UserID:       user.ID,
+			MemberStatus: consts.OrgMemberStatusActive,
+			JoinedAt:     now,
+			JoinSource:   string(consts.OrgMemberJoinSourceRegister),
+		}); err != nil {
+			return bizerrors.Wrap(bizerrors.CodeDBError, err)
+		}
+		// 如果邀请码组织不是全体成员组织，则也加入全体成员组织（如默认切换到全体成员组织，获取公告等）。
+		if allMembersOrg.ID != targetOrg.ID {
+			if err := txOrgMemberRepo.Create(ctx, &entity.OrgMember{
+				OrgID:        allMembersOrg.ID,
+				UserID:       user.ID,
+				MemberStatus: consts.OrgMemberStatusActive,
+				JoinedAt:     now,
+				JoinSource:   string(consts.OrgMemberJoinSourceSystemBackfill),
+			}); err != nil {
+				return bizerrors.Wrap(bizerrors.CodeDBError, err)
+			}
+		}
+
+		// 邀请码组织 + 全体成员组织均授予默认 member 角色。
+		if err := txRoleRepo.AssignRoleToUserInOrg(ctx, user.ID, targetOrg.ID, defaultRole.ID); err != nil {
+			return bizerrors.Wrap(bizerrors.CodeDBError, err)
+		}
+
+		// 如果邀请码组织不是全体成员组织，则全体成员组织也授予默认 member 角色。
+		if allMembersOrg.ID != targetOrg.ID {
+			if err := txRoleRepo.AssignRoleToUserInOrg(ctx, user.ID, allMembersOrg.ID, defaultRole.ID); err != nil {
+				return bizerrors.Wrap(bizerrors.CodeDBError, err)
+			}
+		}
+		return nil
+	})
 	if err != nil {
-		global.Log.Error("创建用户失败",
-			zap.String("phone", req.Phone),
-			zap.String("username", req.Username),
-			zap.Error(err))
-		return nil, errors.New("创建用户失败，请稍后重试")
+		return nil, err
 	}
 
-	// 5. 为新用户分配默认角色（从配置获取）
-	defaultRoleCode := global.Config.System.DefaultRoleCode
-	if defaultRoleCode == "" {
-		defaultRoleCode = "user" // 兜底默认值
-	}
-
-	// 根据角色代码查找角色
-	defaultRole, err := u.roleRepo.GetByCode(ctx, defaultRoleCode)
-	if err != nil {
-		global.Log.Error("获取默认角色失败",
-			zap.String("role_code", defaultRoleCode),
-			zap.Error(err))
-		return nil, fmt.Errorf("获取默认角色失败: %w", err)
-	}
-
-	// 分配角色
-	err = u.permissionService.AssignRoleToUserInOrg(ctx, user.ID, req.OrgID, defaultRole.ID)
-	if err != nil {
-		global.Log.Error("分配默认角色失败",
-			zap.Uint("user_id", user.ID),
-			zap.Uint("role_id", defaultRole.ID),
-			zap.String("role_code", defaultRole.Code),
-			zap.Error(err))
-		return nil, fmt.Errorf("分配默认角色失败: %w", err)
+	// 同步 Casbin 角色关系（失败仅记录日志，不影响注册成功）。
+	if u.permissionService != nil && u.permissionService.casbinSvc != nil && u.permissionService.casbinSvc.Enforcer != nil {
+		subjectTarget := fmt.Sprintf("%d@%d", user.ID, targetOrg.ID)
+		if _, err := u.permissionService.casbinSvc.Enforcer.AddRoleForUser(subjectTarget, defaultRole.Code); err != nil {
+			global.Log.Error("注册后同步目标组织角色到Casbin失败", zap.Error(err))
+		}
+		if allMembersOrg.ID != targetOrg.ID {
+			subjectAll := fmt.Sprintf("%d@%d", user.ID, allMembersOrg.ID)
+			if _, err := u.permissionService.casbinSvc.Enforcer.AddRoleForUser(subjectAll, defaultRole.Code); err != nil {
+				global.Log.Error("注册后同步全体成员角色到Casbin失败", zap.Error(err))
+			}
+		}
 	}
 
 	// 6. 重新查询用户，确保返回包含关联数据（如CurrentOrg）的完整对象
 	// 这对于后续直接生成 Token 并返回完整信息至关重要
 	fullUser, err := u.userRepo.GetByID(ctx, user.ID)
 	if err != nil {
-		global.Log.Error("注册后获取用户信息失败", zap.Error(err))
-		// 如果获取失败，降级返回原始 user 对象（虽然缺少关联信息，但不影响核心流程）
-		return user, nil
+		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
 	}
 	return fullUser, nil
 }
@@ -158,8 +226,8 @@ func (u *UserService) PhoneLogin(
 	}
 
 	// 4. 检查是否冻结
-	if user.Freeze {
-		return nil, errors.New("账号已被冻结")
+	if user.Freeze || user.Status != consts.UserStatusActive {
+		return nil, bizerrors.New(bizerrors.CodeUserDisabled)
 	}
 
 	return user, nil
@@ -469,6 +537,180 @@ func (u *UserService) AssignRole(
 		return errors.New("用户不存在")
 	}
 
+	active, err := u.orgMemberRepo.IsUserActiveInOrg(ctx, req.UserID, req.OrgID)
+	if err != nil {
+		return bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	if !active {
+		return bizerrors.NewWithMsg(bizerrors.CodeOrgMemberStatusConflict, "成员非 active 状态，禁止改角色")
+	}
+
 	// 调用权限服务进行角色分配（全量替换）
 	return u.permissionService.ReplaceUserRolesInOrg(ctx, req.UserID, req.OrgID, req.RoleIDs)
+}
+
+// DeactivateAccount 主动注销账号（等同禁用）
+func (u *UserService) DeactivateAccount(
+	ctx context.Context,
+	userID uint,
+	req *request.DeactivateAccountReq,
+) error {
+	reason := ""
+	if req != nil {
+		reason = req.Reason
+	}
+	return u.applyUserStatus(ctx, userID, userID, consts.UserStatusDisabled, reason)
+}
+
+// UpdateUserStatus 管理员启用/禁用账号
+func (u *UserService) UpdateUserStatus(
+	ctx context.Context,
+	operatorID, targetUserID uint,
+	req *request.AdminUpdateUserStatusReq,
+) error {
+	if req == nil {
+		return bizerrors.New(bizerrors.CodeInvalidParams)
+	}
+
+	status := consts.UserStatusActive
+	switch strings.ToLower(strings.TrimSpace(req.Status)) {
+	case "active":
+		status = consts.UserStatusActive
+	case "disabled":
+		status = consts.UserStatusDisabled
+	default:
+		return bizerrors.New(bizerrors.CodeInvalidParams)
+	}
+	return u.applyUserStatus(ctx, operatorID, targetUserID, status, req.Reason)
+}
+
+// CleanupDisabledUsers 清理超过保留期的禁用账号（软删+匿名化）
+func (u *UserService) CleanupDisabledUsers(ctx context.Context) (int, error) {
+	if global.Config == nil || !global.Config.Task.DisabledUserCleanupEnabled {
+		return 0, nil
+	}
+	retentionDays := global.Config.Task.DisabledUserRetentionDays
+	if retentionDays <= 0 {
+		retentionDays = 30
+	}
+	before := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour)
+
+	users, err := u.userRepo.ListDisabledUsersBefore(ctx, before, 200)
+	if err != nil {
+		return 0, bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	if len(users) == 0 {
+		return 0, nil
+	}
+
+	cleaned := 0
+	for _, item := range users {
+		if item == nil || item.ID == 0 {
+			continue
+		}
+		orgIDs, err := u.orgMemberRepo.ListActiveOrgIDsByUser(ctx, item.ID)
+		if err != nil {
+			return cleaned, bizerrors.Wrap(bizerrors.CodeDBError, err)
+		}
+		if err := u.txRunner.InTx(ctx, func(tx any) error {
+			txOrgMemberRepo := u.orgMemberRepo.WithTx(tx)
+			txRoleRepo := u.roleRepo.WithTx(tx)
+			txUserRepo := u.userRepo.WithTx(tx)
+
+			for _, orgID := range orgIDs {
+				if err := txOrgMemberRepo.SetStatus(
+					ctx,
+					orgID,
+					item.ID,
+					consts.OrgMemberStatusRemoved,
+					nil,
+					"disabled_cleanup",
+					"",
+				); err != nil {
+					return bizerrors.Wrap(bizerrors.CodeDBError, err)
+				}
+				if err := txRoleRepo.DeleteUserOrgRoles(ctx, item.ID, orgID); err != nil {
+					return bizerrors.Wrap(bizerrors.CodeDBError, err)
+				}
+			}
+			return txUserRepo.SoftDeleteAndAnonymize(ctx, item.ID)
+		}); err != nil {
+			return cleaned, err
+		}
+
+		if err := u.removeUserFromRankingByOrgIDs(ctx, item.ID, orgIDs); err != nil {
+			return cleaned, bizerrors.Wrap(bizerrors.CodeRedisError, err)
+		}
+		cleaned++
+	}
+	return cleaned, nil
+}
+
+// applyUserStatus 内部方法：修改用户状态（启用/禁用），并处理相关逻辑（如清理会话、移除排行榜等）。
+func (u *UserService) applyUserStatus(
+	ctx context.Context,
+	operatorID, targetUserID uint,
+	status consts.UserStatus,
+	reason string,
+) error {
+	// 获取目标用户，验证用户存在
+	target, err := u.userRepo.GetByID(ctx, targetUserID)
+	if err != nil {
+		return bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	if target == nil {
+		return bizerrors.New(bizerrors.CodeUserNotFound)
+	}
+
+	if target.Status == status {
+		return nil
+	}
+
+	var operatorPtr *uint
+	if operatorID > 0 {
+		op := operatorID
+		operatorPtr = &op
+	}
+
+	// 禁用账号时，必须提供理由；启用账号时，理由可选但不允许过长。
+	if err := u.userRepo.UpdateUserStatus(ctx, targetUserID, status, operatorPtr, strings.TrimSpace(reason)); err != nil {
+		return bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+
+	// 禁用后立即移除 refresh 会话（access 由 ActiveUserMW 即时拦截）
+	if target.UUID.String() != "" {
+		if err := global.Redis.Del(ctx, target.UUID.String()).Err(); err != nil {
+			return bizerrors.Wrap(bizerrors.CodeRedisError, err)
+		}
+	}
+
+	// 如果是禁用账号，则将用户从所有组织的排行榜中移除
+	if status == consts.UserStatusDisabled {
+		if err := u.removeUserFromRankingByOrgIDs(ctx, targetUserID, nil); err != nil {
+			return bizerrors.Wrap(bizerrors.CodeRedisError, err)
+		}
+	}
+	return nil
+}
+
+// removeUserFromRankingByOrgIDs 将用户从指定组织ID列表的排行榜中移除。如果orgIDs为nil或空，则自动查询用户当前活跃的组织列表进行移除。
+func (u *UserService) removeUserFromRankingByOrgIDs(ctx context.Context, userID uint, orgIDs []uint) error {
+	if len(orgIDs) == 0 {
+		var err error
+		orgIDs, err = u.orgMemberRepo.ListActiveOrgIDsByUser(ctx, userID)
+		if err != nil {
+			return err
+		}
+	}
+
+	member := strconv.FormatUint(uint64(userID), 10)
+	for _, orgID := range orgIDs {
+		if err := global.Redis.ZRem(ctx, rediskey.RankingZSetKey(orgID, "luogu"), member).Err(); err != nil {
+			return err
+		}
+		if err := global.Redis.ZRem(ctx, rediskey.RankingZSetKey(orgID, "leetcode"), member).Err(); err != nil {
+			return err
+		}
+	}
+	return nil
 }

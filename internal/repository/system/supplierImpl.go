@@ -10,13 +10,15 @@ import (
 )
 
 type RepositorySupplier struct {
-	db             *gorm.DB
-	userRepository interfaces.UserRepository
-	jwtRepository  interfaces.JWTRepository
-	roleRepository interfaces.RoleRepository
-	menuRepository interfaces.MenuRepository
-	apiRepository  interfaces.APIRepository
-	orgRepository  interfaces.OrgRepository
+	db                   *gorm.DB
+	userRepository       interfaces.UserRepository
+	jwtRepository        interfaces.JWTRepository
+	roleRepository       interfaces.RoleRepository
+	capabilityRepository interfaces.CapabilityRepository
+	menuRepository       interfaces.MenuRepository
+	apiRepository        interfaces.APIRepository
+	orgRepository        interfaces.OrgRepository
+	orgMemberRepository  interfaces.OrgMemberRepository
 
 	leetcodeUserDetailRepository   interfaces.LeetcodeUserDetailRepository
 	luoguUserDetailRepository      interfaces.LuoguUserDetailRepository
@@ -43,6 +45,10 @@ func (r *RepositorySupplier) GetRoleRepository() interfaces.RoleRepository {
 	return r.roleRepository
 }
 
+func (r *RepositorySupplier) GetCapabilityRepository() interfaces.CapabilityRepository {
+	return r.capabilityRepository
+}
+
 func (r *RepositorySupplier) GetMenuRepository() interfaces.MenuRepository {
 	return r.menuRepository
 }
@@ -53,6 +59,10 @@ func (r *RepositorySupplier) GetAPIRepository() interfaces.APIRepository {
 
 func (r *RepositorySupplier) GetOrgRepository() interfaces.OrgRepository {
 	return r.orgRepository
+}
+
+func (r *RepositorySupplier) GetOrgMemberRepository() interfaces.OrgMemberRepository {
+	return r.orgMemberRepository
 }
 
 func (r *RepositorySupplier) GetLeetcodeUserDetailRepository() interfaces.LeetcodeUserDetailRepository {

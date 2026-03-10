@@ -28,11 +28,8 @@ func (u *UserCtrl) Register(ctx *gin.Context) {
 	var req request.RegisterReq
 	err := ctx.ShouldBindJSON(&req)
 	if err != nil {
-		global.Log.Error("绑定数据错误",
-			zap.Error(err))
-		response.NewResponse[any, any](ctx).
-			SetCode(bizerrors.CodeBindFailed).
-			Failed(fmt.Sprintf("绑定数据错误: %v", err), nil)
+		global.Log.Error("绑定数据错误", zap.Error(err))
+		response.BizFailWithCodeMsg(bizerrors.CodeBindFailed, "参数绑定失败", ctx)
 		return
 	}
 
@@ -43,9 +40,7 @@ func (u *UserCtrl) Register(ctx *gin.Context) {
 			"用户注册失败",
 			zap.String("phone", req.Phone),
 			zap.Error(err))
-		response.NewResponse[any, any](ctx).
-			SetCode(bizerrors.CodeInternalError).
-			Failed(fmt.Sprintf("用户注册失败: %v", err), nil)
+		response.BizFailWithError(err, ctx)
 		return
 	}
 
@@ -201,6 +196,25 @@ func (u *UserCtrl) ChangePassword(c *gin.Context) {
 	response.BizOkWithMessage("密码修改成功，请重新登录", c)
 }
 
+// DeactivateAccount 主动注销账号（等同禁用）
+func (u *UserCtrl) DeactivateAccount(c *gin.Context) {
+	var req request.DeactivateAccountReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		global.Log.Error("注销账号参数绑定失败", zap.Error(err))
+		response.BizFailWithMessage("参数错误", c)
+		return
+	}
+
+	userID := jwt.GetUserID(c)
+	if err := u.userService.DeactivateAccount(c.Request.Context(), userID, &req); err != nil {
+		global.Log.Error("注销账号失败", zap.Uint("userID", userID), zap.Error(err))
+		response.BizFailWithError(err, c)
+		return
+	}
+	jwt.ClearRefreshToken(c)
+	response.BizOkWithMessage("账号已禁用", c)
+}
+
 // GetUserList 获取用户列表
 func (u *UserCtrl) GetUserList(c *gin.Context) {
 	var req request.UserListReq
@@ -287,6 +301,29 @@ func (u *UserCtrl) AssignRole(c *gin.Context) {
 	response.BizOk(c)
 }
 
+// UpdateUserStatus 管理员启用/禁用账号
+func (u *UserCtrl) UpdateUserStatus(c *gin.Context) {
+	id := util.ParseUint(c.Param("id"))
+	if id == 0 {
+		response.BizFailWithMessage("ID无效", c)
+		return
+	}
+
+	var req request.AdminUpdateUserStatusReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BizFailWithMessage("参数错误", c)
+		return
+	}
+
+	operatorID := jwt.GetUserID(c)
+	if err := u.userService.UpdateUserStatus(c.Request.Context(), operatorID, uint(id), &req); err != nil {
+		global.Log.Error("更新用户状态失败", zap.Uint("targetUserID", uint(id)), zap.Error(err))
+		response.BizFailWithError(err, c)
+		return
+	}
+	response.BizOkWithMessage("用户状态更新成功", c)
+}
+
 // ==================== 辅助函数 ====================
 
 // entityToUserDetail 将用户实体转换为详情DTO
@@ -303,8 +340,12 @@ func entityToUserDetail(user *entity.User) *resp.UserDetailItem {
 		Signature: user.Signature,
 		Register:  int(user.Register),
 		Freeze:    user.Freeze,
+		Status:    int(user.Status),
 		CreatedAt: user.CreatedAt.Format(time.DateTime),
 		UpdatedAt: user.UpdatedAt.Format(time.DateTime),
+	}
+	if user.DisabledAt != nil {
+		item.DisabledAt = user.DisabledAt.Format(time.DateTime)
 	}
 	if user.CurrentOrg != nil {
 		item.CurrentOrg = struct {

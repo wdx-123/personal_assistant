@@ -179,90 +179,23 @@ func (c *RoleCtrl) AssignPermissions(ctx *gin.Context) {
 		failInvalidParams(ctx, "direct_api_ids 必须传入（可为空数组）")
 		return
 	}
+	if req.CapabilityCodes == nil {
+		failInvalidParams(ctx, "capability_codes 必须传入（可为空数组）")
+		return
+	}
 
-	if err := c.roleService.AssignPermissions(ctx.Request.Context(), req.RoleID, req.MenuIDs, req.DirectAPIIDs); err != nil {
+	if err := c.roleService.AssignPermissions(
+		ctx.Request.Context(),
+		req.RoleID,
+		req.MenuIDs,
+		req.DirectAPIIDs,
+		req.CapabilityCodes,
+	); err != nil {
 		global.Log.Error("分配角色权限失败", zap.Uint("roleID", req.RoleID), zap.Error(err))
 		response.BizFailWithError(err, ctx)
 		return
 	}
 	response.BizOkWithMessage("分配成功", ctx)
-}
-
-// AssignMenus 分配菜单权限
-// @Summary 分配菜单权限
-// @Tags System: Role
-// @Accept json
-// @Produce json
-// @Param body body request.AssignRoleMenuReq true "分配菜单权限请求"
-// @Success 200 {object} response.Response
-// @Router /api/system/role/assign_menu [post]
-func (c *RoleCtrl) AssignMenus(ctx *gin.Context) {
-	var req request.AssignRoleMenuReq
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		global.Log.Error("分配菜单权限参数绑定失败", zap.Error(err))
-		failInvalidParams(ctx, "参数错误")
-		return
-	}
-
-	if err := c.roleService.AssignMenus(ctx.Request.Context(), req.RoleID, req.MenuIDs); err != nil {
-		global.Log.Error("分配菜单权限失败", zap.Uint("roleID", req.RoleID), zap.Error(err))
-		response.BizFailWithError(err, ctx)
-		return
-	}
-	response.BizOkWithMessage("分配成功", ctx)
-}
-
-// AssignAPIs 分配角色API权限（直绑，全量替换）
-// @Summary 分配角色API权限
-// @Tags System: Role
-// @Accept json
-// @Produce json
-// @Param body body request.AssignRoleAPIReq true "分配角色API权限请求"
-// @Success 200 {object} response.Response
-// @Router /api/system/role/assign_api [post]
-func (c *RoleCtrl) AssignAPIs(ctx *gin.Context) {
-	var req request.AssignRoleAPIReq
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		global.Log.Error("分配角色API权限参数绑定失败", zap.Error(err))
-		failInvalidParams(ctx, "参数错误")
-		return
-	}
-	if req.APIIDs == nil {
-		failInvalidParams(ctx, "api_ids 必须传入（可为空数组）")
-		return
-	}
-
-	if err := c.roleService.AssignAPIs(ctx.Request.Context(), req.RoleID, req.APIIDs); err != nil {
-		global.Log.Error("分配角色API权限失败", zap.Uint("roleID", req.RoleID), zap.Error(err))
-		response.BizFailWithError(err, ctx)
-		return
-	}
-	response.BizOkWithMessage("分配成功", ctx)
-}
-
-// GetRoleMenuIDs 获取角色菜单权限（返回菜单ID列表）
-// @Summary 获取角色菜单权限
-// @Tags System: Role
-// @Accept json
-// @Produce json
-// @Param id path int true "角色ID"
-// @Success 200 {object} response.Response
-// @Router /api/system/role/{id}/menus [get]
-func (c *RoleCtrl) GetRoleMenuIDs(ctx *gin.Context) {
-	idStr := ctx.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
-	if err != nil {
-		failInvalidParams(ctx, "ID格式错误")
-		return
-	}
-
-	menuIDs, err := c.roleService.GetRoleMenuIDs(ctx.Request.Context(), uint(id))
-	if err != nil {
-		global.Log.Error("获取角色菜单权限失败", zap.Uint64("id", id), zap.Error(err))
-		response.BizFailWithError(err, ctx)
-		return
-	}
-	response.BizOkWithData(menuIDs, ctx)
 }
 
 // GetRoleMenuAPIMap 获取角色菜单/API映射（一次性渲染大对象）

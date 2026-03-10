@@ -12,6 +12,14 @@
 
 ---
 
+```
+新增设计层次：
+一、前端层：展示/交互控制
+二、API 层：入口访问控制
+三、Service / action 层：资源操作授权
+```
+
+
 ## 2. 设计总览
 
 ### 2.1 核心模型
@@ -163,32 +171,24 @@ Casbin 使用 `gorm-adapter`，策略持久化在 `casbin_rule`。
 2. 再更新 Casbin（`AddRoleForUser` / `DeleteRolesForUser + AddRoleForUser`）
 3. 关键场景包含补偿回滚日志
 
-### 7.2 角色菜单分配（`assign_menu`）
+### 7.2 角色权限合并分配（`assign_permission`）
 
-入口：`RoleService.AssignMenus`
+入口：`RoleService.AssignPermissions`
 
 1. Redis 锁防并发
 2. 校验角色存在
 3. 过滤有效菜单 ID
-4. `ReplaceRoleMenus` 全量替换
-5. 同步 `RefreshAllPermissions`（立即生效）
+4. 过滤有效 API ID
+5. 校验 capability code 列表全部有效
+6. 事务内同时替换 `role_menus`、`role_apis`、`role_capabilities`
+7. 单次调用 `RefreshAllPermissions` 立即生效
 
-### 7.3 角色 API 直绑（`assign_api`）
+### 7.3 失败语义
 
-入口：`RoleService.AssignAPIs`
+`AssignPermissions` 当前语义：
 
-1. Redis 锁防并发
-2. 校验角色存在
-3. `api_ids` 去重并过滤无效 ID
-4. `ReplaceRoleAPIs` 全量替换
-5. 同步 `RefreshAllPermissions`（立即生效）
-
-### 7.4 失败语义
-
-`AssignMenus` / `AssignAPIs` 当前语义：
-
-1. 关系写入成功后再刷新 Casbin
-2. 若刷新失败，接口返回失败，但已写入 DB 的关系不会自动回滚
+1. DB 关系在单个事务内更新
+2. 若事务提交后刷新 Casbin 失败，接口返回失败，但已写入 DB 的关系不会自动回滚
 3. 后续可通过再次刷新恢复内存策略一致性
 
 ---
@@ -201,14 +201,19 @@ Casbin 使用 `gorm-adapter`，策略持久化在 `casbin_rule`。
 
 ### 8.2 当前响应语义
 
-该接口当前仅返回：
+该接口当前返回：
 
 - `menu_tree`（全量菜单树，节点内含 `apis`）
+- `assigned_menu_ids`
+- `direct_api_ids`
+- `assigned_api_ids`
+- `capability_groups`
+- `assigned_capability_codes`
 
 说明：
 
-1. 已用于权限页“一次性渲染树结构”。
-2. 当前版本不再返回 `menu_ids`、`api_ids`。
+1. 已用于权限页“一次性渲染树结构和当前选中态”。
+2. 前端无需再额外调用独立的菜单/API/ capability 查询接口拼装配置态数据。
 
 ---
 
@@ -262,7 +267,7 @@ Casbin 使用 `gorm-adapter`，策略持久化在 `casbin_rule`。
 1. `user_org_roles`、`role_menus`、`menu_apis`、`role_apis` 数据是否完整。
 2. `users.current_org_id` 是否正确维护（否则 subject 无法生成）。
 3. 启动日志中 `SyncAllPermissionsToCasbin` 是否成功。
-4. `assign_menu` / `assign_api` 后是否即时生效。
+4. `assign_permission` 后是否即时生效。
 
 ### 12.1 模型维度一致性校验（重要）
 

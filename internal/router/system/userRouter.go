@@ -23,10 +23,11 @@ func (u *UserRouter) InitUserBusinessRouter(router *gin.RouterGroup) {
 	userRouter := router.Group("user")
 	userCtrl := controller.ApiGroupApp.SystemApiGroup.GetUserCtrl()
 	{
-		userRouter.POST("logout", userCtrl.Logout)          // 登出
-		userRouter.PUT("profile", userCtrl.UpdateProfile)   // 更新个人资料
-		userRouter.PUT("phone", userCtrl.ChangePhone)       // 换绑手机号
-		userRouter.PUT("password", userCtrl.ChangePassword) // 修改密码
+		userRouter.POST("logout", userCtrl.Logout)                // 登出
+		userRouter.PUT("profile", userCtrl.UpdateProfile)         // 更新个人资料
+		userRouter.PUT("phone", userCtrl.ChangePhone)             // 换绑手机号
+		userRouter.PUT("password", userCtrl.ChangePassword)       // 修改密码
+		userRouter.POST("deactivate", userCtrl.DeactivateAccount) // 主动注销账号
 	}
 }
 
@@ -35,9 +36,10 @@ func (u *UserRouter) InitUserAuthRouter(router *gin.RouterGroup) {
 	userRouter := router.Group("system/user")
 	userCtrl := controller.ApiGroupApp.SystemApiGroup.GetUserCtrl()
 	{
-		userRouter.GET("list", userCtrl.GetUserList)        // 获取用户列表
-		userRouter.POST("assign_role", userCtrl.AssignRole) // 分配角色
-		userRouter.GET(":id/roles", userCtrl.GetUserRoles)  // 获取用户角色
-		userRouter.GET(":id", userCtrl.GetUserDetail)       // 获取用户详情
+		userRouter.GET("list", userCtrl.GetUserList)            // 获取用户列表
+		userRouter.POST("assign_role", userCtrl.AssignRole)     // 分配角色
+		userRouter.GET(":id/roles", userCtrl.GetUserRoles)      // 获取用户角色
+		userRouter.GET(":id", userCtrl.GetUserDetail)           // 获取用户详情
+		userRouter.PUT(":id/status", userCtrl.UpdateUserStatus) // 管理员 启用/禁用用户
 	}
 }

@@ -2,7 +2,9 @@ package interfaces
 
 import (
 	"context"
+	"time"
 
+	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/entity"
 )
@@ -19,6 +21,8 @@ type UserRepository interface {
 	GetByPhone(ctx context.Context, phone string) (*entity.User, error)
 	// GetByIDs 批量获取用户
 	GetByIDs(ctx context.Context, ids []uint) ([]*entity.User, error)
+	// GetByIDsActive 批量获取活跃用户
+	GetByIDsActive(ctx context.Context, ids []uint) ([]*entity.User, error)
 	// Create 创建用户
 	Create(ctx context.Context, user *entity.User) error
 	// Update 更新用户
@@ -38,6 +42,12 @@ type UserRepository interface {
 	ExistsByPhone(ctx context.Context, phone string) (bool, error)
 	// GetActiveUsers 获取所有活跃用户
 	GetActiveUsers(ctx context.Context) ([]*entity.User, error)
+	// UpdateUserStatus 更新账号状态及禁用元数据
+	UpdateUserStatus(ctx context.Context, userID uint, status consts.UserStatus, disabledBy *uint, disabledReason string) error
+	// ListDisabledUsersBefore 分页查询到期可清理的禁用用户
+	ListDisabledUsersBefore(ctx context.Context, before time.Time, limit int) ([]*entity.User, error)
+	// SoftDeleteAndAnonymize 软删除并匿名化账号
+	SoftDeleteAndAnonymize(ctx context.Context, userID uint) error
 
 	// ValidateUser 验证用户名和密码
 	ValidateUser(ctx context.Context, username, password string) (*entity.User, error)
@@ -49,6 +59,8 @@ type UserRepository interface {
 
 	// UpdateCurrentOrgID 更新用户当前组织ID
 	UpdateCurrentOrgID(ctx context.Context, userID uint, orgID *uint) error
+	// ClearCurrentOrgByOrgID 将当前组织为指定 org 的用户置空
+	ClearCurrentOrgByOrgID(ctx context.Context, orgID uint) error
 
 	// WithTx 启用事务（返回支持事务的新实例）
 	WithTx(tx any) UserRepository

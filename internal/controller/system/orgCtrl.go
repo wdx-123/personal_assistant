@@ -11,6 +11,7 @@ import (
 	serviceContract "personal_assistant/internal/service/contract"
 	"personal_assistant/pkg/jwt"
 	"personal_assistant/pkg/response"
+	"personal_assistant/pkg/util"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -169,6 +170,101 @@ func (ctrl *OrgCtrl) GetMyOrgs(c *gin.Context) {
 		return
 	}
 	response.BizOkWithData(items, c)
+}
+
+// JoinOrgByInviteCode 通过邀请码加入组织
+func (ctrl *OrgCtrl) JoinOrgByInviteCode(c *gin.Context) {
+	var req request.JoinOrgByInviteReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		global.Log.Error("加入组织参数绑定失败", zap.Error(err))
+		response.BizFailWithMessage("参数错误", c)
+		return
+	}
+
+	userID := jwt.GetUserID(c)
+	if err := ctrl.orgService.JoinOrgByInviteCode(c.Request.Context(), userID, req.InviteCode); err != nil {
+		global.Log.Error("加入组织失败", zap.String("invite_code", req.InviteCode), zap.Error(err))
+		response.BizFailWithError(err, c)
+		return
+	}
+	response.BizOkWithMessage("加入成功", c)
+}
+
+// LeaveOrg 主动退出组织
+func (ctrl *OrgCtrl) LeaveOrg(c *gin.Context) {
+	var req request.LeaveOrgReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		global.Log.Error("退出组织参数绑定失败", zap.Error(err))
+		response.BizFailWithMessage("参数错误", c)
+		return
+	}
+
+	userID := jwt.GetUserID(c)
+	if err := ctrl.orgService.LeaveOrg(c.Request.Context(), userID, req.OrgID, req.Reason); err != nil {
+		global.Log.Error("退出组织失败", zap.Uint("org_id", req.OrgID), zap.Error(err))
+		response.BizFailWithError(err, c)
+		return
+	}
+	response.BizOkWithMessage("退出成功", c)
+}
+
+// KickMember 踢出组织成员
+func (ctrl *OrgCtrl) KickMember(c *gin.Context) {
+	orgID := util.ParseUint(c.Param("id"))
+	targetUserID := util.ParseUint(c.Param("userId"))
+	if orgID == 0 || targetUserID == 0 {
+		response.BizFailWithMessage("参数错误", c)
+		return
+	}
+
+	var req request.KickMemberReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		// 允许 DELETE 无 body
+		req.Reason = c.Query("reason")
+	}
+
+	operatorID := jwt.GetUserID(c)
+	if err := ctrl.orgService.KickMember(c.Request.Context(), operatorID, uint(orgID), uint(targetUserID), req.Reason); err != nil {
+		global.Log.Error(
+			"踢出成员失败",
+			zap.Uint("org_id", orgID),
+			zap.Uint("target_user_id", targetUserID),
+			zap.Error(err),
+		)
+		response.BizFailWithError(err, c)
+		return
+	}
+	response.BizOkWithMessage("已踢出成员", c)
+}
+
+// RecoverMember 恢复成员
+func (ctrl *OrgCtrl) RecoverMember(c *gin.Context) {
+	orgID := util.ParseUint(c.Param("id"))
+	targetUserID := util.ParseUint(c.Param("userId"))
+	if orgID == 0 || targetUserID == 0 {
+		response.BizFailWithMessage("参数错误", c)
+		return
+	}
+
+	var req request.RecoverMemberReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		global.Log.Error("恢复成员参数绑定失败", zap.Error(err))
+		response.BizFailWithMessage("参数错误", c)
+		return
+	}
+
+	operatorID := jwt.GetUserID(c)
+	if err := ctrl.orgService.RecoverMember(c.Request.Context(), operatorID, uint(orgID), uint(targetUserID), req.Reason); err != nil {
+		global.Log.Error(
+			"恢复成员失败",
+			zap.Uint("org_id", orgID),
+			zap.Uint("target_user_id", targetUserID),
+			zap.Error(err),
+		)
+		response.BizFailWithError(err, c)
+		return
+	}
+	response.BizOkWithMessage("成员已恢复", c)
 }
 
 // ==================== 辅助函数 ====================

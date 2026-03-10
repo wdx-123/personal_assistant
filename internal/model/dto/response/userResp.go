@@ -2,19 +2,21 @@ package response
 
 // UserDetailItem 用户详情信息
 type UserDetailItem struct {
-	ID        uint   `json:"id"`
-	UUID      string `json:"uuid"`
-	Username  string `json:"username"`
-	Phone     string `json:"phone"`
-	Email     string `json:"email"`
-	Avatar    string `json:"avatar"`
-	AvatarID  *uint  `json:"avatar_id"`
-	Address   string `json:"address"`
-	Signature string `json:"signature"`
-	Register  int    `json:"register"`
-	Freeze    bool   `json:"freeze"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID         uint   `json:"id"`
+	UUID       string `json:"uuid"`
+	Username   string `json:"username"`
+	Phone      string `json:"phone"`
+	Email      string `json:"email"`
+	Avatar     string `json:"avatar"`
+	AvatarID   *uint  `json:"avatar_id"`
+	Address    string `json:"address"`
+	Signature  string `json:"signature"`
+	Register   int    `json:"register"`
+	Freeze     bool   `json:"freeze"`
+	Status     int    `json:"status"`
+	DisabledAt string `json:"disabled_at,omitempty"`
+	CreatedAt  string `json:"created_at"`
+	UpdatedAt  string `json:"updated_at"`
 
 	CurrentOrg struct {
 		ID   uint   `json:"id"`

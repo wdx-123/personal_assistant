@@ -27,7 +27,7 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 	rawBase := NewBaseService()
 	rawHealth := NewHealthService(repositoryGroup)
 	rawUser := NewUserService(repositoryGroup, rawPermission)
-	rawOrg := NewOrgService(repositoryGroup)
+	rawOrg := NewOrgService(repositoryGroup, rawPermission)
 	rawOJ := NewOJService(repositoryGroup)
 	rawAPI := NewApiService(repositoryGroup, rawPermission)
 	rawMenu := NewMenuService(repositoryGroup, rawPermission)

@@ -55,6 +55,7 @@ func InitRouter() *gin.Engine {
 	SystemGroup := Router.Group("")
 	permissionMW := middleware.NewPermissionMiddleware(service.GroupApp) // 获取实例
 	SystemGroup.Use(middleware.JWTAuth())                                // JWT认证
+	SystemGroup.Use(middleware.ActiveUserMW())                           // 账号活跃态校验
 	SystemGroup.Use(permissionMW.CheckPermission())                      // 权限中间件
 	{
 		// 路由管理(api管理)
@@ -73,6 +74,7 @@ func InitRouter() *gin.Engine {
 	// 业务路由组 - 需要JWT，但不需严格的权限控制
 	BusinessGroup := Router.Group("")
 	BusinessGroup.Use(middleware.JWTAuth())
+	BusinessGroup.Use(middleware.ActiveUserMW())
 	uploadRateLimitMW := middleware.UploadRateLimitMiddleware(global.UploadGlobalLimiter, global.UploadUserLimiter)
 	{
 		// OJ 相关路由
