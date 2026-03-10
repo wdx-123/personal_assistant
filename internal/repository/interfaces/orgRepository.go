@@ -23,12 +23,14 @@ type OrgRepository interface {
 	GetOrgList(ctx context.Context, page, pageSize int) ([]*entity.Org, int64, error)
 	// GetByCode 根据邀请码获取组织
 	GetByCode(ctx context.Context, code string) (*entity.Org, error)
+	// GetByBuiltinKey 根据内置组织标识获取组织
+	GetByBuiltinKey(ctx context.Context, key string) (*entity.Org, error)
 
 	// ExistsByName 检查组织名称是否已存在
 	ExistsByName(ctx context.Context, name string) (bool, error)
-	// CountMembersByOrgID 查询组织下的成员数（user_org_roles 表去重 user_id）
+	// CountMembersByOrgID 查询组织下的活跃成员数
 	CountMembersByOrgID(ctx context.Context, orgID uint) (int64, error)
-	// GetOrgsByUserID 获取用户所属的组织列表（通过 user_org_roles 关联查询）
+	// GetOrgsByUserID 获取用户所属的活跃组织列表
 	GetOrgsByUserID(ctx context.Context, userID uint) ([]*entity.Org, error)
 	// GetOrgListWithKeyword 支持关键词搜索的分页查询
 	GetOrgListWithKeyword(ctx context.Context, page, pageSize int, keyword string) ([]*entity.Org, int64, error)

@@ -1,0 +1,948 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "personal_assistant - 角色权限配置接口",
+    "version": "1.1.0",
+    "description": "基于 2026-03-10 仓库当前实现整理的角色权限配置 OpenAPI 文档，覆盖以下接口：\n1. GET /system/role/{id}/menu_api_map\n2. POST /system/role/assign_permission\n\n统一说明：\n- 运行时路由以 internal/router/system/roleRouter.go 为准，本文档使用当前实际注册路径 /system/role/*。\n- 两个接口都位于受保护的 SystemGroup，下游会经过 JWTAuth、ActiveUserMW、PermissionMiddleware。\n- Controller/Service 成功或业务失败时，返回新版 BizResponse：code/success/message/data/timestamp。\n- JWT 缺失、Token 无效、权限中间件拦截时，当前代码仍可能返回旧版响应壳：code/data/error。\n- ActiveUserMW 拦截（如账号已禁用）时，返回 HTTP 401 的 BizResponse。\n- assign_permission 为全量替换，不是增量追加。\n- assign_permission 成功提交事务后会立即刷新 Casbin 全量权限；若刷新失败，接口会返回失败，但数据库里的角色权限关系可能已经提交成功。"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:9000",
+      "description": "本地开发环境（请按实际服务地址修改）"
+    }
+  ],
+  "tags": [
+    {
+      "name": "系统-角色权限配置",
+      "description": "角色菜单树、直绑 API、capability 配置相关接口"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    },
+    {
+      "AccessTokenHeader": []
+    }
+  ],
+  "paths": {
+    "/system/role/{id}/menu_api_map": {
+      "get": {
+        "tags": [
+          "系统-角色权限配置"
+        ],
+        "summary": "获取角色权限配置大对象",
+        "description": "一次性返回角色权限配置页渲染所需的完整数据，包括：\n- menu_tree：菜单树，节点内附带菜单关联 API\n- assigned_menu_ids：角色当前已绑定菜单 ID 集合\n- direct_api_ids：角色当前直绑 API ID 集合\n- assigned_api_ids：菜单链路 API + 角色直绑 API 的最终并集\n- capability_groups：可分配 capability 分组及明细\n- assigned_capability_codes：角色当前已绑定 capability code 集合\n\n参数说明：\n- max_level 不传：返回全量菜单树\n- max_level=1：仅返回根层\n- max_level=N：返回到第 N 层，到达层级上限的节点不再包含 children\n\n重要语义：\n- assigned_menu_ids、direct_api_ids、assigned_api_ids、assigned_capability_codes 不受 max_level 影响，始终返回角色当前全量已配置结果。\n- assigned_api_ids 仅用于前端展示“最终生效 API 并集”，不能直接作为 assign_permission 的 direct_api_ids 回填保存。\n- menu_tree[].apis 表示菜单链路上的 API，不包含角色直绑 API。",
+        "operationId": "GetRolePermissionConfigMap",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "角色 ID",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 3
+          },
+          {
+            "name": "max_level",
+            "in": "query",
+            "required": false,
+            "description": "菜单树最大层级，根节点层级定义为 1；最小值 1；不传表示返回全量树",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1
+            },
+            "example": 2
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、JWT/权限中间件拦截均可能返回 HTTP 200，需结合响应结构与 code 判断",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseRolePermissionConfigMap"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizResponseError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyErrorEnvelope"
+                    }
+                  ]
+                },
+                "examples": {
+                  "查询成功_全量配置": {
+                    "summary": "返回角色权限页完整配置数据",
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "menu_tree": [
+                          {
+                            "id": 13,
+                            "parent_id": 0,
+                            "name": "权限管理",
+                            "code": "permission",
+                            "type": 1,
+                            "icon": "lock",
+                            "route_name": "PermissionRoot",
+                            "route_path": "/console/permission",
+                            "route_param": "",
+                            "component_path": "views/permission/index.vue",
+                            "status": 1,
+                            "sort": 2,
+                            "desc": "权限根菜单",
+                            "created_at": "2026-03-01T10:00:00+08:00",
+                            "updated_at": "2026-03-01T10:00:00+08:00",
+                            "children": [
+                              {
+                                "id": 14,
+                                "parent_id": 13,
+                                "name": "角色管理",
+                                "code": "permission:role",
+                                "type": 2,
+                                "icon": "",
+                                "route_name": "RoleManage",
+                                "route_path": "/console/permission/role",
+                                "route_param": "",
+                                "component_path": "views/permission/role/index.vue",
+                                "status": 1,
+                                "sort": 1,
+                                "desc": "角色权限配置页",
+                                "created_at": "2026-03-01T10:00:00+08:00",
+                                "updated_at": "2026-03-01T10:00:00+08:00",
+                                "apis": [
+                                  {
+                                    "id": 10,
+                                    "path": "/system/role/list",
+                                    "method": "GET"
+                                  },
+                                  {
+                                    "id": 11,
+                                    "path": "/system/role/assign_permission",
+                                    "method": "POST"
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ],
+                        "assigned_menu_ids": [
+                          13,
+                          14
+                        ],
+                        "direct_api_ids": [
+                          99
+                        ],
+                        "assigned_api_ids": [
+                          10,
+                          11,
+                          99
+                        ],
+                        "capability_groups": [
+                          {
+                            "group_code": "org_member_management",
+                            "group_name": "成员管理",
+                            "capabilities": [
+                              {
+                                "code": "org.member.assign_role",
+                                "name": "分配成员角色",
+                                "desc": "允许调整组织成员在本组织下的角色",
+                                "status": 1
+                              },
+                              {
+                                "code": "org.member.invite",
+                                "name": "邀请成员",
+                                "desc": "允许邀请用户加入组织",
+                                "status": 1
+                              }
+                            ]
+                          }
+                        ],
+                        "assigned_capability_codes": [
+                          "org.member.assign_role",
+                          "org.member.invite"
+                        ]
+                      },
+                      "timestamp": 1770732000001
+                    }
+                  },
+                  "参数错误": {
+                    "summary": "id 非法或 max_level < 1 / 解析失败",
+                    "value": {
+                      "code": 10001,
+                      "success": false,
+                      "message": "参数错误",
+                      "data": null,
+                      "timestamp": 1770732000003
+                    }
+                  },
+                  "角色不存在": {
+                    "summary": "指定 role_id 不存在",
+                    "value": {
+                      "code": 30101,
+                      "success": false,
+                      "message": "角色不存在",
+                      "data": null,
+                      "timestamp": 1770732000004
+                    }
+                  },
+                  "JWT缺失_旧壳响应": {
+                    "summary": "JWTAuth 中间件返回旧版响应壳",
+                    "value": {
+                      "code": 11005,
+                      "data": {
+                        "message": "Access token is required",
+                        "reload": true
+                      },
+                      "error": "Access token is required"
+                    }
+                  },
+                  "权限不足_旧壳响应": {
+                    "summary": "PermissionMiddleware 拦截",
+                    "value": {
+                      "code": 11006,
+                      "data": {},
+                      "error": "用户无权限访问API"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "ActiveUserMW 拦截，例如账号已禁用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseUnauthorized"
+                },
+                "example": {
+                  "code": 11000,
+                  "success": false,
+                  "message": "账号已禁用",
+                  "data": null,
+                  "timestamp": 1770732000005
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/role/assign_permission": {
+      "post": {
+        "tags": [
+          "系统-角色权限配置"
+        ],
+        "summary": "保存角色权限配置",
+        "description": "单次请求内全量替换角色的三类权限：\n- role_menus：角色菜单权限\n- role_apis：角色直绑 API 权限\n- role_capabilities：角色 capability 权限\n\n处理流程：\n1. 按角色维度加 Redis 锁，防止并发覆盖\n2. 校验角色是否存在\n3. 对 menu_ids 去重后逐个过滤，只保留真实存在的菜单 ID；无效 menu_id 会被静默忽略\n4. 对 direct_api_ids 去重后逐个过滤，只保留真实存在的 API ID；无效 api_id 会被静默忽略\n5. 对 capability_codes 做 trim + 去重 + 排序；若任一 code 无效，则直接返回参数错误\n6. 在单个事务内同时替换菜单、直绑 API、capability 关系\n7. 提交成功后立即刷新全量权限到 Casbin\n\n重要语义：\n- 这是全量替换接口，不是增量追加；前端必须传完整目标状态。\n- menu_ids、direct_api_ids、capability_codes 三个字段必须传入，允许为空数组；空数组表示清空该维度权限。\n- 若事务提交成功但后续权限刷新失败，接口会返回失败，但数据库中权限关系可能已更新。",
+        "operationId": "AssignRolePermissionConfig",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignRolePermissionReq"
+              },
+              "examples": {
+                "保存完整权限": {
+                  "summary": "同时保存菜单、直绑 API、capability",
+                  "value": {
+                    "role_id": 3,
+                    "menu_ids": [
+                      13,
+                      14
+                    ],
+                    "direct_api_ids": [
+                      99,
+                      100
+                    ],
+                    "capability_codes": [
+                      "org.member.assign_role",
+                      "org.member.invite"
+                    ]
+                  }
+                },
+                "清空全部权限": {
+                  "summary": "三个数组均传空，表示清空角色权限",
+                  "value": {
+                    "role_id": 3,
+                    "menu_ids": [],
+                    "direct_api_ids": [],
+                    "capability_codes": []
+                  }
+                },
+                "仅保留capability": {
+                  "summary": "菜单和直绑 API 清空，只保留 capability",
+                  "value": {
+                    "role_id": 5,
+                    "menu_ids": [],
+                    "direct_api_ids": [],
+                    "capability_codes": [
+                      "org.member.assign_role"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、JWT/权限中间件拦截均可能返回 HTTP 200，需结合响应结构与 code 判断",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseMessage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizResponseError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyErrorEnvelope"
+                    }
+                  ]
+                },
+                "examples": {
+                  "保存成功": {
+                    "summary": "角色权限更新成功",
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "分配成功",
+                      "data": null,
+                      "timestamp": 1770732001001
+                    }
+                  },
+                  "缺少必传数组字段": {
+                    "summary": "capability_codes 未传时的控制器校验失败",
+                    "value": {
+                      "code": 10001,
+                      "success": false,
+                      "message": "capability_codes 必须传入（可为空数组）",
+                      "data": null,
+                      "timestamp": 1770732001002
+                    }
+                  },
+                  "存在无效capability": {
+                    "summary": "任一 capability_code 无效都会直接失败",
+                    "value": {
+                      "code": 10001,
+                      "success": false,
+                      "message": "存在无效 capability_codes",
+                      "data": null,
+                      "timestamp": 1770732001003
+                    }
+                  },
+                  "角色不存在": {
+                    "summary": "role_id 不存在",
+                    "value": {
+                      "code": 30101,
+                      "success": false,
+                      "message": "角色不存在",
+                      "data": null,
+                      "timestamp": 1770732001004
+                    }
+                  },
+                  "锁冲突": {
+                    "summary": "同一角色短时间内并发提交，命中 Redis 锁",
+                    "value": {
+                      "code": 10008,
+                      "success": false,
+                      "message": "操作过于频繁，请稍后重试",
+                      "data": null,
+                      "timestamp": 1770732001005
+                    }
+                  },
+                  "Token无效_旧壳响应": {
+                    "summary": "JWTAuth 中间件返回旧版响应壳",
+                    "value": {
+                      "code": 11003,
+                      "data": {
+                        "message": "Invalid access token",
+                        "reload": true
+                      },
+                      "error": "Invalid access token"
+                    }
+                  },
+                  "权限不足_旧壳响应": {
+                    "summary": "PermissionMiddleware 拦截",
+                    "value": {
+                      "code": 11006,
+                      "data": {},
+                      "error": "用户无权限访问API"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "ActiveUserMW 拦截，例如账号已禁用",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseUnauthorized"
+                },
+                "example": {
+                  "code": 11000,
+                  "success": false,
+                  "message": "账号已禁用",
+                  "data": null,
+                  "timestamp": 1770732001006
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "标准 Bearer Token 方式：Authorization: Bearer <access_token>"
+      },
+      "AccessTokenHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-access-token",
+        "description": "仓库当前 JWT 中间件同样支持 x-access-token 头"
+      }
+    },
+    "schemas": {
+      "AssignRolePermissionReq": {
+        "type": "object",
+        "required": [
+          "role_id",
+          "menu_ids",
+          "direct_api_ids",
+          "capability_codes"
+        ],
+        "properties": {
+          "role_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "角色 ID。必须是已存在角色。",
+            "example": 3
+          },
+          "menu_ids": {
+            "type": "array",
+            "description": "角色菜单 ID 列表。必传，可为空数组。语义为全量替换；传空数组表示清空角色菜单权限。后端会去重，并静默忽略不存在的菜单 ID。",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": [
+              13,
+              14
+            ]
+          },
+          "direct_api_ids": {
+            "type": "array",
+            "description": "角色直绑 API ID 列表。必传，可为空数组。语义为全量替换；传空数组表示清空角色直绑 API 权限。后端会去重，并静默忽略不存在的 API ID。",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": [
+              99,
+              100
+            ]
+          },
+          "capability_codes": {
+            "type": "array",
+            "description": "角色 capability code 列表。必传，可为空数组。语义为全量替换；传空数组表示清空 capability 权限。后端会 trim、去重、排序；只要存在任一无效 code，就直接返回 10001。",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "example": [
+              "org.member.assign_role",
+              "org.member.invite"
+            ]
+          }
+        }
+      },
+      "BizResponseMessage": {
+        "type": "object",
+        "required": [
+          "code",
+          "success",
+          "message",
+          "timestamp"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "业务码，0 表示成功",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "description": "是否成功",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "description": "业务消息",
+            "example": "分配成功"
+          },
+          "data": {
+            "nullable": true,
+            "description": "该类成功响应通常为 null",
+            "example": null
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "毫秒时间戳",
+            "example": 1770732001001
+          }
+        }
+      },
+      "BizResponseError": {
+        "type": "object",
+        "required": [
+          "code",
+          "success",
+          "message",
+          "timestamp"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "业务错误码，详见 pkg/errors/codes.go",
+            "example": 10001
+          },
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "description": "错误消息",
+            "example": "参数错误"
+          },
+          "data": {
+            "nullable": true,
+            "description": "业务失败时当前接口通常返回 null",
+            "example": null
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1770732000003
+          }
+        }
+      },
+      "BizResponseUnauthorized": {
+        "type": "object",
+        "required": [
+          "code",
+          "success",
+          "message",
+          "timestamp"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "未授权业务码。当前 ActiveUserMW 使用 11000。",
+            "example": 11000
+          },
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "账号已禁用"
+          },
+          "data": {
+            "nullable": true,
+            "example": null
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1770732001006
+          }
+        }
+      },
+      "BizResponseRolePermissionConfigMap": {
+        "type": "object",
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/RoleMenuAPIMappingItem"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1770732000001
+          }
+        }
+      },
+      "RoleMenuAPIMappingItem": {
+        "type": "object",
+        "required": [
+          "menu_tree"
+        ],
+        "properties": {
+          "menu_tree": {
+            "type": "array",
+            "description": "菜单树。根节点 parent_id=0。若传 max_level，会按层级裁剪。",
+            "items": {
+              "$ref": "#/components/schemas/MenuItem"
+            }
+          },
+          "assigned_menu_ids": {
+            "type": "array",
+            "nullable": true,
+            "description": "角色已分配菜单 ID 集合。当前后端在无数据时可能返回 null。",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": [
+              13,
+              14
+            ]
+          },
+          "direct_api_ids": {
+            "type": "array",
+            "nullable": true,
+            "description": "角色直绑 API ID 集合。仅表示 role_apis 关系，不含菜单链路 API。当前后端在无数据时可能返回 null。",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": [
+              99
+            ]
+          },
+          "assigned_api_ids": {
+            "type": "array",
+            "nullable": true,
+            "description": "角色最终生效 API ID 集合，为菜单链路 API 与角色直绑 API 的并集。当前后端在无数据时可能返回 null。",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": [
+              10,
+              11,
+              99
+            ]
+          },
+          "capability_groups": {
+            "type": "array",
+            "nullable": true,
+            "description": "可配置 capability 分组列表。通常用于前端右侧 capability 勾选区域。",
+            "items": {
+              "$ref": "#/components/schemas/CapabilityGroupItem"
+            }
+          },
+          "assigned_capability_codes": {
+            "type": "array",
+            "nullable": true,
+            "description": "角色已分配 capability code 集合。当前后端在无数据时可能返回 null。",
+            "items": {
+              "type": "string"
+            },
+            "example": [
+              "org.member.assign_role",
+              "org.member.invite"
+            ]
+          }
+        }
+      },
+      "MenuItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "菜单 ID",
+            "example": 14
+          },
+          "parent_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "父菜单 ID；0 表示顶级菜单",
+            "example": 13
+          },
+          "name": {
+            "type": "string",
+            "description": "菜单名称",
+            "example": "角色管理"
+          },
+          "code": {
+            "type": "string",
+            "description": "菜单权限标识 / 菜单编码",
+            "example": "permission:role"
+          },
+          "type": {
+            "type": "integer",
+            "description": "菜单类型：1=目录，2=菜单，3=按钮",
+            "enum": [
+              1,
+              2,
+              3
+            ],
+            "example": 2
+          },
+          "icon": {
+            "type": "string",
+            "description": "菜单图标",
+            "example": ""
+          },
+          "route_name": {
+            "type": "string",
+            "description": "前端路由名称",
+            "example": "RoleManage"
+          },
+          "route_path": {
+            "type": "string",
+            "description": "前端路由路径",
+            "example": "/console/permission/role"
+          },
+          "route_param": {
+            "type": "string",
+            "description": "路由参数串",
+            "example": ""
+          },
+          "component_path": {
+            "type": "string",
+            "description": "前端组件路径",
+            "example": "views/permission/role/index.vue"
+          },
+          "status": {
+            "type": "integer",
+            "description": "菜单状态：1=显示，0=隐藏",
+            "enum": [
+              0,
+              1
+            ],
+            "example": 1
+          },
+          "sort": {
+            "type": "integer",
+            "description": "排序值，越小越靠前",
+            "example": 1
+          },
+          "desc": {
+            "type": "string",
+            "description": "菜单描述",
+            "example": "角色权限配置页"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "创建时间",
+            "example": "2026-03-01T10:00:00+08:00"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "更新时间",
+            "example": "2026-03-01T10:00:00+08:00"
+          },
+          "children": {
+            "type": "array",
+            "description": "子菜单列表。达到 max_level 上限或没有子节点时，后端可能直接省略该字段。",
+            "items": {
+              "$ref": "#/components/schemas/MenuItem"
+            }
+          },
+          "apis": {
+            "type": "array",
+            "description": "菜单绑定的 API 列表，仅表示 menu_apis 关系。",
+            "items": {
+              "$ref": "#/components/schemas/APIItemSimple"
+            }
+          }
+        }
+      },
+      "APIItemSimple": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "API ID",
+            "example": 11
+          },
+          "path": {
+            "type": "string",
+            "description": "API 路由模板路径",
+            "example": "/system/role/assign_permission"
+          },
+          "method": {
+            "type": "string",
+            "description": "HTTP 方法",
+            "example": "POST"
+          }
+        }
+      },
+      "CapabilityGroupItem": {
+        "type": "object",
+        "properties": {
+          "group_code": {
+            "type": "string",
+            "description": "能力分组编码",
+            "example": "org_member_management"
+          },
+          "group_name": {
+            "type": "string",
+            "description": "能力分组名称",
+            "example": "成员管理"
+          },
+          "capabilities": {
+            "type": "array",
+            "description": "分组下 capability 列表",
+            "items": {
+              "$ref": "#/components/schemas/CapabilityItem"
+            }
+          }
+        }
+      },
+      "CapabilityItem": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "capability 唯一编码",
+            "example": "org.member.assign_role"
+          },
+          "name": {
+            "type": "string",
+            "description": "capability 名称",
+            "example": "分配成员角色"
+          },
+          "desc": {
+            "type": "string",
+            "description": "capability 描述",
+            "example": "允许调整组织成员在本组织下的角色"
+          },
+          "status": {
+            "type": "integer",
+            "description": "状态：1=启用，0=禁用",
+            "enum": [
+              0,
+              1
+            ],
+            "example": 1
+          }
+        }
+      },
+      "AuthResponseData": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "前端展示消息",
+            "example": "Invalid access token"
+          },
+          "reload": {
+            "type": "boolean",
+            "description": "是否建议前端重置登录态 / 触发刷新流程",
+            "example": true
+          }
+        }
+      },
+      "LegacyTokenErrorResponse": {
+        "type": "object",
+        "required": [
+          "code",
+          "data",
+          "error"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "旧版响应壳中的错误码",
+            "example": 11003
+          },
+          "data": {
+            "$ref": "#/components/schemas/AuthResponseData"
+          },
+          "error": {
+            "type": "string",
+            "description": "错误描述",
+            "example": "Invalid access token"
+          }
+        }
+      },
+      "LegacyErrorEnvelope": {
+        "type": "object",
+        "required": [
+          "code",
+          "error"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "旧版响应壳中的错误码",
+            "example": 11006
+          },
+          "data": {
+            "nullable": true,
+            "description": "旧版响应壳中的 data，权限中间件下常见为 {} 或错误对象序列化结果",
+            "example": {}
+          },
+          "error": {
+            "type": "string",
+            "description": "错误描述",
+            "example": "用户无权限访问API"
+          }
+        }
+      }
+    }
+  }
+}

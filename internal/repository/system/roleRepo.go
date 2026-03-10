@@ -375,9 +375,16 @@ func (r *roleRepository) ReplaceUserOrgRoles(
 			args = append(args, userID, orgID, roleID)
 		}
 
-		sql := "INSERT INTO user_org_roles (user_id, org_id, role_id) VALUES " + strings.Join(values, ",")
+		sql := "INSERT IGNORE INTO user_org_roles (user_id, org_id, role_id) VALUES " + strings.Join(values, ",")
 		return tx.Exec(sql, args...).Error
 	})
+}
+
+// DeleteUserOrgRoles 删除用户在组织下的全部角色
+func (r *roleRepository) DeleteUserOrgRoles(ctx context.Context, userID, orgID uint) error {
+	return r.db.WithContext(ctx).
+		Exec("DELETE FROM user_org_roles WHERE user_id = ? AND org_id = ?", userID, orgID).
+		Error
 }
 
 // GetUserRolesByOrg 获取用户组织中的角色

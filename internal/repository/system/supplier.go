@@ -11,9 +11,11 @@ type Supplier interface {
 	GetUserRepository() interfaces.UserRepository
 	GetJWTRepository() interfaces.JWTRepository
 	GetRoleRepository() interfaces.RoleRepository
+	GetCapabilityRepository() interfaces.CapabilityRepository
 	GetMenuRepository() interfaces.MenuRepository
 	GetAPIRepository() interfaces.APIRepository
 	GetOrgRepository() interfaces.OrgRepository
+	GetOrgMemberRepository() interfaces.OrgMemberRepository
 	GetLeetcodeUserDetailRepository() interfaces.LeetcodeUserDetailRepository
 	GetLuoguUserDetailRepository() interfaces.LuoguUserDetailRepository
 	GetLeetcodeQuestionBankRepository() interfaces.LeetcodeQuestionBankRepository
@@ -33,9 +35,11 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 	var userRepo interfaces.UserRepository
 	var jwtRepo interfaces.JWTRepository
 	var roleRepo interfaces.RoleRepository
+	var capabilityRepo interfaces.CapabilityRepository
 	var menuRepo interfaces.MenuRepository
 	var apiRepo interfaces.APIRepository
 	var orgRepo interfaces.OrgRepository
+	var orgMemberRepo interfaces.OrgMemberRepository
 	var leetcodeUserDetailRepo interfaces.LeetcodeUserDetailRepository
 	var luoguUserDetailRepo interfaces.LuoguUserDetailRepository
 	var leetcodeQuestionBankRepo interfaces.LeetcodeQuestionBankRepository
@@ -55,9 +59,11 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			userRepo = NewUserRepository(db)
 			jwtRepo = NewJwtRepository(db)
 			roleRepo = NewRoleRepository(db)
+			capabilityRepo = NewCapabilityRepository(db)
 			menuRepo = NewMenuRepository(db)
 			apiRepo = NewAPIRepository(db)
 			orgRepo = NewOrgRepository(db)
+			orgMemberRepo = NewOrgMemberRepository(db)
 			leetcodeUserDetailRepo = NewLeetcodeUserDetailRepository(db)
 			luoguUserDetailRepo = NewLuoguUserDetailRepository(db)
 			leetcodeQuestionBankRepo = NewLeetcodeQuestionBankRepository(db)
@@ -83,9 +89,11 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			userRepo = NewUserRepository(db)
 			jwtRepo = NewJwtRepository(db)
 			roleRepo = NewRoleRepository(db)
+			capabilityRepo = NewCapabilityRepository(db)
 			menuRepo = NewMenuRepository(db)
 			apiRepo = NewAPIRepository(db)
 			orgRepo = NewOrgRepository(db)
+			orgMemberRepo = NewOrgMemberRepository(db)
 			leetcodeUserDetailRepo = NewLeetcodeUserDetailRepository(db)
 			luoguUserDetailRepo = NewLuoguUserDetailRepository(db)
 			leetcodeQuestionBankRepo = NewLeetcodeQuestionBankRepository(db)
@@ -104,9 +112,11 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 		userRepository:                 userRepo,
 		jwtRepository:                  jwtRepo,
 		roleRepository:                 roleRepo,
+		capabilityRepository:           capabilityRepo,
 		menuRepository:                 menuRepo,
 		apiRepository:                  apiRepo,
 		orgRepository:                  orgRepo,
+		orgMemberRepository:            orgMemberRepo,
 		leetcodeUserDetailRepository:   leetcodeUserDetailRepo,
 		luoguUserDetailRepository:      luoguUserDetailRepo,
 		leetcodeQuestionBankRepository: leetcodeQuestionBankRepo,

@@ -118,6 +118,14 @@ func ImageOrphanCleanupTask() {
 	})
 }
 
+// DisabledUserCleanupTask 禁用账号清理任务（软删+匿名化）。
+func DisabledUserCleanupTask() {
+	runServiceTask("DisabledUserCleanupTask", func(ctx context.Context) error {
+		_, err := service.GroupApp.SystemServiceSupplier.GetUserSvc().CleanupDisabledUsers(ctx)
+		return err
+	})
+}
+
 // RegisterScheduledTasks 注册所有定时任务到 cron 调度器。
 func RegisterScheduledTasks(c *cron.Cron) error {
 	// Outbox 清理 — 每天一次
@@ -155,6 +163,16 @@ func RegisterScheduledTasks(c *cron.Cron) error {
 	}
 	if _, err := c.AddFunc(orphanCron, ImageOrphanCleanupTask); err != nil {
 		return fmt.Errorf("注册 ImageOrphanCleanupTask 失败: %w", err)
+	}
+
+	if global.Config.Task.DisabledUserCleanupEnabled {
+		disabledCron := strings.TrimSpace(global.Config.Task.DisabledUserCleanupCron)
+		if disabledCron == "" {
+			disabledCron = "@daily"
+		}
+		if _, err := c.AddFunc(disabledCron, DisabledUserCleanupTask); err != nil {
+			return fmt.Errorf("注册 DisabledUserCleanupTask 失败: %w", err)
+		}
 	}
 
 	rollupCron := global.Config.Observability.Metrics.RollupCron

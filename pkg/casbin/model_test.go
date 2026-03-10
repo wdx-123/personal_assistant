@@ -54,3 +54,47 @@ func TestModelSupportsThreePartPermissionChecks(t *testing.T) {
 		t.Fatal("expected mismatched action to be denied")
 	}
 }
+
+func TestModelSupportsCapabilityOperateChecks(t *testing.T) {
+	modelPath := filepath.Join("..", "..", "configs", "model.conf")
+	m, err := model.NewModelFromFile(modelPath)
+	if err != nil {
+		t.Fatalf("load model: %v", err)
+	}
+
+	enforcer, err := casbinlib.NewEnforcer(m)
+	if err != nil {
+		t.Fatalf("new enforcer: %v", err)
+	}
+
+	if _, err := enforcer.AddRoleForUser("85@7", "org_member_operator"); err != nil {
+		t.Fatalf("add role for user: %v", err)
+	}
+	if _, err := enforcer.AddPermissionForUser("org_member_operator", "org.member.kick", "operate"); err != nil {
+		t.Fatalf("add capability permission: %v", err)
+	}
+
+	ok, err := enforcer.Enforce("85@7", "org.member.kick", "operate")
+	if err != nil {
+		t.Fatalf("enforce capability permission: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected capability permission to be granted")
+	}
+
+	ok, err = enforcer.Enforce("85@8", "org.member.kick", "operate")
+	if err != nil {
+		t.Fatalf("enforce cross-org capability permission: %v", err)
+	}
+	if ok {
+		t.Fatal("expected cross-org capability permission to be denied")
+	}
+
+	ok, err = enforcer.Enforce("85@7", "org.member.kick", "access")
+	if err != nil {
+		t.Fatalf("enforce mismatched capability action: %v", err)
+	}
+	if ok {
+		t.Fatal("expected mismatched capability action to be denied")
+	}
+}

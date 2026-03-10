@@ -29,3 +29,24 @@ type UpdateOrgReq struct {
 type SetCurrentOrgReq struct {
 	OrgID uint `json:"org_id" binding:"required"` // 组织ID，必填
 }
+
+// JoinOrgByInviteReq 通过邀请码加入组织
+type JoinOrgByInviteReq struct {
+	InviteCode string `json:"invite_code" binding:"required,max=20"`
+}
+
+// LeaveOrgReq 主动退出组织
+type LeaveOrgReq struct {
+	OrgID  uint   `json:"org_id" binding:"required"`
+	Reason string `json:"reason" binding:"omitempty,max=200"`
+}
+
+// KickMemberReq 踢出成员
+type KickMemberReq struct {
+	Reason string `json:"reason" binding:"omitempty,max=200"`
+}
+
+// RecoverMemberReq 恢复成员
+type RecoverMemberReq struct {
+	Reason string `json:"reason" binding:"omitempty,max=200"`
+}

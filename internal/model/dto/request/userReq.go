@@ -2,12 +2,12 @@ package request
 
 // RegisterReq 注册
 type RegisterReq struct {
-	Username  string `json:"username" binding:"required,max=20"`
-	Password  string `json:"password" binding:"required,min=8,max=16"`
-	Phone     string `json:"phone" binding:"required,len=11"`
-	Captcha   string `json:"captcha" binding:"required,len=6"`
-	CaptchaID string `json:"captcha_id" binding:"required"`
-	OrgID     uint   `json:"org_id" binding:"required"`
+	Username   string `json:"username" binding:"required,max=20"`
+	Password   string `json:"password" binding:"required,min=8,max=16"`
+	Phone      string `json:"phone" binding:"required,len=11"`
+	Captcha    string `json:"captcha" binding:"required,len=6"`
+	CaptchaID  string `json:"captcha_id" binding:"required"`
+	InviteCode string `json:"invite_code" binding:"required,max=20"`
 }
 
 // LoginReq 登录
@@ -55,4 +55,15 @@ type AssignUserRoleReq struct {
 	UserID  uint   `json:"user_id" binding:"required"`
 	OrgID   uint   `json:"org_id" binding:"required"`
 	RoleIDs []uint `json:"role_ids" binding:"required"`
+}
+
+// DeactivateAccountReq 主动注销（等同禁用）
+type DeactivateAccountReq struct {
+	Reason string `json:"reason" binding:"omitempty,max=200"`
+}
+
+// AdminUpdateUserStatusReq 管理员启用/禁用账号
+type AdminUpdateUserStatusReq struct {
+	Status string `json:"status" binding:"required,oneof=active disabled"`
+	Reason string `json:"reason" binding:"omitempty,max=200"`
 }

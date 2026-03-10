@@ -1,0 +1,877 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "personal_assistant - 组织成员状态机与账号生命周期接口",
+    "version": "1.0.0",
+    "description": "覆盖以下接口：\n1. POST /system/org/join\n2. POST /system/org/leave\n3. DELETE /system/org/{id}/member/{userId}\n4. PUT /system/org/{id}/member/{userId}/recover\n5. POST /user/deactivate\n6. PUT /system/user/{id}/status\n\n统一说明：\n- 返回体为 BizResponse：code/success/message/data/timestamp。\n- 业务失败大多返回 HTTP 200，通过 code 判断；账号活跃态拦截会返回 HTTP 401。\n- 这 6 个接口均需要 JWT（Authorization: Bearer <token>）。\n- /system/* 的成员踢出、恢复、用户状态变更接口还会经过权限中间件与服务层权限校验。"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:9000",
+      "description": "本地开发环境（请按实际地址修改）"
+    }
+  ],
+  "tags": [
+    {
+      "name": "组织-成员状态机",
+      "description": "加入、退出、踢出、恢复成员"
+    },
+    {
+      "name": "用户-账号生命周期",
+      "description": "自助注销（禁用）与管理员启用/禁用"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/system/org/join": {
+      "post": {
+        "tags": [
+          "组织-成员状态机"
+        ],
+        "summary": "通过邀请码加入组织",
+        "description": "登录用户通过邀请码加入组织。\n\n规则：\n- 首次加入：创建成员关系并授予默认 member 角色。\n- left -> active：允许重新加入，重置为默认 member 角色，不恢复历史 admin 等角色。\n- removed：拒绝自助加入，需管理员恢复。",
+        "operationId": "JoinOrgByInviteCode",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinOrgByInviteReq"
+              },
+              "examples": {
+                "正常加入": {
+                  "value": {
+                    "invite_code": "ORG-6F3A9C2B1D"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功或业务失败（通过 code 判断）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseMessage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizResponseError"
+                    }
+                  ]
+                },
+                "examples": {
+                  "加入成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "加入成功",
+                      "data": null,
+                      "timestamp": 1770645001001
+                    }
+                  },
+                  "邀请码无效": {
+                    "value": {
+                      "code": 30007,
+                      "success": false,
+                      "message": "邀请码无效",
+                      "data": null,
+                      "timestamp": 1770645001002
+                    }
+                  },
+                  "成员已被移除": {
+                    "value": {
+                      "code": 30010,
+                      "success": false,
+                      "message": "成员已被移除，需管理员恢复",
+                      "data": null,
+                      "timestamp": 1770645001003
+                    }
+                  },
+                  "未登录-token缺失或过期": {
+                    "value": {
+                      "code": 11005,
+                      "success": false,
+                      "message": "Access token is required",
+                      "data": {
+                        "message": "Access token is required",
+                        "reload": true
+                      },
+                      "timestamp": 1770645001004
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败（例如账号被禁用）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseUnauthorized"
+                },
+                "example": {
+                  "code": 11000,
+                  "success": false,
+                  "message": "账号已禁用",
+                  "data": null,
+                  "timestamp": 1770645001005
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/org/leave": {
+      "post": {
+        "tags": [
+          "组织-成员状态机"
+        ],
+        "summary": "主动退出组织",
+        "description": "当前登录用户退出指定组织。\n\n行为：\n- active -> left。\n- 清理该组织下全部 user_org_roles。\n- 清理 Casbin 组织域角色。\n- 从该组织排行榜移除。\n\n限制：\n- 组织 owner 不能直接退出（需先移交）。\n- 全体成员内置组织不可退出。",
+        "operationId": "LeaveOrg",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LeaveOrgReq"
+              },
+              "examples": {
+                "退出组织": {
+                  "value": {
+                    "org_id": 9,
+                    "reason": "项目结束"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功或业务失败（通过 code 判断）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseMessage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizResponseError"
+                    }
+                  ]
+                },
+                "examples": {
+                  "退出成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "退出成功",
+                      "data": null,
+                      "timestamp": 1770645002001
+                    }
+                  },
+                  "不是组织成员": {
+                    "value": {
+                      "code": 30004,
+                      "success": false,
+                      "message": "您不是该组织成员",
+                      "data": null,
+                      "timestamp": 1770645002002
+                    }
+                  },
+                  "组织所有者不能退出": {
+                    "value": {
+                      "code": 30011,
+                      "success": false,
+                      "message": "组织所有者请先移交后再操作",
+                      "data": null,
+                      "timestamp": 1770645002003
+                    }
+                  },
+                  "内置组织不可退出": {
+                    "value": {
+                      "code": 30012,
+                      "success": false,
+                      "message": "系统内置组织不可退出",
+                      "data": null,
+                      "timestamp": 1770645002004
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败（例如账号被禁用）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseUnauthorized"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/org/{id}/member/{userId}": {
+      "delete": {
+        "tags": [
+          "组织-成员状态机"
+        ],
+        "summary": "踢出组织成员",
+        "description": "管理员/owner 踢出成员。\n\n行为：\n- active -> removed。\n- 清理该组织下全部 user_org_roles。\n- 清理 Casbin 组织域角色。\n- 从该组织排行榜移除。\n\n注意：\n- 不允许踢出组织 owner。\n- 内置组织不允许该操作。\n- 幂等：目标已 removed 时返回成功。",
+        "operationId": "KickMember",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "组织ID",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 9
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "description": "被踢成员用户ID",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 123
+          },
+          {
+            "name": "reason",
+            "in": "query",
+            "required": false,
+            "description": "踢出原因（当不传 JSON body 时可用）",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "example": "违反团队规范"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "description": "可选。若传入则使用 body.reason；若不传 body，可使用 query.reason。",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KickMemberReq"
+              },
+              "examples": {
+                "body传原因": {
+                  "value": {
+                    "reason": "违反团队规范"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功或业务失败（通过 code 判断）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseMessage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizResponseError"
+                    }
+                  ]
+                },
+                "examples": {
+                  "踢出成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "已踢出成员",
+                      "data": null,
+                      "timestamp": 1770645003001
+                    }
+                  },
+                  "权限不足": {
+                    "value": {
+                      "code": 11006,
+                      "success": false,
+                      "message": "权限不足",
+                      "data": null,
+                      "timestamp": 1770645003002
+                    }
+                  },
+                  "目标是组织所有者": {
+                    "value": {
+                      "code": 30011,
+                      "success": false,
+                      "message": "组织所有者请先移交后再操作",
+                      "data": null,
+                      "timestamp": 1770645003003
+                    }
+                  },
+                  "内置组织受保护": {
+                    "value": {
+                      "code": 30008,
+                      "success": false,
+                      "message": "系统内置组织不允许该操作",
+                      "data": null,
+                      "timestamp": 1770645003004
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败（例如账号被禁用）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseUnauthorized"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/org/{id}/member/{userId}/recover": {
+      "put": {
+        "tags": [
+          "组织-成员状态机"
+        ],
+        "summary": "恢复组织成员",
+        "description": "管理员/owner 恢复成员。\n\n规则：\n- removed/left -> active。\n- 若成员关系不存在，会创建 active 关系。\n- 恢复后仅授予默认 member 角色，不恢复历史 admin/自定义角色。",
+        "operationId": "RecoverMember",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "组织ID",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 9
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "description": "目标用户ID",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 123
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "即使无原因，也建议传 `{}`，否则后端参数绑定可能失败。",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoverMemberReq"
+              },
+              "examples": {
+                "恢复成员": {
+                  "value": {
+                    "reason": "申诉通过，重新加入"
+                  }
+                },
+                "不填原因": {
+                  "value": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功或业务失败（通过 code 判断）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseMessage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizResponseError"
+                    }
+                  ]
+                },
+                "examples": {
+                  "恢复成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "成员已恢复",
+                      "data": null,
+                      "timestamp": 1770645004001
+                    }
+                  },
+                  "权限不足": {
+                    "value": {
+                      "code": 11006,
+                      "success": false,
+                      "message": "权限不足",
+                      "data": null,
+                      "timestamp": 1770645004002
+                    }
+                  },
+                  "内置组织受保护": {
+                    "value": {
+                      "code": 30008,
+                      "success": false,
+                      "message": "系统内置组织不允许该操作",
+                      "data": null,
+                      "timestamp": 1770645004003
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败（例如账号被禁用）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseUnauthorized"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/user/deactivate": {
+      "post": {
+        "tags": [
+          "用户-账号生命周期"
+        ],
+        "summary": "自助注销账号（等同禁用）",
+        "description": "当前登录用户主动注销账号。\n\n行为：\n- users.status -> disabled。\n- 写入 disabled_at/disabled_by/disabled_reason。\n- 清理 refresh 会话。\n- 从排行榜移除。",
+        "operationId": "DeactivateAccount",
+        "requestBody": {
+          "required": true,
+          "description": "即使不填 reason，也建议传 `{}`，否则后端参数绑定可能失败。",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeactivateAccountReq"
+              },
+              "examples": {
+                "注销账号": {
+                  "value": {
+                    "reason": "不再使用该账号"
+                  }
+                },
+                "不填原因": {
+                  "value": {}
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功或业务失败（通过 code 判断）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseMessage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizResponseError"
+                    }
+                  ]
+                },
+                "examples": {
+                  "禁用成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "账号已禁用",
+                      "data": null,
+                      "timestamp": 1770645005001
+                    }
+                  },
+                  "用户不存在": {
+                    "value": {
+                      "code": 20001,
+                      "success": false,
+                      "message": "用户不存在",
+                      "data": null,
+                      "timestamp": 1770645005002
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败（例如账号已禁用）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseUnauthorized"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/system/user/{id}/status": {
+      "put": {
+        "tags": [
+          "用户-账号生命周期"
+        ],
+        "summary": "管理员启用/禁用账号",
+        "description": "管理员更新目标用户账号状态。\n\n可选状态：\n- active：启用账号\n- disabled：禁用账号\n\n行为：\n- 更新 users.status 及禁用相关元数据。\n- 禁用时立即移除 refresh 会话并从排行榜移除。",
+        "operationId": "UpdateUserStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "目标用户ID",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 123
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminUpdateUserStatusReq"
+              },
+              "examples": {
+                "禁用账号": {
+                  "value": {
+                    "status": "disabled",
+                    "reason": "违规封禁"
+                  }
+                },
+                "启用账号": {
+                  "value": {
+                    "status": "active",
+                    "reason": "申诉通过"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功或业务失败（通过 code 判断）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseMessage"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizResponseError"
+                    }
+                  ]
+                },
+                "examples": {
+                  "更新成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "用户状态更新成功",
+                      "data": null,
+                      "timestamp": 1770645006001
+                    }
+                  },
+                  "参数错误": {
+                    "value": {
+                      "code": 10001,
+                      "success": false,
+                      "message": "参数错误",
+                      "data": null,
+                      "timestamp": 1770645006002
+                    }
+                  },
+                  "用户不存在": {
+                    "value": {
+                      "code": 20001,
+                      "success": false,
+                      "message": "用户不存在",
+                      "data": null,
+                      "timestamp": 1770645006003
+                    }
+                  },
+                  "权限不足": {
+                    "value": {
+                      "code": 11006,
+                      "success": false,
+                      "message": "权限不足",
+                      "data": null,
+                      "timestamp": 1770645006004
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败（例如账号被禁用）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseUnauthorized"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "在 Authorization 头中传入：Bearer <token>"
+      }
+    },
+    "schemas": {
+      "JoinOrgByInviteReq": {
+        "type": "object",
+        "required": [
+          "invite_code"
+        ],
+        "properties": {
+          "invite_code": {
+            "type": "string",
+            "description": "组织邀请码（必填，最大长度 20）",
+            "maxLength": 20,
+            "example": "ORG-6F3A9C2B1D"
+          }
+        }
+      },
+      "LeaveOrgReq": {
+        "type": "object",
+        "required": [
+          "org_id"
+        ],
+        "properties": {
+          "org_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "description": "要退出的组织ID",
+            "example": 9
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "退出原因（可选）",
+            "example": "项目结束"
+          }
+        }
+      },
+      "KickMemberReq": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "踢出原因（可选）",
+            "example": "违反团队规范"
+          }
+        }
+      },
+      "RecoverMemberReq": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "恢复原因（可选）",
+            "example": "申诉通过，重新加入"
+          }
+        }
+      },
+      "DeactivateAccountReq": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "注销（禁用）原因（可选）",
+            "example": "不再使用该账号"
+          }
+        }
+      },
+      "AdminUpdateUserStatusReq": {
+        "type": "object",
+        "required": [
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "目标状态：active=启用，disabled=禁用",
+            "enum": [
+              "active",
+              "disabled"
+            ],
+            "example": "disabled"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "状态变更原因（可选）",
+            "example": "违规封禁"
+          }
+        }
+      },
+      "BizResponseMessage": {
+        "type": "object",
+        "required": [
+          "code",
+          "success",
+          "message",
+          "timestamp"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "业务码，0 表示成功",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "description": "是否成功",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "description": "业务消息",
+            "example": "操作成功"
+          },
+          "data": {
+            "nullable": true,
+            "description": "响应数据（该批接口通常为 null）",
+            "example": null
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "毫秒时间戳",
+            "example": 1770645001001
+          }
+        }
+      },
+      "BizResponseError": {
+        "type": "object",
+        "required": [
+          "code",
+          "success",
+          "message",
+          "timestamp"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "业务错误码（详见 pkg/errors/codes.go）",
+            "example": 10001
+          },
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "参数错误"
+          },
+          "data": {
+            "nullable": true,
+            "example": null
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1770645001002
+          }
+        }
+      },
+      "BizResponseUnauthorized": {
+        "type": "object",
+        "required": [
+          "code",
+          "success",
+          "message",
+          "timestamp"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 11000
+          },
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "账号已禁用"
+          },
+          "data": {
+            "nullable": true,
+            "example": null
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1770645001005
+          }
+        }
+      }
+    }
+  }
+}

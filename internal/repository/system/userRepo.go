@@ -3,7 +3,11 @@ package system
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
+	"time"
 
+	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository/interfaces"
@@ -124,6 +128,24 @@ func (r *UserGormRepository) GetByIDs(
 	return users, nil
 }
 
+// GetByIDsActive 批量获取活跃用户
+func (r *UserGormRepository) GetByIDsActive(
+	ctx context.Context,
+	ids []uint,
+) ([]*entity.User, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var users []*entity.User
+	err := r.db.WithContext(ctx).
+		Where("id IN ? AND status = ? AND freeze = ?", ids, consts.UserStatusActive, false).
+		Find(&users).Error
+	if err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
 // Create 创建用户
 func (r *UserGormRepository) Create(
 	ctx context.Context,
@@ -193,8 +215,12 @@ func (r *UserGormRepository) GetUserListWithFilter(
 
 	// 组织过滤
 	if req.OrgID > 0 {
-		// 过滤属于该组织的用户
-		db = db.Where("id IN (SELECT user_id FROM user_org_roles WHERE org_id = ?)", req.OrgID)
+		// 过滤属于该组织且为 active 成员的用户
+		db = db.Where(
+			"id IN (SELECT user_id FROM org_members WHERE org_id = ? AND member_status = ?)",
+			req.OrgID,
+			consts.OrgMemberStatusActive,
+		)
 	}
 
 	// 统计总数
@@ -267,7 +293,7 @@ func (r *UserGormRepository) ExistsByPhone(
 func (r *UserGormRepository) GetActiveUsers(ctx context.Context) ([]*entity.User, error) {
 	var users []*entity.User
 	err := r.db.WithContext(ctx).
-		Where("freeze = ?", false).
+		Where("freeze = ? AND status = ?", false, consts.UserStatusActive).
 		Find(&users).
 		Error
 	return users, err
@@ -293,7 +319,7 @@ func (r *UserGormRepository) ValidateUser(
 	}
 
 	// 检查用户是否被冻结
-	if user.Freeze {
+	if user.Freeze || user.Status != consts.UserStatusActive {
 		return nil, errors.New("用户已被冻结")
 	}
 
@@ -335,4 +361,85 @@ func (r *UserGormRepository) UpdateCurrentOrgID(
 		Where("id = ?", userID).
 		Update("current_org_id", orgID).
 		Error
+}
+
+// ClearCurrentOrgByOrgID 将当前组织为指定 org 的用户置空
+func (r *UserGormRepository) ClearCurrentOrgByOrgID(ctx context.Context, orgID uint) error {
+	return r.db.WithContext(ctx).
+		Model(&entity.User{}).
+		Where("current_org_id = ?", orgID).
+		Update("current_org_id", nil).
+		Error
+}
+
+// UpdateUserStatus 更新账号状态及禁用元数据
+func (r *UserGormRepository) UpdateUserStatus(
+	ctx context.Context,
+	userID uint,
+	status consts.UserStatus,
+	disabledBy *uint,
+	disabledReason string,
+) error {
+	updates := map[string]any{
+		"status": status,
+		"freeze": status != consts.UserStatusActive,
+	}
+
+	if status == consts.UserStatusDisabled {
+		now := time.Now()
+		updates["disabled_at"] = now
+		updates["disabled_by"] = disabledBy
+		updates["disabled_reason"] = strings.TrimSpace(disabledReason)
+	} else {
+		updates["disabled_at"] = nil
+		updates["disabled_by"] = nil
+		updates["disabled_reason"] = ""
+	}
+
+	return r.db.WithContext(ctx).
+		Model(&entity.User{}).
+		Where("id = ?", userID).
+		Updates(updates).Error
+}
+
+// ListDisabledUsersBefore 分页查询到期可清理的禁用用户
+func (r *UserGormRepository) ListDisabledUsersBefore(
+	ctx context.Context,
+	before time.Time,
+	limit int,
+) ([]*entity.User, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	var users []*entity.User
+	err := r.db.WithContext(ctx).
+		Where("status = ? AND disabled_at IS NOT NULL AND disabled_at < ?", consts.UserStatusDisabled, before).
+		Order("disabled_at ASC").
+		Limit(limit).
+		Find(&users).Error
+	if err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
+// SoftDeleteAndAnonymize 软删除并匿名化账号
+func (r *UserGormRepository) SoftDeleteAndAnonymize(ctx context.Context, userID uint) error {
+	now := time.Now()
+	anon := fmt.Sprintf("d%x%x", userID, now.Unix()%0xFFFFFF)
+	return r.db.WithContext(ctx).
+		Model(&entity.User{}).
+		Where("id = ?", userID).
+		Updates(map[string]any{
+			"status":         consts.UserStatusDeletedSoft,
+			"freeze":         true,
+			"username":       anon,
+			"phone":          anon,
+			"email":          "",
+			"avatar":         "",
+			"address":        "",
+			"signature":      "",
+			"current_org_id": nil,
+			"deleted_at":     now,
+		}).Error
 }

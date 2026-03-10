@@ -2,8 +2,10 @@ package system
 
 import (
 	"context"
+	"errors"
 	"strings"
 
+	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository/interfaces"
 
@@ -78,6 +80,21 @@ func (r *orgRepository) GetByCode(ctx context.Context, code string) (*entity.Org
 	var org entity.Org
 	err := r.db.WithContext(ctx).Where("code = ?", code).First(&org).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &org, nil
+}
+
+func (r *orgRepository) GetByBuiltinKey(ctx context.Context, key string) (*entity.Org, error) {
+	var org entity.Org
+	err := r.db.WithContext(ctx).Where("builtin_key = ?", key).First(&org).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
 		return nil, err
 	}
 	return &org, nil
@@ -100,21 +117,20 @@ func (r *orgRepository) RemoveAllMembers(ctx context.Context, orgID uint) error 
 		Error
 }
 
-// CountMembersByOrgID 查询组织下的成员数（user_org_roles 表去重 user_id）
+// CountMembersByOrgID 查询组织下的活跃成员数
 func (r *orgRepository) CountMembersByOrgID(
 	ctx context.Context,
 	orgID uint,
 ) (int64, error) {
 	var count int64
 	err := r.db.WithContext(ctx).
-		Table("user_org_roles").
-		Where("org_id = ?", orgID).
-		Distinct("user_id").
+		Model(&entity.OrgMember{}).
+		Where("org_id = ? AND member_status = ?", orgID, consts.OrgMemberStatusActive).
 		Count(&count).Error
 	return count, err
 }
 
-// GetOrgsByUserID 获取用户所属的组织列表（通过 user_org_roles 关联查询）
+// GetOrgsByUserID 获取用户所属的活跃组织列表
 func (r *orgRepository) GetOrgsByUserID(
 	ctx context.Context,
 	userID uint,
@@ -122,8 +138,12 @@ func (r *orgRepository) GetOrgsByUserID(
 	var orgs []*entity.Org
 	err := r.db.WithContext(ctx).
 		Table("orgs").
-		Joins("JOIN user_org_roles ON orgs.id = user_org_roles.org_id").
-		Where("user_org_roles.user_id = ? AND orgs.deleted_at IS NULL", userID).
+		Joins("JOIN org_members ON orgs.id = org_members.org_id").
+		Where(
+			"org_members.user_id = ? AND org_members.member_status = ? AND orgs.deleted_at IS NULL",
+			userID,
+			consts.OrgMemberStatusActive,
+		).
 		Group("orgs.id").
 		Find(&orgs).Error
 	return orgs, err
@@ -160,8 +180,8 @@ func (r *orgRepository) IsUserInOrg(
 ) (bool, error) {
 	var count int64
 	err := r.db.WithContext(ctx).
-		Table("user_org_roles").
-		Where("user_id = ? AND org_id = ?", userID, orgID).
+		Model(&entity.OrgMember{}).
+		Where("user_id = ? AND org_id = ? AND member_status = ?", userID, orgID, consts.OrgMemberStatusActive).
 		Count(&count).Error
 	return count > 0, err
 }

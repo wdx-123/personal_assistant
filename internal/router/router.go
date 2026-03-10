@@ -55,6 +55,7 @@ func InitRouter() *gin.Engine {
 	SystemGroup := Router.Group("")
 	permissionMW := middleware.NewPermissionMiddleware(service.GroupApp) // 获取实例
 	SystemGroup.Use(middleware.JWTAuth())                                // JWT认证
+	SystemGroup.Use(middleware.ActiveUserMW())                           // 账号活跃态校验
 	SystemGroup.Use(permissionMW.CheckPermission())                      // 权限中间件
 	{
 		// 路由管理(api管理)
@@ -65,12 +66,15 @@ func InitRouter() *gin.Engine {
 		systemRouter.InitRoleRouter(SystemGroup)
 		// 组织管理
 		systemRouter.InitOrgAuthRouter(SystemGroup)
+		// 用户管理
+		systemRouter.InitUserAuthRouter(SystemGroup)
 		// 观测查询
 		systemRouter.InitObservabilityRouter(SystemGroup)
 	}
 	// 业务路由组 - 需要JWT，但不需严格的权限控制
 	BusinessGroup := Router.Group("")
 	BusinessGroup.Use(middleware.JWTAuth())
+	BusinessGroup.Use(middleware.ActiveUserMW())
 	uploadRateLimitMW := middleware.UploadRateLimitMiddleware(global.UploadGlobalLimiter, global.UploadUserLimiter)
 	{
 		// OJ 相关路由
@@ -79,6 +83,8 @@ func InitRouter() *gin.Engine {
 		systemRouter.InitImageRouter(BusinessGroup, uploadRateLimitMW)
 		// 组织路由：登录即可切换组织、查看我的组织
 		systemRouter.InitOrgBusinessRouter(BusinessGroup)
+		// 用户业务路由：登录即可维护个人资料、登出
+		systemRouter.InitUserBusinessRouter(BusinessGroup)
 	}
 	return Router
 }

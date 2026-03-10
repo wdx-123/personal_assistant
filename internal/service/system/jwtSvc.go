@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"personal_assistant/global"
+	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
@@ -79,11 +80,11 @@ func (j *JWTService) GetUserFromJWT(ctx context.Context, token string) (user *en
 	if err != nil {
 		return nil, erro.ClassifyJWTError(err)
 	}
-	if user.Freeze {
+	if user.Freeze || user.Status != consts.UserStatusActive {
 		return user, &erro.JWTError{
-			Code:    erro.CodeUserFrozen,
-			Message: "用户已被冻结",
-			Err:     errors.New("user has been frozen"),
+			Code:    erro.CodeUserDisabled,
+			Message: "用户已被禁用",
+			Err:     errors.New("user has been disabled"),
 		}
 	}
 	return user, nil
@@ -121,11 +122,11 @@ func (j *JWTService) IssueLoginTokens(
 	ctx context.Context,
 	user entity.User,
 ) (*response.LoginResponse, string, int64, *erro.JWTError) {
-	if user.Freeze {
+	if user.Freeze || user.Status != consts.UserStatusActive {
 		return nil, "", 0, &erro.JWTError{
-			Code:    erro.CodeUserFrozen,
-			Message: "用户已被冻结",
-			Err:     errors.New("user frozen"),
+			Code:    erro.CodeUserDisabled,
+			Message: "用户已被禁用",
+			Err:     errors.New("user disabled"),
 		}
 	}
 

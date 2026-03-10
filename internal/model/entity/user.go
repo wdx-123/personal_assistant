@@ -1,6 +1,8 @@
 package entity
 
 import (
+	"time"
+
 	"personal_assistant/internal/model/consts"
 
 	"github.com/gofrs/uuid"
@@ -19,9 +21,14 @@ type User struct {
 	AvatarID *uint     `json:"avatar_id,omitempty" gorm:"index;comment:'用户头像图片ID（可空）'"`      // 用户头像图片ID，空表示未绑定站内图片
 	Address  string    `json:"address" gorm:"type:varchar(200);default:'';comment:'用户地址信息'"` // 用户的地理位置或地址信息
 	// 用户的个性签名或简介
-	Signature string          `json:"signature" gorm:"type:varchar(500);default:'签名是空白的，这位用户似乎比较低调。';comment:'用户个性签名'"`
-	Register  consts.Register `json:"register" gorm:"type:tinyint;not null;default:1;comment:'注册来源'"`           // 用户注册来源（邮箱、第三方等）
-	Freeze    bool            `json:"freeze" gorm:"type:boolean;not null;default:false;index;comment:'用户冻结状态'"` // 用户账户是否被冻结（禁用）
+	Signature string            `json:"signature" gorm:"type:varchar(500);default:'签名是空白的，这位用户似乎比较低调。';comment:'用户个性签名'"`
+	Register  consts.Register   `json:"register" gorm:"type:tinyint;not null;default:1;comment:'注册来源'"`           // 用户注册来源（邮箱、第三方等）
+	Freeze    bool              `json:"freeze" gorm:"type:boolean;not null;default:false;index;comment:'用户冻结状态'"` // 用户账户是否被冻结（禁用）
+	Status    consts.UserStatus `json:"status" gorm:"type:tinyint;not null;default:1;index;comment:'账号状态：1 active,2 disabled,3 deleted_soft'"`
+
+	DisabledAt     *time.Time `json:"disabled_at,omitempty" gorm:"type:datetime;comment:'禁用时间'"`
+	DisabledBy     *uint      `json:"disabled_by,omitempty" gorm:"index;comment:'禁用操作者ID'"`
+	DisabledReason string     `json:"disabled_reason" gorm:"type:varchar(200);default:'';comment:'禁用原因'"`
 
 	LeetcodeDetails []LeetcodeUserDetail `json:"leetcode_details,omitempty" gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 	LuoguDetails    []LuoguUserDetail    `json:"luogu_details,omitempty" gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`

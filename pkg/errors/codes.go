@@ -40,32 +40,39 @@ const (
 
 	// ==================== 用户模块 2xxxx ====================
 
-	CodeUserNotFound      BizCode = 20001 // 用户不存在
-	CodeUserAlreadyExists BizCode = 20002 // 用户已存在
-	CodePasswordError     BizCode = 20003 // 密码错误
-	CodeUserFrozen        BizCode = 20004 // 用户已被冻结
-	CodeUserDisabled      BizCode = 20005 // 用户已被禁用
-	CodePhoneAlreadyUsed  BizCode = 20006 // 手机号已被使用
-	CodeEmailAlreadyUsed  BizCode = 20007 // 邮箱已被使用
-	CodeCaptchaError      BizCode = 20008 // 验证码错误
-	CodeCaptchaExpired    BizCode = 20009 // 验证码已过期
-	CodeEmailSendFailed   BizCode = 20010 // 邮件发送失败
+	CodeUserNotFound       BizCode = 20001 // 用户不存在
+	CodeUserAlreadyExists  BizCode = 20002 // 用户已存在
+	CodePasswordError      BizCode = 20003 // 密码错误
+	CodeUserFrozen         BizCode = 20004 // 用户已被冻结
+	CodeUserDisabled       BizCode = 20005 // 用户已被禁用
+	CodePhoneAlreadyUsed   BizCode = 20006 // 手机号已被使用
+	CodeEmailAlreadyUsed   BizCode = 20007 // 邮箱已被使用
+	CodeCaptchaError       BizCode = 20008 // 验证码错误
+	CodeCaptchaExpired     BizCode = 20009 // 验证码已过期
+	CodeEmailSendFailed    BizCode = 20010 // 邮件发送失败
+	CodeUserStatusConflict BizCode = 20011 // 用户状态冲突
 
 	// ==================== 组织与权限模块 3xxxx ====================
 
-	CodeOrgNotFound       BizCode = 30001 // 组织不存在
-	CodeOrgAlreadyExists  BizCode = 30002 // 组织已存在
-	CodeOrgNameDuplicate  BizCode = 30003 // 组织名称重复
-	CodeNotOrgMember      BizCode = 30004 // 非组织成员
-	CodeOrgHasMembers     BizCode = 30005 // 组织下有成员，无法删除
-	CodeOrgOwnerOnly      BizCode = 30006 // 仅组织所有者可操作
-	CodeRoleNotFound      BizCode = 30101 // 角色不存在
-	CodeRoleAlreadyExists BizCode = 30102 // 角色已存在
-	CodeMenuNotFound      BizCode = 30201 // 菜单不存在
-	CodeMenuCodeDuplicate BizCode = 30202 // 菜单code重复
-	CodeMenuHasChildren   BizCode = 30203 // 菜单存在子菜单，无法删除
-	CodeAPINotFound       BizCode = 30301 // API不存在
-	CodeAPIAlreadyExists  BizCode = 30302 // API已存在（path+method重复）
+	CodeOrgNotFound              BizCode = 30001 // 组织不存在
+	CodeOrgAlreadyExists         BizCode = 30002 // 组织已存在
+	CodeOrgNameDuplicate         BizCode = 30003 // 组织名称重复
+	CodeNotOrgMember             BizCode = 30004 // 非组织成员
+	CodeOrgHasMembers            BizCode = 30005 // 组织下有成员，无法删除
+	CodeOrgOwnerOnly             BizCode = 30006 // 仅组织所有者可操作
+	CodeInviteCodeInvalid        BizCode = 30007 // 邀请码无效
+	CodeOrgBuiltinProtected      BizCode = 30008 // 系统内置组织受保护
+	CodeOrgMemberStatusConflict  BizCode = 30009 // 成员状态冲突
+	CodeOrgMemberRemoved         BizCode = 30010 // 成员已被移除
+	CodeOrgOwnerTransferRequired BizCode = 30011 // 组织所有者需先移交
+	CodeOrgCannotLeaveBuiltin    BizCode = 30012 // 内置组织不可退出
+	CodeRoleNotFound             BizCode = 30101 // 角色不存在
+	CodeRoleAlreadyExists        BizCode = 30102 // 角色已存在
+	CodeMenuNotFound             BizCode = 30201 // 菜单不存在
+	CodeMenuCodeDuplicate        BizCode = 30202 // 菜单code重复
+	CodeMenuHasChildren          BizCode = 30203 // 菜单存在子菜单，无法删除
+	CodeAPINotFound              BizCode = 30301 // API不存在
+	CodeAPIAlreadyExists         BizCode = 30302 // API已存在（path+method重复）
 
 	// ==================== OJ模块 4xxxx ====================
 
@@ -102,31 +109,38 @@ var codeMessages = map[BizCode]string{
 	CodePermissionDenied: "权限不足",
 
 	// 用户模块
-	CodeUserNotFound:      "用户不存在",
-	CodeUserAlreadyExists: "用户已存在",
-	CodePasswordError:     "用户名或密码错误",
-	CodeUserFrozen:        "用户已被冻结",
-	CodeUserDisabled:      "用户已被禁用",
-	CodePhoneAlreadyUsed:  "手机号已被使用",
-	CodeEmailAlreadyUsed:  "邮箱已被使用",
-	CodeCaptchaError:      "验证码错误",
-	CodeCaptchaExpired:    "验证码已过期",
-	CodeEmailSendFailed:   "邮件发送失败",
+	CodeUserNotFound:       "用户不存在",
+	CodeUserAlreadyExists:  "用户已存在",
+	CodePasswordError:      "用户名或密码错误",
+	CodeUserFrozen:         "用户已被冻结",
+	CodeUserDisabled:       "用户已被禁用",
+	CodePhoneAlreadyUsed:   "手机号已被使用",
+	CodeEmailAlreadyUsed:   "邮箱已被使用",
+	CodeCaptchaError:       "验证码错误",
+	CodeCaptchaExpired:     "验证码已过期",
+	CodeEmailSendFailed:    "邮件发送失败",
+	CodeUserStatusConflict: "账号状态不允许该操作",
 
 	// 组织与权限
-	CodeOrgNotFound:       "组织不存在",
-	CodeOrgAlreadyExists:  "组织已存在",
-	CodeOrgNameDuplicate:  "组织名称已存在",
-	CodeNotOrgMember:      "您不是该组织成员",
-	CodeOrgHasMembers:     "组织下还有成员，无法删除",
-	CodeOrgOwnerOnly:      "仅组织所有者可操作",
-	CodeRoleNotFound:      "角色不存在",
-	CodeRoleAlreadyExists: "角色已存在",
-	CodeMenuNotFound:      "菜单不存在",
-	CodeMenuCodeDuplicate: "菜单权限标识已存在",
-	CodeMenuHasChildren:   "该菜单下存在子菜单，无法删除",
-	CodeAPINotFound:       "API不存在",
-	CodeAPIAlreadyExists:  "API已存在（路径与方法组合重复）",
+	CodeOrgNotFound:              "组织不存在",
+	CodeOrgAlreadyExists:         "组织已存在",
+	CodeOrgNameDuplicate:         "组织名称已存在",
+	CodeNotOrgMember:             "您不是该组织成员",
+	CodeOrgHasMembers:            "组织下还有成员，无法删除",
+	CodeOrgOwnerOnly:             "仅组织所有者可操作",
+	CodeInviteCodeInvalid:        "邀请码无效",
+	CodeOrgBuiltinProtected:      "系统内置组织不允许该操作",
+	CodeOrgMemberStatusConflict:  "成员状态冲突",
+	CodeOrgMemberRemoved:         "成员已被移除，需管理员恢复",
+	CodeOrgOwnerTransferRequired: "组织所有者请先移交后再操作",
+	CodeOrgCannotLeaveBuiltin:    "系统内置组织不可退出",
+	CodeRoleNotFound:             "角色不存在",
+	CodeRoleAlreadyExists:        "角色已存在",
+	CodeMenuNotFound:             "菜单不存在",
+	CodeMenuCodeDuplicate:        "菜单权限标识已存在",
+	CodeMenuHasChildren:          "该菜单下存在子菜单，无法删除",
+	CodeAPINotFound:              "API不存在",
+	CodeAPIAlreadyExists:         "API已存在（路径与方法组合重复）",
 
 	// OJ模块
 	CodeOJAccountNotBound:   "OJ账号未绑定",

@@ -121,10 +121,13 @@ go run cmd/main.go --sql-import .\backup.sql
 - `POST /base/sendEmailVerificationCode`
 - `POST /user/register`
 - `POST /user/login`
-- `POST /user/logout`
 - `POST /refreshToken`
 
 - 业务接口（需 JWT）
+- `POST /user/logout`
+- `PUT /user/profile`
+- `PUT /user/phone`
+- `PUT /user/password`
 - `POST /oj/bind`
 - `POST /oj/ranking_list`
 - `POST /oj/stats`
@@ -139,6 +142,10 @@ go run cmd/main.go --sql-import .\backup.sql
 - `/system/menu/*`
 - `/system/role/*`
 - `/system/org/*`
+- `/system/user/list`
+- `/system/user/{id}`
+- `/system/user/{id}/roles`
+- `/system/user/assign_role`
 
 ## 认证说明
 
@@ -163,4 +170,3 @@ go run cmd/main.go --sql-import .\backup.sql
 ## License
 
 当前仓库未提供 `LICENSE` 文件。
-

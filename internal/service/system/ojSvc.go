@@ -14,6 +14,7 @@ import (
 	lc "personal_assistant/internal/infrastructure/leetcode"
 	lg "personal_assistant/internal/infrastructure/luogu"
 	"personal_assistant/internal/infrastructure/outbox"
+	"personal_assistant/internal/model/consts"
 	eventdto "personal_assistant/internal/model/dto/event"
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
@@ -273,6 +274,11 @@ func (s *OJService) syncLuoguUsersWithRateLimit(
 	ctx context.Context,
 	users []*entity.LuoguUserDetail,
 ) error {
+	activeUsers, err := s.buildActiveUserSetFromLuoguDetails(ctx, users)
+	if err != nil {
+		return err
+	}
+
 	intervalSeconds := global.Config.Task.LuoguSyncUserIntervalSeconds
 	if intervalSeconds <= 0 {
 		intervalSeconds = 10
@@ -281,6 +287,9 @@ func (s *OJService) syncLuoguUsersWithRateLimit(
 	defer ticker.Stop()
 
 	for _, u := range users {
+		if u == nil || !activeUsers[u.UserID] {
+			continue
+		}
 		if err := s.waitTickerOrCancel(ctx, ticker); err != nil {
 			global.Log.Info("sync luogu users canceled", zap.Error(err))
 			return err
@@ -310,6 +319,11 @@ func (s *OJService) syncLeetcodeUsersWithRateLimit( // 带限频的力扣用户�
 	ctx context.Context, // 请求上下文
 	users []*entity.LeetcodeUserDetail, // 待同步用户列表
 ) error {
+	activeUsers, err := s.buildActiveUserSetFromLeetcodeDetails(ctx, users)
+	if err != nil {
+		return err
+	}
+
 	intervalSeconds := global.Config.Task.LeetcodeSyncUserIntervalSeconds // 读取用户间隔配置
 	if intervalSeconds <= 0 {                                             // 兜底默认值
 		intervalSeconds = 10 // 默认 10 秒
@@ -318,7 +332,7 @@ func (s *OJService) syncLeetcodeUsersWithRateLimit( // 带限频的力扣用户�
 	defer ticker.Stop()                                                    // 释放定时器资源
 
 	for _, u := range users { // 遍历用户列表
-		if u == nil { // 跳过空指针用户
+		if u == nil || !activeUsers[u.UserID] { // 跳过空指针和禁用用户
 			continue // 继续下一位用户
 		}
 		if err := s.waitTickerOrCancel(ctx, ticker); err != nil { // 等待节流或取消
@@ -355,6 +369,49 @@ func (s *OJService) waitTickerOrCancel(ctx context.Context, ticker *time.Ticker)
 	case <-ticker.C:
 		return nil
 	}
+}
+
+func (s *OJService) buildActiveUserSetFromLuoguDetails(
+	ctx context.Context,
+	details []*entity.LuoguUserDetail,
+) (map[uint]bool, error) {
+	userIDs := make([]uint, 0, len(details))
+	for _, item := range details {
+		if item != nil && item.UserID > 0 {
+			userIDs = append(userIDs, item.UserID)
+		}
+	}
+	return s.buildActiveUserSet(ctx, userIDs)
+}
+
+func (s *OJService) buildActiveUserSetFromLeetcodeDetails(
+	ctx context.Context,
+	details []*entity.LeetcodeUserDetail,
+) (map[uint]bool, error) {
+	userIDs := make([]uint, 0, len(details))
+	for _, item := range details {
+		if item != nil && item.UserID > 0 {
+			userIDs = append(userIDs, item.UserID)
+		}
+	}
+	return s.buildActiveUserSet(ctx, userIDs)
+}
+
+func (s *OJService) buildActiveUserSet(ctx context.Context, userIDs []uint) (map[uint]bool, error) {
+	set := make(map[uint]bool)
+	if len(userIDs) == 0 {
+		return set, nil
+	}
+	users, err := s.userRepo.GetByIDsActive(ctx, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, u := range users {
+		if u != nil {
+			set[u.ID] = true
+		}
+	}
+	return set, nil
 }
 
 func (s *OJService) syncSingleLeetcodeUser( // 单用户力扣同步
@@ -778,6 +835,20 @@ func (s *OJService) updateRankingCache(
 	if user == nil || user.CurrentOrgID == nil || *user.CurrentOrgID == 0 {
 		return nil
 	}
+	if user.Freeze || user.Status != consts.UserStatusActive {
+		member := strconv.FormatUint(uint64(userID), 10)
+		key := rediskey.RankingZSetKey(*user.CurrentOrgID, platform)
+		return global.Redis.ZRem(ctx, key, member).Err()
+	}
+	inOrg, err := s.orgRepo.IsUserInOrg(ctx, userID, *user.CurrentOrgID)
+	if err != nil {
+		return err
+	}
+	if !inOrg {
+		member := strconv.FormatUint(uint64(userID), 10)
+		key := rediskey.RankingZSetKey(*user.CurrentOrgID, platform)
+		return global.Redis.ZRem(ctx, key, member).Err()
+	}
 	key := rediskey.RankingZSetKey(*user.CurrentOrgID, platform)
 	member := strconv.FormatUint(uint64(userID), 10)
 	score := float64(totalPassed)
@@ -960,6 +1031,16 @@ func (s *OJService) getRankingKey(
 	if user == nil || user.CurrentOrgID == nil || *user.CurrentOrgID == 0 {
 		return "", errors.New("user organization not found")
 	}
+	if user.Freeze || user.Status != consts.UserStatusActive {
+		return "", errors.New("user is disabled")
+	}
+	inOrg, err := s.orgRepo.IsUserInOrg(ctx, userID, *user.CurrentOrgID)
+	if err != nil {
+		return "", err
+	}
+	if !inOrg {
+		return "", errors.New("user organization not active")
+	}
 	return rediskey.RankingZSetKey(*user.CurrentOrgID, platform), nil
 }
 
@@ -1014,7 +1095,7 @@ func (s *OJService) loadUserMap(
 	if len(userIDs) == 0 {
 		return userMap, nil
 	}
-	users, err := s.userRepo.GetByIDs(ctx, userIDs)
+	users, err := s.userRepo.GetByIDsActive(ctx, userIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -1071,11 +1152,15 @@ func buildRankingList(
 	leetcodeMap map[uint]*entity.LeetcodeUserDetail,
 ) []*resp.OJRankingListItem {
 	list := make([]*resp.OJRankingListItem, 0, len(entries))
-	for idx, entry := range entries {
+	for _, entry := range entries {
 		uid := entry.UserID
 		score := entry.Score
 		realName := ""
 		avatar := ""
+		userInfo := userMap[uid]
+		if userInfo == nil {
+			continue
+		}
 		if platform == "luogu" {
 			if detail := luoguMap[uid]; detail != nil {
 				avatar = detail.UserAvatar
@@ -1085,14 +1170,12 @@ func buildRankingList(
 				avatar = detail.UserAvatar
 			}
 		}
-		if u := userMap[uid]; u != nil {
-			realName = u.Username
-			if avatar == "" {
-				avatar = u.Avatar
-			}
+		realName = userInfo.Username
+		if avatar == "" {
+			avatar = userInfo.Avatar
 		}
 		item := &resp.OJRankingListItem{
-			Rank:        start + idx + 1,
+			Rank:        start + len(list) + 1,
 			UserID:      uid,
 			RealName:    realName,
 			Avatar:      avatar,

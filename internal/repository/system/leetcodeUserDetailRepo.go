@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository/interfaces"
 
@@ -57,7 +58,14 @@ func (r *leetcodeUserDetailRepository) ListByOrgID(
 	err := r.db.WithContext(ctx).
 		Table("leetcode_user_details").
 		Joins("JOIN users ON users.id = leetcode_user_details.user_id").
-		Where("users.current_org_id = ?", orgID).
+		Joins("JOIN org_members ON org_members.user_id = users.id AND org_members.org_id = ?", orgID).
+		Where(
+			"users.current_org_id = ? AND users.status = ? AND users.freeze = ? AND org_members.member_status = ?",
+			orgID,
+			consts.UserStatusActive,
+			false,
+			consts.OrgMemberStatusActive,
+		).
 		Select("leetcode_user_details.*").
 		Find(&details).Error
 	if err != nil {

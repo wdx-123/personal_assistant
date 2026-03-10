@@ -28,18 +28,12 @@ func (r *RoleRouter) InitRoleRouter(router *gin.RouterGroup) {
 
 		// 合并分配角色权限（菜单 + 直绑API）
 		roleGroup.POST("assign_permission", roleCtrl.AssignPermissions)
-		// 分配菜单权限（需在:id前注册，避免路由冲突）
-		roleGroup.POST("assign_menu", roleCtrl.AssignMenus)
-		// 分配角色API权限（直绑，全量替换）
-		roleGroup.POST("assign_api", roleCtrl.AssignAPIs)
 
 		// CRUD接口
 		roleGroup.POST("", roleCtrl.CreateRole)
 		roleGroup.PUT(":id", roleCtrl.UpdateRole)
 		roleGroup.DELETE(":id", roleCtrl.DeleteRole)
 
-		// 获取角色菜单权限
-		roleGroup.GET(":id/menus", roleCtrl.GetRoleMenuIDs)
 		// 获取角色菜单/API映射（支持可选max_level层级裁剪）
 		roleGroup.GET(":id/menu_api_map", roleCtrl.GetRoleMenuAPIMap)
 	}

@@ -3,9 +3,12 @@ package system
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 
 	"personal_assistant/global"
 	"personal_assistant/internal/model/consts"
+	"personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository"
 	"personal_assistant/pkg/casbin"
@@ -52,6 +55,10 @@ func (p *PermissionService) SyncAllPermissionsToCasbin(ctx context.Context) erro
 	// 同步角色直绑API权限
 	if err := p.SyncRoleAPIsToCasbin(ctx); err != nil {
 		return fmt.Errorf("同步角色API失败：%w", err)
+	}
+	// 同步角色 capability 权限
+	if err := p.SyncRoleCapabilitiesToCasbin(ctx); err != nil {
+		return fmt.Errorf("同步角色 capability 失败：%w", err)
 	}
 
 	global.Log.Info("权限同步完成")
@@ -172,6 +179,30 @@ func (p *PermissionService) SyncRoleAPIsToCasbin(ctx context.Context) error {
 	return nil
 }
 
+// SyncRoleCapabilitiesToCasbin 同步角色 capability 权限到 Casbin。
+func (p *PermissionService) SyncRoleCapabilitiesToCasbin(ctx context.Context) error {
+	capabilityRepo := p.repositoryGroup.SystemRepositorySupplier.GetCapabilityRepository()
+
+	relations, err := capabilityRepo.GetAllRoleCapabilityRelations(ctx)
+	if err != nil {
+		return fmt.Errorf("获取角色 capability 关系失败: %w", err)
+	}
+
+	for _, relation := range relations {
+		roleCode := fmt.Sprintf("%v", relation["role_code"])
+		capabilityCode := fmt.Sprintf("%v", relation["capability_code"])
+
+		_, err = p.casbinSvc.Enforcer.AddPermissionForUser(roleCode, capabilityCode, "operate")
+		if err != nil {
+			global.Log.Error("添加角色 capability 权限失败",
+				zap.String("roleCode", roleCode),
+				zap.String("capabilityCode", capabilityCode),
+				zap.Error(err))
+		}
+	}
+	return nil
+}
+
 // === 权限验证功能 ===
 
 // CheckUserAPIPermission 检查用户是否有访问指定API的权限
@@ -208,6 +239,34 @@ func (p *PermissionService) CheckUserMenuPermission(ctx context.Context, userID 
 	}
 
 	return ok, nil
+}
+
+// BuildUserOrgSubject 构造指定用户在目标组织下的 Casbin subject。
+func (p *PermissionService) BuildUserOrgSubject(userID, orgID uint) string {
+	return fmt.Sprintf("%d@%d", userID, orgID)
+}
+
+// CheckSubjectCapability 检查指定 subject 是否具备某个 capability。
+func (p *PermissionService) CheckSubjectCapability(subject string, capabilityCode string) (bool, error) {
+	if strings.TrimSpace(subject) == "" || strings.TrimSpace(capabilityCode) == "" {
+		return false, fmt.Errorf("subject 或 capabilityCode 为空")
+	}
+	ok, err := p.casbinSvc.Enforcer.Enforce(subject, capabilityCode, "operate")
+	if err != nil {
+		return false, fmt.Errorf("capability 权限检查失败: %w", err)
+	}
+	return ok, nil
+}
+
+// CheckUserCapabilityInOrg 检查用户在目标组织下是否具备指定 capability。
+func (p *PermissionService) CheckUserCapabilityInOrg(
+	ctx context.Context,
+	userID, orgID uint,
+	capabilityCode string,
+) (bool, error) {
+	_ = ctx
+	subject := p.BuildUserOrgSubject(userID, orgID)
+	return p.CheckSubjectCapability(subject, capabilityCode)
 }
 
 func (p *PermissionService) AssignRoleToUserInOrg(
@@ -502,6 +561,62 @@ func (p *PermissionService) GetRoleMenus(ctx context.Context, roleID uint) ([]en
 	return result, nil
 }
 
+// GetAllCapabilityGroups 获取所有可配置 capability 分组。
+func (p *PermissionService) GetAllCapabilityGroups(ctx context.Context) ([]response.CapabilityGroupItem, error) {
+	capabilityRepo := p.repositoryGroup.SystemRepositorySupplier.GetCapabilityRepository()
+
+	capabilities, err := capabilityRepo.GetAllActive(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("获取 capability 列表失败: %w", err)
+	}
+
+	groupIndex := make(map[string]int, len(capabilities))
+	groups := make([]response.CapabilityGroupItem, 0)
+	for _, capability := range capabilities {
+		groupCode := strings.TrimSpace(capability.GroupCode)
+		groupName := strings.TrimSpace(capability.GroupName)
+		if groupCode == "" {
+			groupCode = capability.Domain
+		}
+		if groupName == "" {
+			groupName = capability.Domain
+		}
+
+		idx, ok := groupIndex[groupCode]
+		if !ok {
+			groups = append(groups, response.CapabilityGroupItem{
+				GroupCode:    groupCode,
+				GroupName:    groupName,
+				Capabilities: make([]response.CapabilityItem, 0),
+			})
+			idx = len(groups) - 1
+			groupIndex[groupCode] = idx
+		}
+		groups[idx].Capabilities = append(groups[idx].Capabilities, response.CapabilityItem{
+			Code:   capability.Code,
+			Name:   capability.Name,
+			Desc:   capability.Desc,
+			Status: capability.Status,
+		})
+	}
+
+	for i := range groups {
+		sort.Slice(groups[i].Capabilities, func(left, right int) bool {
+			return groups[i].Capabilities[left].Code < groups[i].Capabilities[right].Code
+		})
+	}
+	sort.Slice(groups, func(left, right int) bool {
+		return groups[left].GroupCode < groups[right].GroupCode
+	})
+	return groups, nil
+}
+
+// GetRoleCapabilityCodes 获取角色已分配的 capability code 列表。
+func (p *PermissionService) GetRoleCapabilityCodes(ctx context.Context, roleID uint) ([]string, error) {
+	capabilityRepo := p.repositoryGroup.SystemRepositorySupplier.GetCapabilityRepository()
+	return capabilityRepo.GetRoleCapabilityCodes(ctx, roleID)
+}
+
 // GetUserPermissions 获取用户的所有权限（用于调试）
 func (p *PermissionService) GetUserPermissions(ctx context.Context, userID uint) ([][]string, error) {
 	subject, _, err := p.getUserSubject(ctx, userID)
@@ -534,7 +649,7 @@ func (p *PermissionService) getUserSubject(
 		return "", nil, fmt.Errorf("用户不存在")
 	}
 	if user.CurrentOrgID != nil && *user.CurrentOrgID > 0 {
-		subject := fmt.Sprintf("%d@%d", userID, *user.CurrentOrgID)
+		subject := p.BuildUserOrgSubject(userID, *user.CurrentOrgID)
 		return subject, user.CurrentOrgID, nil
 	}
 	return "", nil, fmt.Errorf("未设置当前组织")

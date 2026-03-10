@@ -22,4 +22,13 @@ type Task struct {
 	LeetcodeSyncIntervalSeconds              int    `json:"leetcode_sync_interval_seconds" yaml:"leetcode_sync_interval_seconds"`           // 力扣全量同步间隔秒数
 	RankingSyncIntervalSeconds               int    `json:"ranking_sync_interval_seconds" yaml:"ranking_sync_interval_seconds"`             // 排行榜同步间隔秒数
 	ImageOrphanCleanupCron                   string `json:"image_orphan_cleanup_cron" yaml:"image_orphan_cleanup_cron"`                     // 孤儿图片清理 cron 表达式，默认 @daily
+
+	// DisabledUserCleanupEnabled 是否启用禁用账号清理任务
+	DisabledUserCleanupEnabled bool `json:"disabled_user_cleanup_enabled" yaml:"disabled_user_cleanup_enabled"` // 是否启用禁用账号清理
+
+	// DisabledUserRetentionDays 禁用账号保留天数，超过该天数的禁用账号将被清理
+	DisabledUserRetentionDays int `json:"disabled_user_retention_days" yaml:"disabled_user_retention_days"` // 禁用账号保留天数
+
+	// DisabledUserCleanupBatchSize 每次清理批次大小，避免一次性处理过多账号导致性能问题
+	DisabledUserCleanupCron string `json:"disabled_user_cleanup_cron" yaml:"disabled_user_cleanup_cron"` // 禁用账号清理 cron
 }
