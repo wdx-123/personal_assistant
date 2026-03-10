@@ -20,6 +20,11 @@ const (
 	CapabilityCodeOrgMemberDelete          = "org.member.delete"
 	CapabilityCodeOrgMemberInvite          = "org.member.invite"
 	CapabilityCodeOrgMemberAssignRole      = "org.member.assign_role"
+	CapabilityDomainOrgManagement          = "org_management"
+	CapabilityGroupCodeOrgManagement       = "org_management"
+	CapabilityGroupNameOrgManagement       = "组织管理"
+	CapabilityCodeOrgManageUpdate          = "org.manage.update"
+	CapabilityCodeOrgManageDelete          = "org.manage.delete"
 	// 以下是一些常用的成员操作标识，可以在日志记录或事件追踪中使用
 	OrgMemberActionKick       = "kick"        // 踢出成员
 	OrgMemberActionRecover    = "recover"     // 恢复成员
@@ -27,6 +32,8 @@ const (
 	OrgMemberActionDelete     = "delete"      // 删除成员
 	OrgMemberActionInvite     = "invite"      // 邀请成员
 	OrgMemberActionAssignRole = "assign_role" // 分配角色
+	OrgActionUpdate           = "update"      // 更新组织
+	OrgActionDelete           = "delete"      // 删除组织
 )
 
 var builtinCapabilitySeeds = []CapabilitySeed{
@@ -78,6 +85,22 @@ var builtinCapabilitySeeds = []CapabilitySeed{
 		GroupName: CapabilityGroupNameOrgMemberManagement,
 		Desc:      "允许调整组织成员在本组织下的角色",
 	},
+	{
+		Code:      CapabilityCodeOrgManageUpdate,
+		Name:      "更新组织",
+		Domain:    CapabilityDomainOrgManagement,
+		GroupCode: CapabilityGroupCodeOrgManagement,
+		GroupName: CapabilityGroupNameOrgManagement,
+		Desc:      "允许更新组织基本信息",
+	},
+	{
+		Code:      CapabilityCodeOrgManageDelete,
+		Name:      "删除组织",
+		Domain:    CapabilityDomainOrgManagement,
+		GroupCode: CapabilityGroupCodeOrgManagement,
+		GroupName: CapabilityGroupNameOrgManagement,
+		Desc:      "允许删除组织及其成员关系",
+	},
 }
 
 // BuiltinCapabilitySeeds 返回 capability 种子定义副本。
@@ -97,6 +120,25 @@ func OrgMemberCapabilityCodes() []string {
 		CapabilityCodeOrgMemberInvite,
 		CapabilityCodeOrgMemberAssignRole,
 	}
+	dst := make([]string, len(codes))
+	copy(dst, codes)
+	return dst
+}
+
+// OrgManageCapabilityCodes 返回组织管理相关 capability code 列表副本。
+func OrgManageCapabilityCodes() []string {
+	codes := []string{
+		CapabilityCodeOrgManageUpdate,
+		CapabilityCodeOrgManageDelete,
+	}
+	dst := make([]string, len(codes))
+	copy(dst, codes)
+	return dst
+}
+
+// BuiltinOrgAdminCapabilityCodes 返回组织管理员默认能力列表副本。
+func BuiltinOrgAdminCapabilityCodes() []string {
+	codes := append(OrgMemberCapabilityCodes(), OrgManageCapabilityCodes()...)
 	dst := make([]string, len(codes))
 	copy(dst, codes)
 	return dst

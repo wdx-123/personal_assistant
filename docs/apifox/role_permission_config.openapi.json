@@ -169,11 +169,31 @@
                                 "status": 1
                               }
                             ]
+                          },
+                          {
+                            "group_code": "org_management",
+                            "group_name": "组织管理",
+                            "capabilities": [
+                              {
+                                "code": "org.manage.update",
+                                "name": "更新组织",
+                                "desc": "允许更新组织基本信息",
+                                "status": 1
+                              },
+                              {
+                                "code": "org.manage.delete",
+                                "name": "删除组织",
+                                "desc": "允许删除组织及其成员关系",
+                                "status": 1
+                              }
+                            ]
                           }
                         ],
                         "assigned_capability_codes": [
                           "org.member.assign_role",
-                          "org.member.invite"
+                          "org.member.invite",
+                          "org.manage.update",
+                          "org.manage.delete"
                         ]
                       },
                       "timestamp": 1770732000001
@@ -272,7 +292,8 @@
                     ],
                     "capability_codes": [
                       "org.member.assign_role",
-                      "org.member.invite"
+                      "org.member.invite",
+                      "org.manage.update"
                     ]
                   }
                 },
@@ -292,7 +313,8 @@
                     "menu_ids": [],
                     "direct_api_ids": [],
                     "capability_codes": [
-                      "org.member.assign_role"
+                      "org.member.assign_role",
+                      "org.manage.delete"
                     ]
                   }
                 }
@@ -483,7 +505,9 @@
             },
             "example": [
               "org.member.assign_role",
-              "org.member.invite"
+              "org.member.invite",
+              "org.manage.update",
+              "org.manage.delete"
             ]
           }
         }
@@ -697,7 +721,9 @@
             },
             "example": [
               "org.member.assign_role",
-              "org.member.invite"
+              "org.member.invite",
+              "org.manage.update",
+              "org.manage.delete"
             ]
           }
         }

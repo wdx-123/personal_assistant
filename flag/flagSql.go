@@ -187,14 +187,14 @@ func seedBuiltinCapabilities() error {
 	return nil
 }
 
-// seedBuiltinRoleCapabilities 确保组织管理员默认持有全部成员管理 capability。
+// seedBuiltinRoleCapabilities 确保组织管理员默认持有全部组织域 capability。
 func seedBuiltinRoleCapabilities() error {
 	var orgAdmin entity.Role
 	if err := global.DB.Where("code = ?", consts.RoleCodeOrgAdmin).First(&orgAdmin).Error; err != nil {
 		return err
 	}
 
-	for _, code := range consts.OrgMemberCapabilityCodes() {
+	for _, code := range consts.BuiltinOrgAdminCapabilityCodes() {
 		var capability entity.Capability
 		if err := global.DB.Where("code = ?", code).First(&capability).Error; err != nil {
 			return err

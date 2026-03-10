@@ -7,13 +7,22 @@ import (
 	"strings"
 	"time"
 
+	"personal_assistant/global"
 	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository/interfaces"
+	"personal_assistant/pkg/rediskey"
+	"personal_assistant/pkg/util"
 
+	"github.com/go-redis/redis/v8"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+)
+
+const (
+	userActiveStateValueActive   = "1"
+	userActiveStateValueInactive = "0"
 )
 
 // UserGormRepository 用户仓储GORM实现
@@ -299,6 +308,56 @@ func (r *UserGormRepository) GetActiveUsers(ctx context.Context) ([]*entity.User
 	return users, err
 }
 
+// GetCachedActiveState 从 Redis 读取用户活跃态缓存。
+func (r *UserGormRepository) GetCachedActiveState(
+	ctx context.Context,
+	userID uint,
+) (active bool, found bool, err error) {
+	if userID == 0 || global.Redis == nil {
+		return false, false, nil
+	}
+
+	val, err := global.Redis.Get(ctx, rediskey.UserActiveStateKey(userID)).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return false, false, nil
+		}
+		return false, false, err
+	}
+
+	switch val {
+	case userActiveStateValueActive:
+		return true, true, nil
+	case userActiveStateValueInactive:
+		return false, true, nil
+	default:
+		return false, false, nil
+	}
+}
+
+// CacheActiveState 写入用户活跃态缓存。
+func (r *UserGormRepository) CacheActiveState(
+	ctx context.Context,
+	userID uint,
+	active bool,
+) error {
+	if userID == 0 || global.Redis == nil {
+		return nil
+	}
+
+	value := userActiveStateValueInactive
+	if active {
+		value = userActiveStateValueActive
+	}
+
+	return global.Redis.Set(
+		ctx,
+		rediskey.UserActiveStateKey(userID),
+		value,
+		r.activeStateTTL(),
+	).Err()
+}
+
 // ValidateUser 验证用户登录
 func (r *UserGormRepository) ValidateUser(
 	ctx context.Context,
@@ -442,4 +501,14 @@ func (r *UserGormRepository) SoftDeleteAndAnonymize(ctx context.Context, userID 
 			"current_org_id": nil,
 			"deleted_at":     now,
 		}).Error
+}
+
+func (r *UserGormRepository) activeStateTTL() time.Duration {
+	if global.Config == nil {
+		return util.ApplyTTLJitter(0, 0)
+	}
+
+	baseTTL := time.Duration(global.Config.Redis.ActiveUserStateTTLSeconds) * time.Second
+	jitterTTL := time.Duration(global.Config.Redis.ActiveUserStateTTLJitterSeconds) * time.Second
+	return util.ApplyTTLJitter(baseTTL, jitterTTL)
 }

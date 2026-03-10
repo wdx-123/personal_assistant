@@ -293,7 +293,8 @@ func (u *UserCtrl) AssignRole(c *gin.Context) {
 		return
 	}
 
-	if err := u.userService.AssignRole(c.Request.Context(), &req); err != nil {
+	operatorID := jwt.GetUserID(c)
+	if err := u.userService.AssignRole(c.Request.Context(), operatorID, &req); err != nil {
 		response.BizFailWithError(err, c)
 		return
 	}

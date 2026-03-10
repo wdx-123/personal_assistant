@@ -85,9 +85,9 @@ func (t *tracedUserService) GetUserRoles(ctx context.Context, userID, orgID uint
 	})
 }
 
-func (t *tracedUserService) AssignRole(ctx context.Context, req *request.AssignUserRoleReq) error {
+func (t *tracedUserService) AssignRole(ctx context.Context, operatorID uint, req *request.AssignUserRoleReq) error {
 	return runTracedErr(ctx, "user", "AssignRole", func(inner context.Context) error {
-		return t.next.AssignRole(inner, req)
+		return t.next.AssignRole(inner, operatorID, req)
 	})
 }
 

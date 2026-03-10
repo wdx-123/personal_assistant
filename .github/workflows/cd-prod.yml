@@ -111,6 +111,8 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          timeout: 60s
+          command_timeout: 5m
           script_stop: true
           script: |
             mkdir -p "${{ env.DEPLOY_DIR }}"
@@ -142,6 +144,8 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
+          timeout: 60s
+          command_timeout: 30m
           script_stop: true
           envs: GHCR_PULL_USER,GHCR_PULL_TOKEN,DEPLOY_HEALTH_URL,IMAGE_NAME,IMAGE_TAG,DEPLOY_DIR,DEFAULT_HEALTH_URL
           script: |

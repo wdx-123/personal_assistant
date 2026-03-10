@@ -8,8 +8,14 @@ const (
 	LeetcodeProblemBankHashKey = "leetcode:problem_bank:slug_id"
 	// 洛谷排行榜（键为 orgID:platform）（通过组织与平台分开维护）
 	rankingZSetKeyFmt = "ranking:%d:%s"
+	// 用户活跃态缓存 key。
+	userActiveStateKeyFmt = "user:active_state:%d"
 )
 
 func RankingZSetKey(orgID uint, platform string) string {
 	return fmt.Sprintf(rankingZSetKeyFmt, orgID, platform)
+}
+
+func UserActiveStateKey(userID uint) string {
+	return fmt.Sprintf(userActiveStateKeyFmt, userID)
 }

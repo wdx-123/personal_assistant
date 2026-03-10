@@ -26,9 +26,11 @@ type Config struct {
 func NewConfig() *Config {
 	// Redis配置初始化
 	_redis := &Redis{
-		Address:  viper.GetString("redis.address"),
-		Password: viper.GetString("redis.password"),
-		DB:       viper.GetInt("redis.db"),
+		Address:                         viper.GetString("redis.address"),
+		Password:                        viper.GetString("redis.password"),
+		DB:                              viper.GetInt("redis.db"),
+		ActiveUserStateTTLSeconds:       viper.GetInt("redis.active_user_state_ttl_seconds"),
+		ActiveUserStateTTLJitterSeconds: viper.GetInt("redis.active_user_state_ttl_jitter_seconds"),
 	}
 	// MySQL数据库配置初始化
 	_mysql := &Mysql{
