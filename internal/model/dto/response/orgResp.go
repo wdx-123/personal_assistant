@@ -2,15 +2,16 @@ package response
 
 // OrgItem 组织信息项（用于列表/详情响应）
 type OrgItem struct {
-	ID          uint   `json:"id"`          // 组织ID
-	Name        string `json:"name"`        // 组织名称
-	Description string `json:"description"` // 组织描述
-	Code        string `json:"code"`        // 加入邀请码
-	Avatar      string `json:"avatar"`      // 组织头像URL
-	AvatarID    *uint  `json:"avatar_id"`   // 组织头像图片ID（可空）
-	OwnerID     uint   `json:"owner_id"`    // 创建者/负责人ID
-	CreatedAt   string `json:"created_at"`  // 创建时间
-	UpdatedAt   string `json:"updated_at"`  // 更新时间
+	ID          uint   `json:"id"`           // 组织ID
+	Name        string `json:"name"`         // 组织名称
+	Description string `json:"description"`  // 组织描述
+	Code        string `json:"code"`         // 加入邀请码
+	Avatar      string `json:"avatar"`       // 组织头像URL
+	AvatarID    *uint  `json:"avatar_id"`    // 组织头像图片ID（可空）
+	OwnerID     uint   `json:"owner_id"`     // 创建者/负责人ID
+	MemberCount int64  `json:"member_count"` // 组织活跃成员数
+	CreatedAt   string `json:"created_at"`   // 创建时间
+	UpdatedAt   string `json:"updated_at"`   // 更新时间
 }
 
 // OrgListResp 组织列表响应

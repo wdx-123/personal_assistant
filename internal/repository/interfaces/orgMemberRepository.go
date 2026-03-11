@@ -33,6 +33,8 @@ type OrgMemberRepository interface {
 	IsUserActiveInOrg(ctx context.Context, userID, orgID uint) (bool, error)
 	// 获取组织内的活跃成员数量
 	CountActiveMembersByOrgID(ctx context.Context, orgID uint) (int64, error)
+	// 批量获取多个组织的活跃成员数量
+	CountActiveMembersByOrgIDs(ctx context.Context, orgIDs []uint) (map[uint]int64, error)
 	// 获取用户加入的所有活跃组织ID列表
 	ListActiveOrgIDsByUser(ctx context.Context, userID uint) ([]uint, error)
 	// 事务上下文切换

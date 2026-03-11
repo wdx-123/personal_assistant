@@ -12,6 +12,7 @@ import (
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
+	readmodel "personal_assistant/internal/model/readmodel"
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/interfaces"
 	"personal_assistant/pkg/casbin"
@@ -59,8 +60,11 @@ func (s *OrgService) GetOrgList(
 	ctx context.Context,
 	page, pageSize int,
 	keyword string,
-) ([]*entity.Org, int64, error) {
+) ([]*readmodel.OrgWithMemberCount, int64, error) {
 	keyword = strings.TrimSpace(keyword)
+
+	var orgs []*entity.Org
+	var total int64
 
 	if page <= 0 {
 		// 不分页，获取所有
@@ -76,17 +80,26 @@ func (s *OrgService) GetOrgList(
 					filtered = append(filtered, org)
 				}
 			}
-			return filtered, int64(len(filtered)), nil
+			orgs = filtered
+			total = int64(len(filtered))
+		} else {
+			orgs = list
+			total = int64(len(list))
 		}
-		return list, int64(len(list)), nil
+	} else {
+		// 分页查询（支持关键词搜索）
+		var err error
+		orgs, total, err = s.orgRepo.GetOrgListWithKeyword(ctx, page, pageSize, keyword)
+		if err != nil {
+			return nil, 0, errors.Wrap(errors.CodeDBError, err)
+		}
 	}
 
-	// 分页查询（支持关键词搜索）
-	orgs, total, err := s.orgRepo.GetOrgListWithKeyword(ctx, page, pageSize, keyword)
+	items, err := s.buildOrgReadModels(ctx, orgs)
 	if err != nil {
 		return nil, 0, errors.Wrap(errors.CodeDBError, err)
 	}
-	return orgs, total, nil
+	return items, total, nil
 }
 
 // GetOrgDetail 获取组织详情
@@ -97,7 +110,7 @@ func (s *OrgService) GetOrgDetail(
 	ctx context.Context,
 	userID uint,
 	orgID uint,
-) (*entity.Org, error) {
+) (*readmodel.OrgWithMemberCount, error) {
 	// 1. 检查是否为超级管理员
 	isSuperAdmin := false
 	globalRoles, _ := s.roleRepo.GetUserGlobalRoles(ctx, userID)
@@ -124,7 +137,14 @@ func (s *OrgService) GetOrgDetail(
 	if err != nil {
 		return nil, errors.Wrap(errors.CodeOrgNotFound, err)
 	}
-	return org, nil
+	items, err := s.buildOrgReadModels(ctx, []*entity.Org{org})
+	if err != nil {
+		return nil, errors.Wrap(errors.CodeDBError, err)
+	}
+	if len(items) == 0 {
+		return nil, errors.New(errors.CodeOrgNotFound)
+	}
+	return items[0], nil
 }
 
 // GetMyOrgs 获取当前用户所属的组织列表
@@ -1058,4 +1078,46 @@ func isAllMembersBuiltinOrg(org *entity.Org) bool {
 		return false
 	}
 	return org.IsBuiltin && org.BuiltinKey != nil && *org.BuiltinKey == consts.OrgBuiltinKeyAllMembers
+}
+
+func (s *OrgService) buildOrgReadModels(
+	ctx context.Context,
+	orgs []*entity.Org,
+) ([]*readmodel.OrgWithMemberCount, error) {
+	if len(orgs) == 0 {
+		return make([]*readmodel.OrgWithMemberCount, 0), nil
+	}
+
+	orgIDs := make([]uint, 0, len(orgs))
+	for _, org := range orgs {
+		if org == nil {
+			continue
+		}
+		orgIDs = append(orgIDs, org.ID)
+	}
+
+	counts, err := s.orgMemberRepo.CountActiveMembersByOrgIDs(ctx, orgIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]*readmodel.OrgWithMemberCount, 0, len(orgs))
+	for _, org := range orgs {
+		if org == nil {
+			continue
+		}
+		items = append(items, &readmodel.OrgWithMemberCount{
+			ID:          org.ID,
+			Name:        org.Name,
+			Description: org.Description,
+			Code:        org.Code,
+			Avatar:      org.Avatar,
+			AvatarID:    org.AvatarID,
+			OwnerID:     org.OwnerID,
+			MemberCount: counts[org.ID],
+			CreatedAt:   org.CreatedAt,
+			UpdatedAt:   org.UpdatedAt,
+		})
+	}
+	return items, nil
 }

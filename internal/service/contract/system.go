@@ -8,6 +8,7 @@ import (
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
+	readmodel "personal_assistant/internal/model/readmodel"
 	erro "personal_assistant/pkg/errors"
 
 	"github.com/gin-gonic/gin"
@@ -68,8 +69,8 @@ type UserServiceContract interface {
 }
 
 type OrgServiceContract interface {
-	GetOrgList(ctx context.Context, page, pageSize int, keyword string) ([]*entity.Org, int64, error)
-	GetOrgDetail(ctx context.Context, userID uint, orgID uint) (*entity.Org, error)
+	GetOrgList(ctx context.Context, page, pageSize int, keyword string) ([]*readmodel.OrgWithMemberCount, int64, error)
+	GetOrgDetail(ctx context.Context, userID uint, orgID uint) (*readmodel.OrgWithMemberCount, error)
 	CreateOrg(ctx context.Context, userID uint, req *request.CreateOrgReq) error
 	UpdateOrg(ctx context.Context, userID, orgID uint, req *request.UpdateOrgReq) error
 	DeleteOrg(ctx context.Context, userID, orgID uint, force bool) error
