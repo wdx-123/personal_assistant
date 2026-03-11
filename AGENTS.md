@@ -22,6 +22,7 @@
 2. DTO 使用：
    - 请求 DTO 放在 `internal/model/dto/request`。
    - 响应 DTO 放在 `internal/model/dto/response`。
+   - 只读查询聚合结构放在 `internal/model/readmodel`，不要放入 `internal/model/entity`。
    - 禁止直接暴露 Entity 作为 API 入参/出参。
    - 统一使用 `pkg/response` 的响应辅助函数。
 3. 错误与日志链路：

@@ -15,9 +15,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// InitSubscribers 初始化所有事件订阅器
-// 目前仅保留空实现，等待后续业务模块接入
-func InitSubscribers(ctx context.Context, ojSvc contract.OJServiceContract) error {
+// initOJSubscribers 初始化 OJ 相关订阅器。
+func initOJSubscribers(ctx context.Context, ojSvc contract.OJServiceContract) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -83,6 +82,52 @@ func InitSubscribers(ctx context.Context, ojSvc contract.OJServiceContract) erro
 			})
 		if err != nil && !errors.Is(err, context.Canceled) { // 订阅异常且非取消
 			global.Log.Error("leetcode bind subscriber stopped", zap.Error(err)) // 记录错误日志
+		}
+	}()
+	return nil
+}
+
+// InitSubscribers 初始化所有事件订阅器。
+func InitSubscribers(
+	ctx context.Context,
+	ojSvc contract.OJServiceContract,
+	cacheProjectionSvc contract.CacheProjectionServiceContract,
+) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if global.Redis == nil || global.Log == nil || global.Config == nil {
+		return nil
+	}
+
+	if err := initOJSubscribers(ctx, ojSvc); err != nil {
+		return err
+	}
+	if cacheProjectionSvc == nil {
+		return nil
+	}
+
+	// 初始化缓存投影订阅器
+	cfg := global.Config.Messaging
+	topic := strings.TrimSpace(cfg.CacheProjectionTopic)
+	group := strings.TrimSpace(cfg.CacheProjectionGroup)
+	consumer := strings.TrimSpace(cfg.CacheProjectionConsumer)
+	if topic == "" || group == "" || consumer == "" {
+		return errors.New("cache projection messaging config missing")
+	}
+
+	// 订阅
+	subscriber := messaging.NewRedisStreamSubscriber(global.Redis, global.Log, group, consumer)
+	go func() {
+		err := subscriber.Subscribe(ctx, topic, func(ctx context.Context, msg *messaging.Message) error {
+			var payload eventdto.CacheProjectionEvent
+			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+				return err
+			}
+			return cacheProjectionSvc.HandleCacheProjectionEvent(ctx, &payload)
+		})
+		if err != nil && !errors.Is(err, context.Canceled) {
+			global.Log.Error("cache projection subscriber stopped", zap.Error(err))
 		}
 	}()
 	return nil

@@ -26,9 +26,10 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 	rawPermission := NewPermissionService(repositoryGroup)
 	rawBase := NewBaseService()
 	rawHealth := NewHealthService(repositoryGroup)
+	rawCacheProjection := NewCacheProjectionService(repositoryGroup)
 	rawUser := NewUserService(repositoryGroup, rawPermission)
 	rawOrg := NewOrgService(repositoryGroup, rawPermission)
-	rawOJ := NewOJService(repositoryGroup)
+	rawOJ := NewOJService(repositoryGroup, rawCacheProjection)
 	rawAPI := NewApiService(repositoryGroup, rawPermission)
 	rawMenu := NewMenuService(repositoryGroup, rawPermission)
 	rawRole := NewRoleService(repositoryGroup, rawPermission)
@@ -52,6 +53,7 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 	roleSvc := contract.RoleServiceContract(rawRole)
 	imageSvc := contract.ImageServiceContract(rawImage)
 	observabilitySvc := contract.ObservabilityServiceContract(rawObservability)
+	cacheProjectionSvc := contract.CacheProjectionServiceContract(rawCacheProjection)
 
 	if traceModuleEnabled("jwt") {
 		jwtSvc = obsdecorator.WrapJWTService(jwtSvc)
@@ -81,6 +83,7 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 	ss.roleService = roleSvc
 	ss.imageService = imageSvc
 	ss.observabilityService = observabilitySvc
+	ss.cacheProjectionService = cacheProjectionSvc
 	return ss
 }
 

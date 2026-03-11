@@ -23,6 +23,7 @@ type Supplier interface {
 	GetLeetcodeUserQuestionRepository() interfaces.LeetcodeUserQuestionRepository
 	GetLuoguUserQuestionRepository() interfaces.LuoguUserQuestionRepository
 	GetOutboxRepository() interfaces.OutboxRepository
+	GetRankingReadModelRepository() interfaces.RankingReadModelRepository
 	GetImageRepository() interfaces.ImageRepository
 	GetObservabilityMetricRepository() interfaces.ObservabilityMetricRepository
 	GetObservabilityTraceRepository() interfaces.ObservabilityTraceRepository
@@ -47,6 +48,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 	var leetcodeUserQuestionRepo interfaces.LeetcodeUserQuestionRepository
 	var luoguUserQuestionRepo interfaces.LuoguUserQuestionRepository
 	var outboxRepo interfaces.OutboxRepository
+	var rankingReadModelRepo interfaces.RankingReadModelRepository
 	var imageRepo interfaces.ImageRepository
 	var observabilityMetricRepo interfaces.ObservabilityMetricRepository
 	var observabilityTraceRepo interfaces.ObservabilityTraceRepository
@@ -71,6 +73,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			leetcodeUserQuestionRepo = NewLeetcodeUserQuestionRepository(db)
 			luoguUserQuestionRepo = NewLuoguUserQuestionRepository(db)
 			outboxRepo = NewOutboxRepository(db)
+			rankingReadModelRepo = NewRankingReadModelRepository(db)
 			imageRepo = NewImageRepository(db)
 			observabilityMetricRepo = NewObservabilityMetricRepository(db)
 			observabilityTraceRepo = NewObservabilityTraceRepository(db)
@@ -101,6 +104,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			leetcodeUserQuestionRepo = NewLeetcodeUserQuestionRepository(db)
 			luoguUserQuestionRepo = NewLuoguUserQuestionRepository(db)
 			outboxRepo = NewOutboxRepository(db)
+			rankingReadModelRepo = NewRankingReadModelRepository(db)
 			imageRepo = NewImageRepository(db)
 			observabilityMetricRepo = NewObservabilityMetricRepository(db)
 			observabilityTraceRepo = NewObservabilityTraceRepository(db)
@@ -124,6 +128,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 		leetcodeUserQuestionRepository: leetcodeUserQuestionRepo,
 		luoguUserQuestionRepository:    luoguUserQuestionRepo,
 		outboxRepository:               outboxRepo,
+		rankingReadModelRepository:     rankingReadModelRepo,
 		imageRepository:                imageRepo,
 		observabilityMetricRepository:  observabilityMetricRepo,
 		observabilityTraceRepository:   observabilityTraceRepo,

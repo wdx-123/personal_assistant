@@ -5,17 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
 	"personal_assistant/global"
 	"personal_assistant/internal/model/consts"
+	eventdto "personal_assistant/internal/model/dto/event"
 	resp "personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/repository/interfaces"
 	bizerrors "personal_assistant/pkg/errors"
 	"personal_assistant/pkg/imageops"
-	"personal_assistant/pkg/rediskey"
 
 	"github.com/gofrs/uuid"
 	"github.com/mojocn/base64Captcha"
@@ -28,13 +27,14 @@ import (
 )
 
 type UserService struct {
-	txRunner          repository.TxRunner
-	userRepo          interfaces.UserRepository // 依赖接口而不是具体实现
-	roleRepo          interfaces.RoleRepository // 角色仓储，用于获取默认角色
-	orgRepo           interfaces.OrgRepository
-	orgMemberRepo     interfaces.OrgMemberRepository
-	imageRepo         interfaces.ImageRepository // 图片仓储
-	permissionService *PermissionService         // 权限服务，用于RBAC角色分配
+	txRunner                 repository.TxRunner
+	userRepo                 interfaces.UserRepository // 依赖接口而不是具体实现
+	roleRepo                 interfaces.RoleRepository // 角色仓储，用于获取默认角色
+	orgRepo                  interfaces.OrgRepository
+	orgMemberRepo            interfaces.OrgMemberRepository
+	imageRepo                interfaces.ImageRepository // 图片仓储
+	permissionService        *PermissionService         // 权限服务，用于RBAC角色分配
+	cacheProjectionPublisher cacheProjectionEventPublisher
 }
 
 func NewUserService(
@@ -49,6 +49,9 @@ func NewUserService(
 		orgMemberRepo:     repositoryGroup.SystemRepositorySupplier.GetOrgMemberRepository(),
 		imageRepo:         repositoryGroup.SystemRepositorySupplier.GetImageRepository(),
 		permissionService: permissionService,
+		cacheProjectionPublisher: newCacheProjectionOutboxPublisher(
+			repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
+		),
 	}
 }
 
@@ -169,6 +172,11 @@ func (u *UserService) Register(
 				return bizerrors.Wrap(bizerrors.CodeDBError, err)
 			}
 		}
+
+		// 发布用户快照变更事件，触发缓存投影更新。包含用户ID和受影响的组织ID列表（邀请码组织和全体成员组织）。
+		if err := u.publishCacheProjectionInTx(ctx, tx, newUserSnapshotProjectionEvent(user.ID, nil)); err != nil {
+			return bizerrors.Wrap(bizerrors.CodeDBError, err)
+		}
 		return nil
 	})
 	if err != nil {
@@ -273,10 +281,12 @@ func (u *UserService) UpdateProfile(
 		}
 
 		updated := false
+		projectionChanged := false
 		// 更新用户名
 		if req.Username != nil && *req.Username != "" {
 			user.Username = *req.Username
 			updated = true
+			projectionChanged = true
 		}
 		// 更新签名
 		if req.Signature != nil {
@@ -288,6 +298,7 @@ func (u *UserService) UpdateProfile(
 			user.Avatar = avatarPatch.Avatar
 			user.AvatarID = avatarPatch.AvatarID
 			updated = true
+			projectionChanged = true
 		}
 		if !updated {
 			return nil
@@ -311,6 +322,11 @@ func (u *UserService) UpdateProfile(
 		}
 		if oldAvatarID > 0 && oldAvatarID != newAvatarID {
 			if _, err := imageops.SoftDeleteByIDs(ctx, txImageRepo, []uint{oldAvatarID}); err != nil {
+				return bizerrors.Wrap(bizerrors.CodeDBError, err)
+			}
+		}
+		if projectionChanged {
+			if err := u.publishCacheProjectionInTx(ctx, tx, newUserSnapshotProjectionEvent(userID, nil)); err != nil {
 				return bizerrors.Wrap(bizerrors.CodeDBError, err)
 			}
 		}
@@ -651,17 +667,18 @@ func (u *UserService) CleanupDisabledUsers(ctx context.Context) (int, error) {
 					return bizerrors.Wrap(bizerrors.CodeDBError, err)
 				}
 			}
-			return txUserRepo.SoftDeleteAndAnonymize(ctx, item.ID)
+			if err := txUserRepo.SoftDeleteAndAnonymize(ctx, item.ID); err != nil {
+				return err
+			}
+			if err := u.publishCacheProjectionInTx(
+				ctx,
+				tx,
+				newUserDeletedProjectionEvent(item.ID, item.CurrentOrgID, orgIDs),
+			); err != nil {
+				return bizerrors.Wrap(bizerrors.CodeDBError, err)
+			}
+			return nil
 		}); err != nil {
-			return cleaned, err
-		}
-
-		// 用户被软删后，从排行榜中移除，并清理活跃态缓存，确保被清理的用户无法再被误判为活跃。
-		if err := u.removeUserFromRankingByOrgIDs(ctx, item.ID, orgIDs); err != nil {
-			return cleaned, bizerrors.Wrap(bizerrors.CodeRedisError, err)
-		}
-		// 清理用户活跃态缓存，确保被清理的用户无法再被误判为活跃。
-		if err := u.syncUserActiveStateCache(ctx, item.ID, false); err != nil {
 			return cleaned, err
 		}
 		cleaned++
@@ -686,7 +703,7 @@ func (u *UserService) applyUserStatus(
 	}
 
 	if target.Status == status {
-		return u.syncUserActiveStateCache(ctx, targetUserID, status == consts.UserStatusActive)
+		return u.publishCacheProjection(ctx, newUserSnapshotProjectionEvent(targetUserID, nil))
 	}
 
 	var operatorPtr *uint
@@ -696,58 +713,51 @@ func (u *UserService) applyUserStatus(
 	}
 
 	// 禁用账号时，必须提供理由；启用账号时，理由可选但不允许过长。
-	if err := u.userRepo.UpdateUserStatus(ctx, targetUserID, status, operatorPtr, strings.TrimSpace(reason)); err != nil {
-		return bizerrors.Wrap(bizerrors.CodeDBError, err)
-	}
-	if err := u.syncUserActiveStateCache(ctx, targetUserID, status == consts.UserStatusActive); err != nil {
+	if err := u.txRunner.InTx(ctx, func(tx any) error {
+		txUserRepo := u.userRepo.WithTx(tx)
+		if err := txUserRepo.UpdateUserStatus(ctx, targetUserID, status, operatorPtr, strings.TrimSpace(reason)); err != nil {
+			return bizerrors.Wrap(bizerrors.CodeDBError, err)
+		}
+		if err := u.publishCacheProjectionInTx(ctx, tx, newUserSnapshotProjectionEvent(targetUserID, nil)); err != nil {
+			return bizerrors.Wrap(bizerrors.CodeDBError, err)
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 
 	// 禁用后立即移除 refresh 会话（access 由 ActiveUserMW 即时拦截）
-	if target.UUID.String() != "" {
+	if global.Redis != nil && target.UUID != uuid.Nil {
 		if err := global.Redis.Del(ctx, target.UUID.String()).Err(); err != nil {
 			return bizerrors.Wrap(bizerrors.CodeRedisError, err)
 		}
 	}
+	return nil
+}
 
-	// 如果是禁用账号，则将用户从所有组织的排行榜中移除
-	if status == consts.UserStatusDisabled {
-		if err := u.removeUserFromRankingByOrgIDs(ctx, targetUserID, nil); err != nil {
-			return bizerrors.Wrap(bizerrors.CodeRedisError, err)
-		}
+func (u *UserService) publishCacheProjection(
+	ctx context.Context,
+	event *eventdto.CacheProjectionEvent,
+) error {
+	if event == nil || u.cacheProjectionPublisher == nil {
+		return nil
+	}
+	if err := u.cacheProjectionPublisher.Publish(ctx, event); err != nil {
+		return bizerrors.Wrap(bizerrors.CodeDBError, err)
 	}
 	return nil
 }
 
-func (u *UserService) syncUserActiveStateCache(ctx context.Context, userID uint, active bool) error {
-	if err := u.userRepo.CacheActiveState(ctx, userID, active); err != nil {
-		global.Log.Error("同步用户活跃态缓存失败",
-			zap.Uint("userID", userID),
-			zap.Bool("active", active),
-			zap.Error(err))
-		return bizerrors.Wrap(bizerrors.CodeRedisError, err)
+func (u *UserService) publishCacheProjectionInTx(
+	ctx context.Context,
+	tx any,
+	event *eventdto.CacheProjectionEvent,
+) error {
+	if event == nil || u.cacheProjectionPublisher == nil {
+		return nil
 	}
-	return nil
-}
-
-// removeUserFromRankingByOrgIDs 将用户从指定组织ID列表的排行榜中移除。如果orgIDs为nil或空，则自动查询用户当前活跃的组织列表进行移除。
-func (u *UserService) removeUserFromRankingByOrgIDs(ctx context.Context, userID uint, orgIDs []uint) error {
-	if len(orgIDs) == 0 {
-		var err error
-		orgIDs, err = u.orgMemberRepo.ListActiveOrgIDsByUser(ctx, userID)
-		if err != nil {
-			return err
-		}
-	}
-
-	member := strconv.FormatUint(uint64(userID), 10)
-	for _, orgID := range orgIDs {
-		if err := global.Redis.ZRem(ctx, rediskey.RankingZSetKey(orgID, "luogu"), member).Err(); err != nil {
-			return err
-		}
-		if err := global.Redis.ZRem(ctx, rediskey.RankingZSetKey(orgID, "leetcode"), member).Err(); err != nil {
-			return err
-		}
+	if err := u.cacheProjectionPublisher.PublishInTx(ctx, tx, event); err != nil {
+		return bizerrors.Wrap(bizerrors.CodeDBError, err)
 	}
 	return nil
 }

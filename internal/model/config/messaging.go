@@ -14,4 +14,7 @@ type Messaging struct {
 	LeetcodeBindTopic         string `json:"leetcode_bind_topic" yaml:"leetcode_bind_topic"`
 	LeetcodeBindGroup         string `json:"leetcode_bind_group" yaml:"leetcode_bind_group"`
 	LeetcodeBindConsumer      string `json:"leetcode_bind_consumer" yaml:"leetcode_bind_consumer"`
+	CacheProjectionTopic      string `json:"cache_projection_topic" yaml:"cache_projection_topic"`
+	CacheProjectionGroup      string `json:"cache_projection_group" yaml:"cache_projection_group"`
+	CacheProjectionConsumer   string `json:"cache_projection_consumer" yaml:"cache_projection_consumer"`
 }

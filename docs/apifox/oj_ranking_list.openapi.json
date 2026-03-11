@@ -1,0 +1,486 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "personal_assistant - OJ 排行榜接口",
+    "version": "1.0.0",
+    "description": "仅覆盖 1 个接口：POST /oj/ranking_list。\n\n接口定位：\n- 该接口位于 BusinessGroup，下游会经过 JWTAuth 与 ActiveUserMW。\n- 不经过 PermissionMiddleware，但 Service 内部会按 scope 做权限校验。\n- 请求体为 JSON，Controller 当前使用 ShouldBindJSON 绑定。\n\n本次变更重点：\n- 请求体新增 scope 字段，支持 current_org / all_members / org 三种查询范围。\n- 请求体新增 org_id 字段，仅在 scope=org 时需要传入。\n- 响应体的数据结构 OJRankingListResp 未变化。\n\n当前实现注意事项：\n- 该接口的 Controller 仍使用旧版 Response 壳返回成功/业务失败：code + data + messages/error。\n- JWTAuth 中间件拦截未登录、Token 失效时，也返回旧版 Response 壳，HTTP 状态码为 200。\n- ActiveUserMW 拦截账号禁用时，返回新版 BizResponse，HTTP 状态码为 401。\n- 除 invalid platform 外，scope/org_id/组织成员校验失败等场景，当前 Controller 会统一返回 code=10004，并把具体错误文本放在 error 字段中。"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:9000",
+      "description": "本地开发环境（请按实际地址修改）"
+    }
+  ],
+  "tags": [
+    {
+      "name": "OJ-排行榜",
+      "description": "OJ 排行榜查询接口，支持当前组织、全体成员总榜、指定组织榜单。"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    }
+  ],
+  "paths": {
+    "/oj/ranking_list": {
+      "post": {
+        "tags": [
+          "OJ-排行榜"
+        ],
+        "summary": "查询 OJ 排行榜",
+        "description": "查询指定平台的排行榜。\n\nscope 说明：\n- current_org：查询当前组织榜单；默认值。\n- all_members：查询全体成员总榜。\n- org：查询指定 org_id 的组织榜单。\n\n权限规则：\n- 已登录且账号 active 的用户才能访问。\n- scope=all_members：任何已登录且 active 的用户都可以查询。\n- scope=current_org：查询当前组织；如果当前组织本身就是内置“全体成员”组织，则自动映射到总榜。\n- scope=org：\n  - 普通用户只能查询自己仍为 active 成员的组织；\n  - super_admin 可以查询任意组织。\n\n排序规则：\n- 排行榜基于 Redis ZSet 倒序返回，分数越高排名越靠前。\n- 当前实现分页参数仍使用 page/page_size，服务端会转换为 ZSet 范围查询。\n\n平台规则：\n- platform=luogu 时，platform_details.luogu 有值。\n- platform=leetcode 时，platform_details.leetcode 有值。",
+        "operationId": "GetOJRankingList",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OJRankingListReq"
+              },
+              "examples": {
+                "当前组织榜": {
+                  "summary": "默认查询当前组织榜单",
+                  "value": {
+                    "page": 1,
+                    "page_size": 20,
+                    "platform": "luogu",
+                    "scope": "current_org"
+                  }
+                },
+                "全体成员总榜": {
+                  "summary": "查询全体成员总榜",
+                  "value": {
+                    "page": 1,
+                    "page_size": 20,
+                    "platform": "leetcode",
+                    "scope": "all_members"
+                  }
+                },
+                "指定组织榜": {
+                  "summary": "查询指定组织榜单",
+                  "value": {
+                    "page": 1,
+                    "page_size": 20,
+                    "platform": "luogu",
+                    "scope": "org",
+                    "org_id": 39
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、未登录或 Token 无效都可能返回 HTTP 200；请结合 code 与返回壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/LegacySuccessResponseOJRankingList"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyAuthErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "查询成功-当前组织榜": {
+                    "value": {
+                      "code": 0,
+                      "data": {
+                        "list": [
+                          {
+                            "rank": 1,
+                            "user_id": 12,
+                            "real_name": "alice",
+                            "avatar": "https://cdn.example.com/avatar/alice.png",
+                            "total_passed": 321,
+                            "platform_details": {
+                              "luogu": 321
+                            }
+                          },
+                          {
+                            "rank": 2,
+                            "user_id": 18,
+                            "real_name": "bob",
+                            "avatar": "https://cdn.example.com/avatar/bob.png",
+                            "total_passed": 287,
+                            "platform_details": {
+                              "luogu": 287
+                            }
+                          }
+                        ],
+                        "my_rank": {
+                          "rank": 7,
+                          "total_passed": 120
+                        },
+                        "total": 86
+                      },
+                      "messages": "获取成功"
+                    }
+                  },
+                  "平台非法": {
+                    "value": {
+                      "code": 40003,
+                      "data": null,
+                      "error": "获取排行榜失败: invalid platform"
+                    }
+                  },
+                  "scope为org但缺少org_id": {
+                    "value": {
+                      "code": 10004,
+                      "data": null,
+                      "error": "获取排行榜失败: org_id is required for org scope"
+                    }
+                  },
+                  "无权查询指定组织": {
+                    "value": {
+                      "code": 10004,
+                      "data": null,
+                      "error": "获取排行榜失败: user organization not active"
+                    }
+                  },
+                  "未登录-缺少AccessToken": {
+                    "value": {
+                      "code": 11005,
+                      "data": {
+                        "message": "Access token is required",
+                        "reload": true
+                      },
+                      "error": "Access token is required"
+                    }
+                  },
+                  "Token无效": {
+                    "value": {
+                      "code": 11003,
+                      "data": {
+                        "message": "Invalid access token",
+                        "reload": true
+                      },
+                      "error": "Invalid access token"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseUnauthorized"
+                },
+                "example": {
+                  "code": 11000,
+                  "success": false,
+                  "message": "账号已禁用",
+                  "data": null,
+                  "timestamp": 1770850000001
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "登录后在 Authorization 头中传入：Bearer <access_token>"
+      }
+    },
+    "schemas": {
+      "OJRankingListReq": {
+        "type": "object",
+        "description": "OJ 排行榜查询请求体。",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1,
+            "description": "页码。服务端默认值为 1。"
+          },
+          "page_size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 20,
+            "description": "每页条数。服务端默认值为 20，最大 100。"
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "luogu",
+              "leetcode"
+            ],
+            "description": "OJ 平台标识。luogu 表示洛谷，leetcode 表示力扣。"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "current_org",
+              "all_members",
+              "org"
+            ],
+            "default": "current_org",
+            "description": "排行榜范围。\n- current_org：当前组织榜单\n- all_members：全体成员总榜\n- org：指定组织榜单"
+          },
+          "org_id": {
+            "type": "integer",
+            "format": "uint64",
+            "minimum": 1,
+            "nullable": true,
+            "description": "组织 ID。仅当 scope=org 时需要传入；其他 scope 下可省略。"
+          }
+        },
+        "required": [
+          "platform"
+        ]
+      },
+      "OJRankingListRespData": {
+        "type": "object",
+        "description": "排行榜数据结构。该结构本次未变更。",
+        "properties": {
+          "list": {
+            "type": "array",
+            "description": "当前页排行榜列表。",
+            "items": {
+              "$ref": "#/components/schemas/OJRankingListItem"
+            }
+          },
+          "my_rank": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OJRankingMyRank"
+              }
+            ],
+            "nullable": true,
+            "description": "当前登录用户在该榜单中的名次；如果未上榜则可能为 null。"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "榜单总人数。"
+          }
+        },
+        "required": [
+          "list",
+          "total"
+        ]
+      },
+      "OJRankingListItem": {
+        "type": "object",
+        "description": "排行榜单条记录。",
+        "properties": {
+          "rank": {
+            "type": "integer",
+            "description": "当前页内换算后的真实排名，从 1 开始。"
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "uint64",
+            "description": "用户 ID。"
+          },
+          "real_name": {
+            "type": "string",
+            "description": "展示名称。当前实现使用系统用户名。"
+          },
+          "avatar": {
+            "type": "string",
+            "description": "展示头像。优先使用对应平台头像，缺失时回退到系统头像。"
+          },
+          "total_passed": {
+            "type": "integer",
+            "description": "该平台排行榜排序分值。洛谷为通过题数，力扣为总通过题数。"
+          },
+          "platform_details": {
+            "$ref": "#/components/schemas/OJRankingPlatformDetails"
+          }
+        },
+        "required": [
+          "rank",
+          "user_id",
+          "real_name",
+          "avatar",
+          "total_passed"
+        ]
+      },
+      "OJRankingPlatformDetails": {
+        "type": "object",
+        "description": "平台维度详情。当前只会返回与 platform 对应的一个字段。",
+        "properties": {
+          "luogu": {
+            "type": "integer",
+            "description": "洛谷通过题数。仅当 platform=luogu 时有值。"
+          },
+          "leetcode": {
+            "type": "integer",
+            "description": "力扣总通过题数。仅当 platform=leetcode 时有值。"
+          }
+        }
+      },
+      "OJRankingMyRank": {
+        "type": "object",
+        "description": "当前登录用户在目标榜单中的名次信息。",
+        "properties": {
+          "rank": {
+            "type": "integer",
+            "description": "我的名次，从 1 开始。"
+          },
+          "total_passed": {
+            "type": "integer",
+            "description": "我的平台分值。"
+          }
+        },
+        "required": [
+          "rank",
+          "total_passed"
+        ]
+      },
+      "LegacySuccessResponseOJRankingList": {
+        "type": "object",
+        "description": "当前 Controller 成功响应壳。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0
+            ],
+            "description": "业务码。0 表示成功。"
+          },
+          "data": {
+            "$ref": "#/components/schemas/OJRankingListRespData"
+          },
+          "messages": {
+            "type": "string",
+            "description": "成功消息。当前实现固定为“获取成功”。"
+          }
+        },
+        "required": [
+          "code",
+          "data",
+          "messages"
+        ]
+      },
+      "LegacyErrorResponse": {
+        "type": "object",
+        "description": "当前 Controller 业务失败响应壳。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "业务码。当前实现中 invalid platform 会返回 40003；其他大多数业务失败会返回 10004。"
+          },
+          "data": {
+            "nullable": true,
+            "description": "失败时通常为 null。"
+          },
+          "error": {
+            "type": "string",
+            "description": "失败描述。当前实现通常会带上“获取排行榜失败: ...”前缀。"
+          }
+        },
+        "required": [
+          "code",
+          "data",
+          "error"
+        ]
+      },
+      "LegacyAuthErrorResponse": {
+        "type": "object",
+        "description": "JWTAuth 中间件拦截时返回的旧版认证失败响应壳。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              11001,
+              11003,
+              11005
+            ],
+            "description": "认证相关业务码。11005=需要登录，11001=Token 已过期，11003=Token 无效。"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AuthReloadData"
+          },
+          "error": {
+            "type": "string",
+            "description": "认证失败原因。"
+          }
+        },
+        "required": [
+          "code",
+          "data",
+          "error"
+        ]
+      },
+      "AuthReloadData": {
+        "type": "object",
+        "description": "旧版认证失败返回体中的 data 结构。",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "认证失败原因。"
+          },
+          "reload": {
+            "type": "boolean",
+            "description": "提示前端应重置状态并重新登录。"
+          }
+        },
+        "required": [
+          "message",
+          "reload"
+        ]
+      },
+      "BizResponseUnauthorized": {
+        "type": "object",
+        "description": "ActiveUserMW 拦截时返回的新版 BizResponse。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              11000
+            ],
+            "description": "未授权业务码。"
+          },
+          "success": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "description": "固定为 false。"
+          },
+          "message": {
+            "type": "string",
+            "description": "未授权说明，例如“账号已禁用”。"
+          },
+          "data": {
+            "nullable": true,
+            "description": "当前中间件返回为 null。"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "服务端响应时间戳（毫秒）。"
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      }
+    }
+  }
+}

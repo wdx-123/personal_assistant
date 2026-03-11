@@ -4,18 +4,19 @@ import "personal_assistant/internal/service/contract"
 
 // supplier implementation 用于底层实现
 type serviceSupplier struct {
-	jwtService           contract.JWTServiceContract
-	permissionService    contract.PermissionServiceContract
-	baseService          contract.BaseServiceContract
-	healthService        contract.HealthServiceContract
-	userService          contract.UserServiceContract
-	orgService           contract.OrgServiceContract
-	ojService            contract.OJServiceContract
-	apiService           contract.ApiServiceContract
-	menuService          contract.MenuServiceContract
-	roleService          contract.RoleServiceContract
-	imageService         contract.ImageServiceContract
-	observabilityService contract.ObservabilityServiceContract
+	jwtService             contract.JWTServiceContract
+	permissionService      contract.PermissionServiceContract
+	baseService            contract.BaseServiceContract
+	healthService          contract.HealthServiceContract
+	userService            contract.UserServiceContract
+	orgService             contract.OrgServiceContract
+	ojService              contract.OJServiceContract
+	apiService             contract.ApiServiceContract
+	menuService            contract.MenuServiceContract
+	roleService            contract.RoleServiceContract
+	imageService           contract.ImageServiceContract
+	observabilityService   contract.ObservabilityServiceContract
+	cacheProjectionService contract.CacheProjectionServiceContract
 }
 
 func (s *serviceSupplier) GetJWTSvc() contract.JWTServiceContract {
@@ -59,4 +60,8 @@ func (s *serviceSupplier) GetImageSvc() contract.ImageServiceContract {
 
 func (s *serviceSupplier) GetObservabilitySvc() contract.ObservabilityServiceContract {
 	return s.observabilityService
+}
+
+func (s *serviceSupplier) GetCacheProjectionSvc() contract.CacheProjectionServiceContract {
+	return s.cacheProjectionService
 }

@@ -100,6 +100,14 @@ type OJServiceContract interface {
 	HandleLeetcodeBindSignal(ctx context.Context, userID uint) error
 }
 
+type CacheProjectionServiceContract interface {
+	// HandleCacheProjectionEvent 处理缓存投影事件，根据事件类型和数据更新对应的缓存状态，确保系统内的缓存数据与底层数据源保持一致。
+	HandleCacheProjectionEvent(ctx context.Context, event *eventdto.CacheProjectionEvent) error
+
+	// RebuildAll 全量重建所有缓存数据，通常在系统启动或重大数据变更后调用，以确保缓存与数据库完全同步。该方法会依次重建各个模块的缓存，并在过程中记录重建结果和可能的错误。
+	RebuildAll(ctx context.Context) error
+}
+
 type ApiServiceContract interface {
 	GetAPIList(ctx context.Context, filter *request.ApiListFilter) ([]*entity.API, map[uint]*entity.Menu, int64, error)
 	GetAPIByID(ctx context.Context, id uint) (*entity.API, *entity.Menu, error)
@@ -164,4 +172,5 @@ type Supplier interface {
 	GetRoleSvc() RoleServiceContract
 	GetImageSvc() ImageServiceContract
 	GetObservabilitySvc() ObservabilityServiceContract
+	GetCacheProjectionSvc() CacheProjectionServiceContract
 }

@@ -345,11 +345,13 @@ func (r *UserGormRepository) CacheActiveState(
 		return nil
 	}
 
+	// 设置缓存值
 	value := userActiveStateValueInactive
 	if active {
 		value = userActiveStateValueActive
 	}
 
+	// 写入 Redis，设置过期时间以支持自动失效
 	return global.Redis.Set(
 		ctx,
 		rediskey.UserActiveStateKey(userID),
@@ -420,6 +422,19 @@ func (r *UserGormRepository) UpdateCurrentOrgID(
 		Where("id = ?", userID).
 		Update("current_org_id", orgID).
 		Error
+}
+
+func (r *UserGormRepository) ListIDsByCurrentOrgID(ctx context.Context, orgID uint) ([]uint, error) {
+	if orgID == 0 {
+		return nil, nil
+	}
+	var userIDs []uint
+	err := r.db.WithContext(ctx).
+		Model(&entity.User{}).
+		Where("current_org_id = ?", orgID).
+		Order("id ASC").
+		Pluck("id", &userIDs).Error
+	return userIDs, err
 }
 
 // ClearCurrentOrgByOrgID 将当前组织为指定 org 的用户置空
