@@ -4,12 +4,17 @@
 
 ## 项目亮点
 
-- 用户认证：注册、登录、登出、刷新 Token（双 Token 方案）。
-- 组织与权限：组织管理 + 角色管理 + 菜单管理 + API 管理。
-- RBAC：基于 Casbin 的权限校验，支持用户-组织-角色关系。
-- OJ 能力：支持 LeetCode / 洛谷账号绑定、数据同步、排行榜缓存。
-- 图片管理：支持本地与七牛存储，上传限流、孤儿文件定时清理。
-- 工程能力：分层架构（Controller/Service/Repository）、Redis Stream + Outbox、定时任务。
+- **用户认证**：支持注册、登录、登出、刷新 Token，采用双 Token 方案与 HttpOnly Refresh Token。
+- **组织与权限**：覆盖组织、角色、菜单、API 管理，支持用户-组织-角色关系建模。
+- **RBAC**：基于 Casbin 做权限校验，并通过权限投影链路支撑多实例下的策略收敛。
+- **OJ 能力**：支持 LeetCode / Luogu 账号绑定、异步同步、排行榜查询与缓存投影。
+- **图片管理**：支持本地 / 七牛双存储驱动，包含上传限流、孤儿文件清理等治理能力。
+- **事件驱动一致性**：基于 Redis Stream + Outbox + 双通道收口，用于异步解耦、投影刷新和多实例收敛。
+- **第三方基础设施接入**：在 `internal/infrastructure` 中统一封装 LeetCode / Luogu / Lanqiao 客户端，采用配置驱动，便于替换和扩展。
+- **可观测性**：提供请求链路追踪、GORM/任务埋点和指标聚合查询能力。
+- **稳定性治理**：集成七牛存储熔断、上传限流、Redis 分布式锁与任务协调。
+- **排行榜设计**：基于 Redis ZSet + 用户快照投影 + 读模型聚合查询，兼顾查询性能与异步收敛。
+- **框架设计**：按 Controller / Service / Repository / Router / Core / Infrastructure / pkg 分层，拆分业务编排、数据访问与基础设施初始化职责。
 
 ## 技术栈
 
@@ -32,7 +37,7 @@
 │   ├── repository/          # 数据访问层
 │   ├── router/              # 路由注册
 │   ├── middleware/          # 中间件
-│   ├── infrastructure/      # 外部服务接入（Luogu/LeetCode/Outbox）
+│   ├── infrastructure/      # 外部服务接入与消息基础设施（LeetCode/Luogu/Lanqiao/Outbox）
 │   └── core/                # 启动流程、配置、日志、数据库、任务初始化
 ├── pkg/                     # 公共组件（jwt、response、storage、errors 等）
 ├── docs/                    # 项目文档
@@ -156,10 +161,14 @@ go run cmd/main.go --sql-import .\backup.sql
 
 ## 相关文档
 
+- `docs/事件驱动架构-RedisStream-Outbox-双通道一致性实践.md`
 - `docs/Casbin-RBAC权限系统架构文档.md`
 - `docs/双Token认证方案-整合版.md`
-- `docs/图片管理-重构操作文档.md`
+- `docs/图片管理-技术文档.md`
+- `docs/图片上传流.md`
 - `docs/flag指令.md`
+
+第三方集成、可观测性、排行榜与框架整体设计文档持续补充中。
 
 ## 安全提醒（公开仓库前建议先做）
 
