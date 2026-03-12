@@ -2,7 +2,6 @@ package system
 
 import (
 	"context"
-	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -15,7 +14,7 @@ import (
 	readmodel "personal_assistant/internal/model/readmodel"
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/interfaces"
-	"personal_assistant/pkg/casbin"
+	svccontract "personal_assistant/internal/service/contract"
 	"personal_assistant/pkg/errors"
 	"personal_assistant/pkg/imageops"
 
@@ -30,22 +29,26 @@ type OrgService struct {
 	userRepo                 interfaces.UserRepository
 	roleRepo                 interfaces.RoleRepository
 	imageRepo                interfaces.ImageRepository
-	permissionService        *PermissionService
-	casbinSvc                *casbin.Service
+	authorizationService     svccontract.AuthorizationServiceContract
+	permissionProjectionSvc  svccontract.PermissionProjectionServiceContract
 	cacheProjectionPublisher cacheProjectionEventPublisher
 }
 
 // NewOrgService 创建组织服务实例
-func NewOrgService(repositoryGroup *repository.Group, permissionService *PermissionService) *OrgService {
+func NewOrgService(
+	repositoryGroup *repository.Group,
+	authorizationService svccontract.AuthorizationServiceContract,
+	permissionProjectionSvc svccontract.PermissionProjectionServiceContract,
+) *OrgService {
 	return &OrgService{
-		txRunner:          repositoryGroup,
-		orgRepo:           repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
-		orgMemberRepo:     repositoryGroup.SystemRepositorySupplier.GetOrgMemberRepository(),
-		userRepo:          repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
-		roleRepo:          repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
-		imageRepo:         repositoryGroup.SystemRepositorySupplier.GetImageRepository(),
-		permissionService: permissionService,
-		casbinSvc:         casbin.NewCasbinService(),
+		txRunner:                repositoryGroup,
+		orgRepo:                 repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
+		orgMemberRepo:           repositoryGroup.SystemRepositorySupplier.GetOrgMemberRepository(),
+		userRepo:                repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
+		roleRepo:                repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
+		imageRepo:               repositoryGroup.SystemRepositorySupplier.GetImageRepository(),
+		authorizationService:    authorizationService,
+		permissionProjectionSvc: permissionProjectionSvc,
 		cacheProjectionPublisher: newCacheProjectionOutboxPublisher(
 			repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
 		),
@@ -174,6 +177,8 @@ func (s *OrgService) CreateOrg(
 	userID uint,
 	req *request.CreateOrgReq,
 ) error {
+	var createdOrgID uint
+	var assignedOrgAdmin bool
 	creator, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
 		return errors.Wrap(errors.CodeDBError, err)
@@ -227,7 +232,7 @@ func (s *OrgService) CreateOrg(
 	}
 
 	// 开启事务
-	return s.txRunner.InTx(ctx, func(tx any) error {
+	if err := s.txRunner.InTx(ctx, func(tx any) error {
 		txOrgRepo := s.orgRepo.WithTx(tx)
 		txOrgMemberRepo := s.orgMemberRepo.WithTx(tx)
 		txUserRepo := s.userRepo.WithTx(tx)
@@ -247,6 +252,7 @@ func (s *OrgService) CreateOrg(
 		if err := txOrgRepo.Create(ctx, org); err != nil {
 			return errors.Wrap(errors.CodeDBError, err)
 		}
+		createdOrgID = org.ID
 
 		// 2. 建立组织成员关系（owner 也走成员状态机）
 		if err := txOrgMemberRepo.Create(ctx, &entity.OrgMember{
@@ -264,6 +270,12 @@ func (s *OrgService) CreateOrg(
 		if roleErr == nil && orgAdminRole != nil && orgAdminRole.ID > 0 {
 			if err := txRoleRepo.AssignRoleToUserInOrg(ctx, userID, org.ID, orgAdminRole.ID); err != nil {
 				return errors.Wrap(errors.CodeDBError, err)
+			}
+			assignedOrgAdmin = true
+			if s.permissionProjectionSvc != nil {
+				if err := s.permissionProjectionSvc.PublishSubjectBindingChangedInTx(ctx, tx, userID, org.ID); err != nil {
+					return errors.Wrap(errors.CodeDBError, err)
+				}
 			}
 		}
 
@@ -285,7 +297,15 @@ func (s *OrgService) CreateOrg(
 		}
 
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+	if assignedOrgAdmin && s.permissionProjectionSvc != nil {
+		if err := s.permissionProjectionSvc.SyncSubjectRoles(ctx, userID, createdOrgID); err != nil {
+			return errors.Wrap(errors.CodeInternalError, err)
+		}
+	}
+	return nil
 }
 
 // UpdateOrg 更新组织信息（owner / super_admin / 具备组织管理能力的角色可操作）
@@ -624,7 +644,8 @@ func (s *OrgService) JoinOrgByInviteCode(ctx context.Context, userID uint, invit
 		return errors.New(errors.CodeInviteCodeInvalid)
 	}
 
-	return s.txRunner.InTx(ctx, func(tx any) error {
+	shouldSyncSubject := false
+	if err := s.txRunner.InTx(ctx, func(tx any) error {
 		txOrgMemberRepo := s.orgMemberRepo.WithTx(tx)
 		txRoleRepo := s.roleRepo.WithTx(tx)
 		txUserRepo := s.userRepo.WithTx(tx)
@@ -674,6 +695,12 @@ func (s *OrgService) JoinOrgByInviteCode(ctx context.Context, userID uint, invit
 			if err := s.assignDefaultMemberRole(ctx, txRoleRepo, userID, org.ID); err != nil {
 				return err
 			}
+			shouldSyncSubject = true
+			if s.permissionProjectionSvc != nil {
+				if err := s.permissionProjectionSvc.PublishSubjectBindingChangedInTx(ctx, tx, userID, org.ID); err != nil {
+					return errors.Wrap(errors.CodeDBError, err)
+				}
+			}
 		}
 
 		if err := txUserRepo.UpdateCurrentOrgID(ctx, userID, &org.ID); err != nil {
@@ -687,7 +714,15 @@ func (s *OrgService) JoinOrgByInviteCode(ctx context.Context, userID uint, invit
 			return errors.Wrap(errors.CodeDBError, err)
 		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+	if shouldSyncSubject && s.permissionProjectionSvc != nil {
+		if err := s.permissionProjectionSvc.SyncSubjectRoles(ctx, userID, org.ID); err != nil {
+			return errors.Wrap(errors.CodeInternalError, err)
+		}
+	}
+	return nil
 }
 
 // LeaveOrg 用户主动退出组织。
@@ -708,7 +743,7 @@ func (s *OrgService) LeaveOrg(ctx context.Context, userID, orgID uint, reason st
 	}
 
 	// 权限校验：仅组织成员可操作（Owner 也算成员）。
-	return s.txRunner.InTx(ctx, func(tx any) error {
+	if err := s.txRunner.InTx(ctx, func(tx any) error {
 		txOrgMemberRepo := s.orgMemberRepo.WithTx(tx)
 		txRoleRepo := s.roleRepo.WithTx(tx)
 		txUserRepo := s.userRepo.WithTx(tx)
@@ -742,6 +777,11 @@ func (s *OrgService) LeaveOrg(ctx context.Context, userID, orgID uint, reason st
 		if err := txRoleRepo.DeleteUserOrgRoles(ctx, userID, orgID); err != nil {
 			return errors.Wrap(errors.CodeDBError, err)
 		}
+		if s.permissionProjectionSvc != nil {
+			if err := s.permissionProjectionSvc.PublishSubjectBindingChangedInTx(ctx, tx, userID, orgID); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
 
 		user, err := txUserRepo.GetByID(ctx, userID)
 		if err != nil {
@@ -761,12 +801,19 @@ func (s *OrgService) LeaveOrg(ctx context.Context, userID, orgID uint, reason st
 			event = newUserSnapshotProjectionEvent(userID, []uint{orgID})
 		}
 
-		_ = s.clearUserOrgCasbinRoles(userID, orgID)
 		if err := s.publishCacheProjectionInTx(ctx, tx, event); err != nil {
 			return errors.Wrap(errors.CodeDBError, err)
 		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+	if s.permissionProjectionSvc != nil {
+		if err := s.permissionProjectionSvc.SyncSubjectRoles(ctx, userID, orgID); err != nil {
+			return errors.Wrap(errors.CodeInternalError, err)
+		}
+	}
+	return nil
 }
 
 // KickMember 管理员踢出组织成员。
@@ -788,7 +835,7 @@ func (s *OrgService) KickMember(ctx context.Context, operatorID, orgID, targetUs
 		return errors.New(errors.CodeOrgOwnerTransferRequired)
 	}
 
-	return s.txRunner.InTx(ctx, func(tx any) error {
+	if err := s.txRunner.InTx(ctx, func(tx any) error {
 		txOrgMemberRepo := s.orgMemberRepo.WithTx(tx)
 		txRoleRepo := s.roleRepo.WithTx(tx)
 		txUserRepo := s.userRepo.WithTx(tx)
@@ -819,6 +866,11 @@ func (s *OrgService) KickMember(ctx context.Context, operatorID, orgID, targetUs
 		if err := txRoleRepo.DeleteUserOrgRoles(ctx, targetUserID, orgID); err != nil {
 			return errors.Wrap(errors.CodeDBError, err)
 		}
+		if s.permissionProjectionSvc != nil {
+			if err := s.permissionProjectionSvc.PublishSubjectBindingChangedInTx(ctx, tx, targetUserID, orgID); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
 
 		user, err := txUserRepo.GetByID(ctx, targetUserID)
 		if err != nil {
@@ -838,12 +890,19 @@ func (s *OrgService) KickMember(ctx context.Context, operatorID, orgID, targetUs
 			event = newUserSnapshotProjectionEvent(targetUserID, []uint{orgID})
 		}
 
-		_ = s.clearUserOrgCasbinRoles(targetUserID, orgID)
 		if err := s.publishCacheProjectionInTx(ctx, tx, event); err != nil {
 			return errors.Wrap(errors.CodeDBError, err)
 		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+	if s.permissionProjectionSvc != nil {
+		if err := s.permissionProjectionSvc.SyncSubjectRoles(ctx, targetUserID, orgID); err != nil {
+			return errors.Wrap(errors.CodeInternalError, err)
+		}
+	}
+	return nil
 }
 
 // RecoverMember 管理员恢复成员（removed/left -> active），恢复后仅授予 member 角色。
@@ -869,7 +928,8 @@ func (s *OrgService) RecoverMember(
 	}
 
 	// 开启事务，恢复成员状态，并重置为默认 member 角色（删除原有角色）。
-	return s.txRunner.InTx(ctx, func(tx any) error {
+	shouldSyncSubject := false
+	if err := s.txRunner.InTx(ctx, func(tx any) error {
 		txOrgMemberRepo := s.orgMemberRepo.WithTx(tx)
 		txRoleRepo := s.roleRepo.WithTx(tx)
 		shouldResetDefaultRole := false
@@ -916,6 +976,12 @@ func (s *OrgService) RecoverMember(
 		if err := s.assignDefaultMemberRole(ctx, txRoleRepo, targetUserID, orgID); err != nil {
 			return err
 		}
+		shouldSyncSubject = true
+		if s.permissionProjectionSvc != nil {
+			if err := s.permissionProjectionSvc.PublishSubjectBindingChangedInTx(ctx, tx, targetUserID, orgID); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
 		if err := s.publishCacheProjectionInTx(
 			ctx,
 			tx,
@@ -924,7 +990,15 @@ func (s *OrgService) RecoverMember(
 			return errors.Wrap(errors.CodeDBError, err)
 		}
 		return nil
-	})
+	}); err != nil {
+		return err
+	}
+	if shouldSyncSubject && s.permissionProjectionSvc != nil {
+		if err := s.permissionProjectionSvc.SyncSubjectRoles(ctx, targetUserID, orgID); err != nil {
+			return errors.Wrap(errors.CodeInternalError, err)
+		}
+	}
+	return nil
 }
 
 // authorizeOrgMemberAction 校验操作者在目标组织下是否具备指定成员动作 capability。
@@ -937,10 +1011,10 @@ func (s *OrgService) authorizeOrgMemberAction(
 	if err != nil {
 		return err
 	}
-	if s.permissionService == nil {
-		return errors.NewWithMsg(errors.CodeInternalError, "权限服务未初始化")
+	if s.authorizationService == nil {
+		return errors.NewWithMsg(errors.CodeInternalError, "授权服务未初始化")
 	}
-	return s.permissionService.AuthorizeOrgCapability(ctx, operatorID, orgID, capabilityCode)
+	return s.authorizationService.AuthorizeOrgCapability(ctx, operatorID, orgID, capabilityCode)
 }
 
 // authorizeOrgAction 校验操作者在目标组织下是否具备指定组织动作 capability。
@@ -953,10 +1027,10 @@ func (s *OrgService) authorizeOrgAction(
 	if err != nil {
 		return err
 	}
-	if s.permissionService == nil {
-		return errors.NewWithMsg(errors.CodeInternalError, "权限服务未初始化")
+	if s.authorizationService == nil {
+		return errors.NewWithMsg(errors.CodeInternalError, "授权服务未初始化")
 	}
-	return s.permissionService.AuthorizeOrgCapability(ctx, operatorID, orgID, capabilityCode)
+	return s.authorizationService.AuthorizeOrgCapability(ctx, operatorID, orgID, capabilityCode)
 }
 
 func capabilityForOrgMemberAction(action string) (string, error) {
@@ -1027,21 +1101,7 @@ func (s *OrgService) assignDefaultMemberRole(
 	if err := roleRepo.AssignRoleToUserInOrg(ctx, userID, orgID, memberRole.ID); err != nil {
 		return errors.Wrap(errors.CodeDBError, err)
 	}
-	subject := fmt.Sprintf("%d@%d", userID, orgID)
-	if s.casbinSvc != nil && s.casbinSvc.Enforcer != nil {
-		_, _ = s.casbinSvc.Enforcer.AddRoleForUser(subject, memberRole.Code)
-	}
 	return nil
-}
-
-// clearUserOrgCasbinRoles 从 Casbin 中清除用户在组织内的所有角色绑定（如离开/被踢出组织时）。
-func (s *OrgService) clearUserOrgCasbinRoles(userID, orgID uint) error {
-	if s.casbinSvc == nil || s.casbinSvc.Enforcer == nil {
-		return nil
-	}
-	subject := fmt.Sprintf("%d@%d", userID, orgID)
-	_, err := s.casbinSvc.Enforcer.DeleteRolesForUser(subject)
-	return err
 }
 
 func (s *OrgService) publishCacheProjectionInTx(

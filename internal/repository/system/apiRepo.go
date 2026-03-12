@@ -18,6 +18,13 @@ func NewAPIRepository(db *gorm.DB) interfaces.APIRepository {
 	return &apiRepository{db: db}
 }
 
+func (a *apiRepository) WithTx(tx any) interfaces.APIRepository {
+	if transaction, ok := tx.(*gorm.DB); ok {
+		return &apiRepository{db: transaction}
+	}
+	return a
+}
+
 // 基础CRUD操作
 
 func (a *apiRepository) GetByID(ctx context.Context, id uint) (*entity.API, error) {

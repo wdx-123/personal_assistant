@@ -2,168 +2,198 @@ package casbin
 
 import (
 	"fmt"
-	"strconv"
+	"strings"
 
-	"github.com/casbin/casbin/v2"
+	casbinlib "github.com/casbin/casbin/v2"
 
 	"personal_assistant/global"
 )
 
+// ActionAccess 表示访问权限（如访问某个API）
+// ActionRead 表示读取权限（如读取某个资源）
+// ActionOperate 表示操作权限（如修改/删除某个资源）
+const (
+	ActionAccess  = "access"
+	ActionRead    = "read"
+	ActionOperate = "operate"
+)
+
+// Permission 表示一个权限项，包含权限主体、对象和动作。
+type Permission struct {
+	Subject string // 权限主体（如用户ID@组织ID）
+	Object  string // 权限对象（如资源ID）
+	Action  string // 权限动作（如访问、读取、操作）
+}
+
+type PolicySnapshot struct {
+	SubjectRoles map[string][]string
+	Permissions  []Permission
+}
+
 type Service struct {
-	Enforcer *casbin.Enforcer
+	enforcer *casbinlib.Enforcer
 }
 
-// NewCasbinService 创建casbin服务实例
-func NewCasbinService() *Service {
-	return &Service{
-		Enforcer: global.CasbinEnforcer,
-	}
+func NewService() *Service {
+	return &Service{enforcer: global.CasbinEnforcer}
 }
 
-// VerifySuper 验证用户是否是超级管理员
-func (c *Service) VerifySuper(userID string, role string) (bool, error) {
-	err := c.Enforcer.LoadPolicy()
-	if err != nil {
-		return false, fmt.Errorf("VerifySuper() 策略加载失败 err: %w", err)
-	}
-	// 验证用户是否是超级管理员
-	ok, err := c.Enforcer.HasRoleForUser(userID, role)
-	if err != nil {
-		return false, fmt.Errorf("VerifySuper() 验证用户是否是超级管理员异常 err： %w", err)
-	}
-	return ok, nil
+func NewServiceWithEnforcer(enforcer *casbinlib.Enforcer) *Service {
+	return &Service{enforcer: enforcer}
 }
 
-// GetPermByRole 获取角色对应的api ID
-func (c *Service) GetPermByRole(role string) ([]uint, error) {
-	var apiIDs []uint
-	err := c.Enforcer.LoadPolicy()
-	if err != nil {
-		return nil, fmt.Errorf("GetPermByRole() 策略加载失败 err: %w", err)
-	}
-	permissions := c.Enforcer.GetPermissionsForUser(role)
-	// 获取对应的api ID
-	for _, p := range permissions {
-		// 取出apiID
-		id := p[1]
-		// 转换为uint
-		apiID, err := strconv.ParseUint(id, 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("GetPermByRole() 字符串转int64失败 err: %w", err)
-		}
-		apiIDs = append(apiIDs, uint(apiID))
-	}
-	return apiIDs, nil
-	/*
-		GetPermissionsForUser 返回了一个二维数组
-			角色     API_ID
-			admin    1
-			admin    2
-			user     3
-	*/
+func BuildSubject(userID, orgID uint) string {
+	return fmt.Sprintf("%d@%d", userID, orgID)
 }
 
-// ModifyPermByRole 修改角色权限
-func (c *Service) ModifyPermByRole(apiIDs []uint, role string) error {
-	err := c.Enforcer.LoadPolicy()
+// ReloadPolicy 从持久化存储重新加载权限数据到内存，适用于权限投影链路中的增量更新场景。
+func (s *Service) ReloadPolicy() error {
+	enforcer, err := s.requireEnforcer()
 	if err != nil {
-		return fmt.Errorf("ModifyPermByRole() 策略加载失败 err: %w", err)
+		return err
 	}
-	// 删除该角色的权限
-	_, err = c.Enforcer.DeletePermissionsForUser(role)
-	if err != nil {
-		return fmt.Errorf("ModifyPermByRole() 删除角色所属权限失败 err: %w", err)
-	}
-	for _, apiID := range apiIDs {
-		// 给该角色添加权限
-		_, err = c.Enforcer.AddPolicy(role, strconv.Itoa(int(apiID)))
-		if err != nil {
-			return fmt.Errorf("ModifyPermByRole() 添加角色权限失败 err: %w", err)
-		}
-	}
-	// 存储新的api权限
-	err = c.Enforcer.SavePolicy()
-	if err != nil {
-		return fmt.Errorf("ModifyPermByRole() 策略存储失败 err: %w", err)
-	}
-	return nil
+	return enforcer.LoadPolicy()
 }
 
-// DeletePermByRole 删除角色权限
-// 删除角色的权限-影响所有拥有该角色的用户
-func (c *Service) DeletePermByRole(roles []string) error {
-	err := c.Enforcer.LoadPolicy()
+// HasPermission 检查权限主体是否具有某个权限（如访问某个API），返回true表示有权限，false表示没有权限或发生错误。
+func (s *Service) HasPermission(subject, object, action string) (bool, error) {
+	enforcer, err := s.requireEnforcer()
 	if err != nil {
-		return fmt.Errorf("DeletePermByRole() 策略加载失败 err: %w", err)
+		return false, err
+	}
+	subject = strings.TrimSpace(subject)
+	object = strings.TrimSpace(object)
+	action = strings.TrimSpace(action)
+	if subject == "" || object == "" || action == "" {
+		return false, fmt.Errorf("subject, object or action is empty")
+	}
+	return enforcer.Enforce(subject, object, action)
+}
+
+// ReplaceSubjectRoles 替换权限主体的角色绑定（先撤销原有绑定，再绑定新角色）
+func (s *Service) ReplaceSubjectRoles(subject string, roles []string) error {
+	enforcer, err := s.requireEnforcer()
+	if err != nil {
+		return err
+	}
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		return fmt.Errorf("subject is empty")
+	}
+	if _, err := enforcer.DeleteRolesForUser(subject); err != nil {
+		return err
 	}
 	for _, role := range roles {
-		_, err = c.Enforcer.DeletePermissionsForUser(role)
-		if err != nil {
-			return fmt.Errorf("DeletePermByRole() 删除角色权限失败 err: %w", err)
+		role = strings.TrimSpace(role)
+		if role == "" {
+			continue
 		}
-	}
-	err = c.Enforcer.SavePolicy()
-	if err != nil {
-		return fmt.Errorf("DeletePermByRole() 策略存储失败 err: %w", err)
+		if _, err := enforcer.AddRoleForUser(subject, role); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-// RemoveRoleByID 根据用户ID删除角色
-// 删除用户的角色-只影响指定的用户
-func (c *Service) RemoveRoleByID(userIDs []string) error {
-	err := c.Enforcer.LoadPolicy()
+// ClearSubjectRoles 从权限主体撤销所有角色绑定（不删除权限主体的直接权限）
+func (s *Service) ClearSubjectRoles(subject string) error {
+	enforcer, err := s.requireEnforcer()
 	if err != nil {
-		return fmt.Errorf("RemoveRoleByID() 策略加载失败 err: %w", err)
+		return err
 	}
-	for _, userID := range userIDs {
-		_, err = c.Enforcer.DeleteRolesForUser(userID)
-		if err != nil {
-			return fmt.Errorf("RemoveRoleByID() 删除用户角色失败 err: %w", err)
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		return fmt.Errorf("subject is empty")
+	}
+	_, err = enforcer.DeleteRolesForUser(subject)
+	return err
+}
+
+// GrantPermissions 给权限主体授予权限
+func (s *Service) GrantPermissions(subject string, permissions []Permission) error {
+	enforcer, err := s.requireEnforcer()
+	if err != nil {
+		return err
+	}
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		return fmt.Errorf("subject is empty")
+	}
+	for _, permission := range permissions {
+		object := strings.TrimSpace(permission.Object)
+		action := strings.TrimSpace(permission.Action)
+		if object == "" || action == "" {
+			continue
 		}
-	}
-	err = c.Enforcer.SavePolicy()
-	if err != nil {
-		return fmt.Errorf("RemoveRoleByID() 策略存储失败 err: %w", err)
+		if _, err := enforcer.AddPermissionForUser(subject, object, action); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-// ModifyRoleByID 修改用户角色
-func (c *Service) ModifyRoleByID(userID string, roles []string) error {
-	err := c.Enforcer.LoadPolicy()
+// RevokePermissions 从权限主体撤销权限（仅删除指定权限，不影响其他权限和角色绑定）
+func (s *Service) ClearAllPolicies() error {
+	enforcer, err := s.requireEnforcer()
 	if err != nil {
-		return fmt.Errorf("ModifyRoleByID() 策略加载失败 err: %w", err)
+		return err
 	}
-	// 删除用户的所有角色
-	_, err = c.Enforcer.DeleteRolesForUser(userID)
+	enforcer.ClearPolicy()
+	if enforcer.GetAdapter() == nil {
+		return nil
+	}
+	return enforcer.SavePolicy()
+}
+
+// RebuildFromSnapshot 从权限快照重建权限数据，适用于权限投影链路中的全量重建场景。
+func (s *Service) RebuildFromSnapshot(snapshot *PolicySnapshot) error {
+	if snapshot == nil {
+		return fmt.Errorf("policy snapshot is nil")
+	}
+	if err := s.ClearAllPolicies(); err != nil {
+		return err
+	}
+	enforcer, err := s.requireEnforcer()
 	if err != nil {
-		return fmt.Errorf("ModifyRoleByID() 删除用户角色失败 err: %w", err)
+		return err
 	}
-	// 添加新角色
-	for _, role := range roles {
-		_, err = c.Enforcer.AddRoleForUser(userID, role)
-		if err != nil {
-			return fmt.Errorf("ModifyRoleByID() 添加用户角色失败 err: %w", err)
+
+	// 根据权限快照中的主体角色映射和权限列表，逐条添加角色绑定和权限规则到 Casbin 中
+	for subject, roles := range snapshot.SubjectRoles {
+		subject = strings.TrimSpace(subject)
+		if subject == "" {
+			continue
+		}
+		for _, role := range roles {
+			role = strings.TrimSpace(role)
+			if role == "" {
+				continue
+			}
+			if _, err := enforcer.AddRoleForUser(subject, role); err != nil {
+				return err
+			}
 		}
 	}
-	err = c.Enforcer.SavePolicy()
-	if err != nil {
-		return fmt.Errorf("ModifyRoleByID() 策略存储失败 err: %w", err)
+
+	// 添加权限规则
+	for _, permission := range snapshot.Permissions {
+		subject := strings.TrimSpace(permission.Subject)
+		object := strings.TrimSpace(permission.Object)
+		action := strings.TrimSpace(permission.Action)
+		if subject == "" || object == "" || action == "" {
+			continue
+		}
+		if _, err := enforcer.AddPermissionForUser(subject, object, action); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-// CheckPermission 检查权限
-func (c *Service) CheckPermission(userID string, apiID string) (bool, error) {
-	err := c.Enforcer.LoadPolicy()
-	if err != nil {
-		return false, fmt.Errorf("CheckPermission() 策略加载失败 err: %w", err)
+// requireEnforcer 获取Casbin Enforcer实例，如果未正确初始化则返回错误
+func (s *Service) requireEnforcer() (*casbinlib.Enforcer, error) {
+	if s == nil || s.enforcer == nil {
+		return nil, fmt.Errorf("casbin enforcer is nil")
 	}
-
-	ok, err := c.Enforcer.Enforce(userID, apiID)
-	if err != nil {
-		return false, fmt.Errorf("CheckPermission() 权限检查失败 err: %w", err)
-	}
-	return ok, nil
+	return s.enforcer, nil
 }

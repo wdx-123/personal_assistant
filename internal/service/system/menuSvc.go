@@ -11,29 +11,32 @@ import (
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/interfaces"
+	svccontract "personal_assistant/internal/service/contract"
 	"personal_assistant/pkg/errors"
 )
 
 // MenuService 菜单管理服务
 type MenuService struct {
-	menuRepo          interfaces.MenuRepository
-	apiRepo           interfaces.APIRepository
-	roleRepo          interfaces.RoleRepository
-	orgRepo           interfaces.OrgRepository
-	permissionService *PermissionService
+	txRunner                repository.TxRunner
+	menuRepo                interfaces.MenuRepository
+	apiRepo                 interfaces.APIRepository
+	roleRepo                interfaces.RoleRepository
+	orgRepo                 interfaces.OrgRepository
+	permissionProjectionSvc svccontract.PermissionProjectionServiceContract
 }
 
 // NewMenuService 创建菜单服务实例
 func NewMenuService(
 	repositoryGroup *repository.Group,
-	permissionService *PermissionService,
+	permissionProjectionSvc svccontract.PermissionProjectionServiceContract,
 ) *MenuService {
 	return &MenuService{
-		menuRepo:          repositoryGroup.SystemRepositorySupplier.GetMenuRepository(),
-		apiRepo:           repositoryGroup.SystemRepositorySupplier.GetAPIRepository(),
-		roleRepo:          repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
-		orgRepo:           repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
-		permissionService: permissionService,
+		txRunner:                repositoryGroup,
+		menuRepo:                repositoryGroup.SystemRepositorySupplier.GetMenuRepository(),
+		apiRepo:                 repositoryGroup.SystemRepositorySupplier.GetAPIRepository(),
+		roleRepo:                repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
+		orgRepo:                 repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
+		permissionProjectionSvc: permissionProjectionSvc,
 	}
 }
 
@@ -240,10 +243,18 @@ func (s *MenuService) UpdateMenu(ctx context.Context, id uint, req *request.Upda
 		menu.Desc = *req.Desc
 	}
 
-	if err := s.menuRepo.Update(ctx, menu); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-	return nil
+	return s.txRunner.InTx(ctx, func(tx any) error {
+		txMenuRepo := s.menuRepo.WithTx(tx)
+		if err := txMenuRepo.Update(ctx, menu); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if s.permissionProjectionSvc != nil {
+			if err := s.permissionProjectionSvc.PublishPermissionGraphChangedInTx(ctx, tx, "menu", menu.ID); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
+		return nil
+	})
 }
 
 // DeleteMenu 删除菜单（有子菜单禁止删除）
@@ -266,14 +277,21 @@ func (s *MenuService) DeleteMenu(ctx context.Context, id uint) error {
 	}
 
 	// 先清空 API 绑定
-	if err := s.menuRepo.ClearMenuAPIs(ctx, id); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-
-	if err := s.menuRepo.Delete(ctx, id); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-	return nil
+	return s.txRunner.InTx(ctx, func(tx any) error {
+		txMenuRepo := s.menuRepo.WithTx(tx)
+		if err := txMenuRepo.ClearMenuAPIs(ctx, id); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if err := txMenuRepo.Delete(ctx, id); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if s.permissionProjectionSvc != nil {
+			if err := s.permissionProjectionSvc.PublishPermissionGraphChangedInTx(ctx, tx, "menu", id); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
+		return nil
+	})
 }
 
 // BindAPIs 绑定API到菜单（覆盖式，事务保证原子性）
@@ -305,13 +323,18 @@ func (s *MenuService) BindAPIs(ctx context.Context, menuID uint, apiIDs []uint) 
 		}
 	}
 
-	if err := s.menuRepo.ReplaceMenuAPIsSingleBinding(ctx, menuID, validAPIIDs); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-	if err := s.permissionService.RefreshAllPermissions(ctx); err != nil {
-		return errors.Wrap(errors.CodeInternalError, err)
-	}
-	return nil
+	return s.txRunner.InTx(ctx, func(tx any) error {
+		txMenuRepo := s.menuRepo.WithTx(tx)
+		if err := txMenuRepo.ReplaceMenuAPIsSingleBinding(ctx, menuID, validAPIIDs); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if s.permissionProjectionSvc != nil {
+			if err := s.permissionProjectionSvc.PublishPermissionGraphChangedInTx(ctx, tx, "menu", menuID); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
+		return nil
+	})
 }
 
 // buildTree 递归构建菜单树

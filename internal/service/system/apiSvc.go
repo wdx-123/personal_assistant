@@ -10,6 +10,7 @@ import (
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/interfaces"
+	svccontract "personal_assistant/internal/service/contract"
 	"personal_assistant/pkg/errors"
 
 	"gorm.io/gorm"
@@ -17,19 +18,24 @@ import (
 
 // ApiService API接口管理服务
 type ApiService struct {
-	apiRepo           interfaces.APIRepository
-	menuRepo          interfaces.MenuRepository
-	roleRepo          interfaces.RoleRepository
-	permissionService *PermissionService
+	txRunner                repository.TxRunner
+	apiRepo                 interfaces.APIRepository
+	menuRepo                interfaces.MenuRepository
+	roleRepo                interfaces.RoleRepository
+	permissionProjectionSvc svccontract.PermissionProjectionServiceContract
 }
 
 // NewApiService 创建API服务实例
-func NewApiService(repositoryGroup *repository.Group, permissionService *PermissionService) *ApiService {
+func NewApiService(
+	repositoryGroup *repository.Group,
+	permissionProjectionSvc svccontract.PermissionProjectionServiceContract,
+) *ApiService {
 	return &ApiService{
-		apiRepo:           repositoryGroup.SystemRepositorySupplier.GetAPIRepository(),
-		menuRepo:          repositoryGroup.SystemRepositorySupplier.GetMenuRepository(),
-		roleRepo:          repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
-		permissionService: permissionService,
+		txRunner:                repositoryGroup,
+		apiRepo:                 repositoryGroup.SystemRepositorySupplier.GetAPIRepository(),
+		menuRepo:                repositoryGroup.SystemRepositorySupplier.GetMenuRepository(),
+		roleRepo:                repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
+		permissionProjectionSvc: permissionProjectionSvc,
 	}
 }
 
@@ -125,13 +131,19 @@ func (s *ApiService) CreateAPI(ctx context.Context, req *request.CreateApiReq) e
 		Detail: req.Detail,
 		Status: status,
 	}
-	if err := s.apiRepo.CreateWithMenu(ctx, api, req.MenuID); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-	if err := s.permissionService.RefreshAllPermissions(ctx); err != nil {
-		return errors.Wrap(errors.CodeInternalError, err)
-	}
-	return nil
+	// 创建API并关联菜单，发布权限变更事件
+	return s.txRunner.InTx(ctx, func(tx any) error {
+		txAPIRepo := s.apiRepo.WithTx(tx)
+		if err := txAPIRepo.CreateWithMenu(ctx, api, req.MenuID); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if s.permissionProjectionSvc != nil {
+			if err := s.permissionProjectionSvc.PublishPermissionGraphChangedInTx(ctx, tx, "api", api.ID); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
+		return nil
+	})
 }
 
 // UpdateAPI 更新API（支持部分更新）
@@ -175,13 +187,18 @@ func (s *ApiService) UpdateAPI(ctx context.Context, id uint, req *request.Update
 	if getErr == nil && existAPI != nil && existAPI.ID != id {
 		return errors.New(errors.CodeAPIAlreadyExists)
 	}
-	if err := s.apiRepo.UpdateWithMenu(ctx, api, req.MenuID); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-	if err := s.permissionService.RefreshAllPermissions(ctx); err != nil {
-		return errors.Wrap(errors.CodeInternalError, err)
-	}
-	return nil
+	return s.txRunner.InTx(ctx, func(tx any) error {
+		txAPIRepo := s.apiRepo.WithTx(tx)
+		if err := txAPIRepo.UpdateWithMenu(ctx, api, req.MenuID); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if s.permissionProjectionSvc != nil {
+			if err := s.permissionProjectionSvc.PublishPermissionGraphChangedInTx(ctx, tx, "api", api.ID); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
+		return nil
+	})
 }
 
 // DeleteAPI 删除API（先解绑菜单再删除）
@@ -193,16 +210,26 @@ func (s *ApiService) DeleteAPI(ctx context.Context, id uint) error {
 	if api == nil {
 		return errors.New(errors.CodeAPINotFound)
 	}
-	if err := s.menuRepo.RemoveAPIFromAllMenus(ctx, id); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-	if err := s.roleRepo.RemoveAPIFromAllRoles(ctx, id); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-	if err := s.apiRepo.Delete(ctx, id); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-	return nil
+	return s.txRunner.InTx(ctx, func(tx any) error {
+		txMenuRepo := s.menuRepo.WithTx(tx)
+		txRoleRepo := s.roleRepo.WithTx(tx)
+		txAPIRepo := s.apiRepo.WithTx(tx)
+		if err := txMenuRepo.RemoveAPIFromAllMenus(ctx, id); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if err := txRoleRepo.RemoveAPIFromAllRoles(ctx, id); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if err := txAPIRepo.Delete(ctx, id); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if s.permissionProjectionSvc != nil {
+			if err := s.permissionProjectionSvc.PublishPermissionGraphChangedInTx(ctx, tx, "api", id); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
+		return nil
+	})
 }
 
 // SyncAPI 同步路由到API表
@@ -239,61 +266,71 @@ func (s *ApiService) SyncAPI(
 		existingMap[key] = api
 	}
 
-	// 遍历路由：数据库中不存在则新增，已存在则跳过（不自动恢复启用，启用由管理员手动操作）
-	for _, r := range routes {
-		if r.Method == "" || r.Path == "" {
-			continue
-		}
-		key := r.Path + ":" + r.Method
-		if _, ok := existingMap[key]; ok {
-			// 已存在（无论启用还是禁用），跳过，不干预管理员的决定
-			continue
-		}
-		// 新路由，创建API记录
-		newAPI := &entity.API{
-			Path:   r.Path,
-			Method: r.Method,
-			Detail: "",
-			Status: 1,
-		}
-		if err := s.apiRepo.Create(ctx, newAPI); err != nil {
-			return added, updated, disabled, 0, errors.Wrap(errors.CodeDBError, err)
-		}
-		added++
-	}
+	changed := false
+	if err := s.txRunner.InTx(ctx, func(tx any) error {
+		txAPIRepo := s.apiRepo.WithTx(tx)
+		txMenuRepo := s.menuRepo.WithTx(tx)
+		txRoleRepo := s.roleRepo.WithTx(tx)
 
-	// 处理数据库中已不存在于路由的API
-	for _, api := range allAPIs {
-		key := api.Path + ":" + api.Method
-		if pathMethodSet[key] {
-			continue
+		// 遍历路由：数据库中不存在则新增，已存在则跳过（不自动恢复启用，启用由管理员手动操作）
+		for _, r := range routes {
+			if r.Method == "" || r.Path == "" {
+				continue
+			}
+			key := r.Path + ":" + r.Method
+			if _, ok := existingMap[key]; ok {
+				continue
+			}
+			newAPI := &entity.API{
+				Path:   r.Path,
+				Method: r.Method,
+				Detail: "",
+				Status: 1,
+			}
+			if err := txAPIRepo.Create(ctx, newAPI); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+			added++
+			changed = true
 		}
-		/*
-			因为 apis 这个主体会被两张关系表引用：
-			1、menu_apis（菜单绑定 API）
-			2、role_apis（角色直绑 API）
-		*/
-		if deleteRemoved {
-			// 物理删除：先解除菜单关联，再删除API
-			if err := s.menuRepo.RemoveAPIFromAllMenus(ctx, api.ID); err != nil {
-				return added, updated, disabled, 0, errors.Wrap(errors.CodeDBError, err)
+
+		// 处理数据库中已不存在于路由的API
+		for _, api := range allAPIs {
+			key := api.Path + ":" + api.Method
+			if pathMethodSet[key] {
+				continue
 			}
-			// 删除API前先解除角色关联，避免外键约束问题
-			if err := s.roleRepo.RemoveAPIFromAllRoles(ctx, api.ID); err != nil {
-				return added, updated, disabled, 0, errors.Wrap(errors.CodeDBError, err)
+			if deleteRemoved {
+				if err := txMenuRepo.RemoveAPIFromAllMenus(ctx, api.ID); err != nil {
+					return errors.Wrap(errors.CodeDBError, err)
+				}
+				if err := txRoleRepo.RemoveAPIFromAllRoles(ctx, api.ID); err != nil {
+					return errors.Wrap(errors.CodeDBError, err)
+				}
+				if err := txAPIRepo.Delete(ctx, api.ID); err != nil {
+					return errors.Wrap(errors.CodeDBError, err)
+				}
+				changed = true
+				continue
 			}
-			// 删除API记录
-			if err := s.apiRepo.Delete(ctx, api.ID); err != nil {
-				return added, updated, disabled, 0, errors.Wrap(errors.CodeDBError, err)
+			if api.Status == 1 {
+				api.Status = 0
+				if err := txAPIRepo.Update(ctx, api); err != nil {
+					return errors.Wrap(errors.CodeDBError, err)
+				}
+				disabled++
+				changed = true
 			}
-		} else if api.Status == 1 {
-			// 逻辑禁用
-			api.Status = 0
-			if err := s.apiRepo.Update(ctx, api); err != nil {
-				return added, updated, disabled, 0, errors.Wrap(errors.CodeDBError, err)
-			}
-			disabled++
 		}
+
+		if changed && s.permissionProjectionSvc != nil {
+			if err := s.permissionProjectionSvc.PublishPermissionGraphChangedInTx(ctx, tx, "api", 0); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return added, updated, disabled, 0, err
 	}
 
 	// 重新获取总数
