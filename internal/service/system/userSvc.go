@@ -22,8 +22,8 @@ import (
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository"
-	"personal_assistant/pkg/util"
 	svccontract "personal_assistant/internal/service/contract"
+	"personal_assistant/pkg/util"
 )
 
 type UserService struct {
@@ -44,12 +44,12 @@ func NewUserService(
 	permissionProjectionSvc svccontract.PermissionProjectionServiceContract,
 ) *UserService {
 	return &UserService{
-		txRunner:          repositoryGroup,
-		userRepo:          repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
-		roleRepo:          repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
-		orgRepo:           repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
-		orgMemberRepo:     repositoryGroup.SystemRepositorySupplier.GetOrgMemberRepository(),
-		imageRepo:         repositoryGroup.SystemRepositorySupplier.GetImageRepository(),
+		txRunner:                repositoryGroup,
+		userRepo:                repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
+		roleRepo:                repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
+		orgRepo:                 repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
+		orgMemberRepo:           repositoryGroup.SystemRepositorySupplier.GetOrgMemberRepository(),
+		imageRepo:               repositoryGroup.SystemRepositorySupplier.GetImageRepository(),
 		authorizationService:    authorizationService,
 		permissionProjectionSvc: permissionProjectionSvc,
 		cacheProjectionPublisher: newCacheProjectionOutboxPublisher(

@@ -18,10 +18,10 @@ import (
 
 // AuthorizationService 负责业务授权判断，不负责权限投影同步。
 type AuthorizationService struct {
-	roleRepo   interfaces.RoleRepository
-	orgRepo    interfaces.OrgRepository
-	userRepo   interfaces.UserRepository
-	casbinSvc  *pkgcasbin.Service
+	roleRepo  interfaces.RoleRepository
+	orgRepo   interfaces.OrgRepository
+	userRepo  interfaces.UserRepository
+	casbinSvc *pkgcasbin.Service
 }
 
 func NewAuthorizationService(repositoryGroup *repository.Group) *AuthorizationService {

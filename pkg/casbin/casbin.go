@@ -20,9 +20,9 @@ const (
 
 // Permission 表示一个权限项，包含权限主体、对象和动作。
 type Permission struct {
-	Subject string	// 权限主体（如用户ID@组织ID）
-	Object  string	// 权限对象（如资源ID）
-	Action  string	// 权限动作（如访问、读取、操作）
+	Subject string // 权限主体（如用户ID@组织ID）
+	Object  string // 权限对象（如资源ID）
+	Action  string // 权限动作（如访问、读取、操作）
 }
 
 type PolicySnapshot struct {

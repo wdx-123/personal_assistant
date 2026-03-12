@@ -18,11 +18,11 @@ import (
 
 // ApiService API接口管理服务
 type ApiService struct {
-	txRunner                 repository.TxRunner
-	apiRepo                  interfaces.APIRepository
-	menuRepo                 interfaces.MenuRepository
-	roleRepo                 interfaces.RoleRepository
-	permissionProjectionSvc  svccontract.PermissionProjectionServiceContract
+	txRunner                repository.TxRunner
+	apiRepo                 interfaces.APIRepository
+	menuRepo                interfaces.MenuRepository
+	roleRepo                interfaces.RoleRepository
+	permissionProjectionSvc svccontract.PermissionProjectionServiceContract
 }
 
 // NewApiService 创建API服务实例

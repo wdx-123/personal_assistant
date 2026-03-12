@@ -14,9 +14,9 @@ import (
 	readmodel "personal_assistant/internal/model/readmodel"
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/interfaces"
+	svccontract "personal_assistant/internal/service/contract"
 	"personal_assistant/pkg/errors"
 	"personal_assistant/pkg/imageops"
-	svccontract "personal_assistant/internal/service/contract"
 
 	"github.com/gofrs/uuid"
 )
@@ -41,12 +41,12 @@ func NewOrgService(
 	permissionProjectionSvc svccontract.PermissionProjectionServiceContract,
 ) *OrgService {
 	return &OrgService{
-		txRunner:          repositoryGroup,
-		orgRepo:           repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
-		orgMemberRepo:     repositoryGroup.SystemRepositorySupplier.GetOrgMemberRepository(),
-		userRepo:          repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
-		roleRepo:          repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
-		imageRepo:         repositoryGroup.SystemRepositorySupplier.GetImageRepository(),
+		txRunner:                repositoryGroup,
+		orgRepo:                 repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
+		orgMemberRepo:           repositoryGroup.SystemRepositorySupplier.GetOrgMemberRepository(),
+		userRepo:                repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
+		roleRepo:                repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
+		imageRepo:               repositoryGroup.SystemRepositorySupplier.GetImageRepository(),
 		authorizationService:    authorizationService,
 		permissionProjectionSvc: permissionProjectionSvc,
 		cacheProjectionPublisher: newCacheProjectionOutboxPublisher(

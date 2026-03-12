@@ -113,7 +113,6 @@ func buildPermissionProjectionOutboxEvent(
 	}, nil
 }
 
-
 type permissionPolicyReloadBroadcaster interface {
 	// Broadcast 广播权限策略变更通知
 	Broadcast(ctx context.Context) error

@@ -4,20 +4,20 @@ import "personal_assistant/internal/service/contract"
 
 // supplier implementation 用于底层实现
 type serviceSupplier struct {
-	jwtService             contract.JWTServiceContract
-	authorizationService   contract.AuthorizationServiceContract
+	jwtService                  contract.JWTServiceContract
+	authorizationService        contract.AuthorizationServiceContract
 	permissionProjectionService contract.PermissionProjectionServiceContract
-	baseService            contract.BaseServiceContract
-	healthService          contract.HealthServiceContract
-	userService            contract.UserServiceContract
-	orgService             contract.OrgServiceContract
-	ojService              contract.OJServiceContract
-	apiService             contract.ApiServiceContract
-	menuService            contract.MenuServiceContract
-	roleService            contract.RoleServiceContract
-	imageService           contract.ImageServiceContract
-	observabilityService   contract.ObservabilityServiceContract
-	cacheProjectionService contract.CacheProjectionServiceContract
+	baseService                 contract.BaseServiceContract
+	healthService               contract.HealthServiceContract
+	userService                 contract.UserServiceContract
+	orgService                  contract.OrgServiceContract
+	ojService                   contract.OJServiceContract
+	apiService                  contract.ApiServiceContract
+	menuService                 contract.MenuServiceContract
+	roleService                 contract.RoleServiceContract
+	imageService                contract.ImageServiceContract
+	observabilityService        contract.ObservabilityServiceContract
+	cacheProjectionService      contract.CacheProjectionServiceContract
 }
 
 func (s *serviceSupplier) GetJWTSvc() contract.JWTServiceContract {
