@@ -237,6 +237,9 @@ func NewConfig() *Config {
 		LeetcodeBindTopic:         viper.GetString("messaging.leetcode_bind_topic"),
 		LeetcodeBindGroup:         viper.GetString("messaging.leetcode_bind_group"),
 		LeetcodeBindConsumer:      viper.GetString("messaging.leetcode_bind_consumer"),
+		CacheProjectionTopic:      viper.GetString("messaging.cache_projection_topic"),
+		CacheProjectionGroup:      viper.GetString("messaging.cache_projection_group"),
+		CacheProjectionConsumer:   viper.GetString("messaging.cache_projection_consumer"),
 	}
 
 	_observability := &Observability{

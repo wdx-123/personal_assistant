@@ -24,6 +24,7 @@ import (
 	svccontract "personal_assistant/internal/service/contract"
 	"personal_assistant/pkg/observability/contextid"
 	"personal_assistant/pkg/observability/w3c"
+	"personal_assistant/pkg/rankingcache"
 	"personal_assistant/pkg/rediskey"
 	"personal_assistant/pkg/redislock"
 
@@ -37,26 +38,41 @@ import (
 type OJService struct {
 	userRepo                 interfaces.UserRepository
 	orgRepo                  interfaces.OrgRepository
+	orgMemberRepo            interfaces.OrgMemberRepository
+	roleRepo                 interfaces.RoleRepository
 	leetcodeRepo             interfaces.LeetcodeUserDetailRepository
 	luoguRepo                interfaces.LuoguUserDetailRepository
 	leetcodeQuestionBankRepo interfaces.LeetcodeQuestionBankRepository
 	luoguQuestionBankRepo    interfaces.LuoguQuestionBankRepository
 	leetcodeUserQuestionRepo interfaces.LeetcodeUserQuestionRepository
 	luoguUserQuestionRepo    interfaces.LuoguUserQuestionRepository
+	rankingReadModelRepo     interfaces.RankingReadModelRepository
 	outboxRepo               interfaces.OutboxRepository
+	cacheProjectionPublisher cacheProjectionEventPublisher
+	cacheProjectionSvc       svccontract.CacheProjectionServiceContract
 }
 
-func NewOJService(repositoryGroup *repository.Group) *OJService {
+func NewOJService(
+	repositoryGroup *repository.Group,
+	cacheProjectionSvc svccontract.CacheProjectionServiceContract,
+) *OJService {
 	return &OJService{
 		userRepo:                 repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
 		orgRepo:                  repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
+		orgMemberRepo:            repositoryGroup.SystemRepositorySupplier.GetOrgMemberRepository(),
+		roleRepo:                 repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
 		leetcodeRepo:             repositoryGroup.SystemRepositorySupplier.GetLeetcodeUserDetailRepository(),
 		luoguRepo:                repositoryGroup.SystemRepositorySupplier.GetLuoguUserDetailRepository(),
 		leetcodeQuestionBankRepo: repositoryGroup.SystemRepositorySupplier.GetLeetcodeQuestionBankRepository(),
 		luoguQuestionBankRepo:    repositoryGroup.SystemRepositorySupplier.GetLuoguQuestionBankRepository(),
 		leetcodeUserQuestionRepo: repositoryGroup.SystemRepositorySupplier.GetLeetcodeUserQuestionRepository(),
 		luoguUserQuestionRepo:    repositoryGroup.SystemRepositorySupplier.GetLuoguUserQuestionRepository(),
+		rankingReadModelRepo:     repositoryGroup.SystemRepositorySupplier.GetRankingReadModelRepository(),
 		outboxRepo:               repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
+		cacheProjectionPublisher: newCacheProjectionOutboxPublisher(
+			repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
+		),
+		cacheProjectionSvc: cacheProjectionSvc,
 	}
 }
 
@@ -454,8 +470,8 @@ func (s *OJService) syncSingleLeetcodeUser( // 单用户力扣同步
 	if err := s.updateLeetcodeUserInfoIfChanged(ctx, u, userSlug, realName, avatar, easy, medium, hard, total); err != nil { // 写入用户详情
 		global.Log.Error("failed to update leetcode user info", zap.Error(err)) // 记录失败日志
 	}
-	if err := s.updateRankingCache(ctx, u.UserID, "leetcode", total); err != nil { // 刷新排行榜缓存
-		global.Log.Error("failed to update leetcode ranking cache", zap.Error(err)) // 记录失败日志
+	if err := s.updateRankingCache(ctx, u.UserID, "leetcode", total); err != nil { // 发布排行榜投影事件
+		global.Log.Error("failed to publish leetcode ranking projection", zap.Error(err)) // 记录失败日志
 	}
 
 	recentOut, err := infrastructure.LeetCode().RecentAC(ctx, identifier, 0) // 拉取最近 AC 题目
@@ -512,7 +528,7 @@ func (s *OJService) syncSingleLuoguUser(
 		passed = len(out.Data.Passed)
 	}
 	if err := s.updateRankingCache(ctx, u.UserID, "luogu", passed); err != nil {
-		global.Log.Error("failed to update luogu ranking cache", zap.Error(err))
+		global.Log.Error("failed to publish luogu ranking projection", zap.Error(err))
 	}
 
 	return nil
@@ -825,115 +841,15 @@ func (s *OJService) updateRankingCache(
 	platform string,
 	totalPassed int,
 ) error {
-	if userID == 0 || platform == "" {
-		return nil
-	}
-	user, err := s.userRepo.GetByID(ctx, userID)
-	if err != nil {
-		return err
-	}
-	if user == nil || user.CurrentOrgID == nil || *user.CurrentOrgID == 0 {
-		return nil
-	}
-	if user.Freeze || user.Status != consts.UserStatusActive {
-		member := strconv.FormatUint(uint64(userID), 10)
-		key := rediskey.RankingZSetKey(*user.CurrentOrgID, platform)
-		return global.Redis.ZRem(ctx, key, member).Err()
-	}
-	inOrg, err := s.orgRepo.IsUserInOrg(ctx, userID, *user.CurrentOrgID)
-	if err != nil {
-		return err
-	}
-	if !inOrg {
-		member := strconv.FormatUint(uint64(userID), 10)
-		key := rediskey.RankingZSetKey(*user.CurrentOrgID, platform)
-		return global.Redis.ZRem(ctx, key, member).Err()
-	}
-	key := rediskey.RankingZSetKey(*user.CurrentOrgID, platform)
-	member := strconv.FormatUint(uint64(userID), 10)
-	score := float64(totalPassed)
-
-	// Optimization: Check if score is already consistent
-	currentScore, err := global.Redis.ZScore(ctx, key, member).Result()
-	if err != nil && !errors.Is(err, redis.Nil) {
-		return err
-	}
-	if err == nil && currentScore == score {
-		return nil
-	}
-
-	return global.Redis.ZAdd(ctx, key, &redis.Z{
-		Score:  score,
-		Member: member,
-	}).Err()
+	_ = totalPassed
+	return s.publishOJProfileProjectionEvent(ctx, userID, platform)
 }
 
 func (s *OJService) RebuildRankingCaches(ctx context.Context) error {
-	orgs, err := s.orgRepo.GetAllOrgs(ctx)
-	if err != nil {
-		return err
-	}
-	platforms := []string{"luogu", "leetcode"}
-	for _, org := range orgs {
-		for _, platform := range platforms {
-			if err := s.rebuildRankingCache(ctx, org.ID, platform); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
-}
-
-func (s *OJService) rebuildRankingCache(
-	ctx context.Context,
-	orgID uint,
-	platform string,
-) error {
-	if orgID == 0 {
+	if s.cacheProjectionSvc == nil {
 		return nil
 	}
-	platform = strings.ToLower(strings.TrimSpace(platform))
-	if platform != "luogu" && platform != "leetcode" {
-		return svccontract.ErrInvalidPlatform
-	}
-	key := rediskey.RankingZSetKey(orgID, platform)
-	pipe := global.Redis.Pipeline()
-	pipe.Del(ctx, key)
-
-	if platform == "luogu" {
-		details, err := s.luoguRepo.ListByOrgID(ctx, orgID)
-		if err != nil {
-			return err
-		}
-		for _, detail := range details {
-			if detail == nil || detail.UserID == 0 {
-				continue
-			}
-			member := strconv.FormatUint(uint64(detail.UserID), 10)
-			pipe.ZAdd(ctx, key, &redis.Z{
-				Score:  float64(detail.PassedNumber),
-				Member: member,
-			})
-		}
-	} else {
-		details, err := s.leetcodeRepo.ListByOrgID(ctx, orgID)
-		if err != nil {
-			return err
-		}
-		for _, detail := range details {
-			if detail == nil || detail.UserID == 0 {
-				continue
-			}
-			member := strconv.FormatUint(uint64(detail.UserID), 10)
-			pipe.ZAdd(ctx, key, &redis.Z{
-				Score:  float64(detail.TotalNumber),
-				Member: member,
-			})
-		}
-	}
-
-	_, err := pipe.Exec(ctx)
-	return err
+	return s.cacheProjectionSvc.RebuildAll(ctx)
 }
 
 // GetRankingList 获取排行榜列表与当前用户排名
@@ -942,32 +858,39 @@ func (s *OJService) GetRankingList(
 	userID uint,
 	req *request.OJRankingListReq,
 ) (*resp.OJRankingListResp, error) {
-	platform, page, pageSize, err := normalizeRankingRequest(userID, req)
+	platform, page, pageSize, scope, orgID, err := normalizeRankingRequest(userID, req)
+	if err != nil {
+		return nil, err
+	}
+	if global.Redis == nil {
+		return nil, errors.New("redis is not initialized")
+	}
+
+	// 获取请求用户信息和权限，确保用户有效且有权限访问排行榜
+	requester, isSuperAdmin, err := s.getActiveRankingRequester(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	key, err := s.getRankingKey(ctx, userID, platform)
+	// 解析排行榜键，确保用户有权限访问对应范围的排行榜
+	key, err := s.resolveRankingKey(ctx, requester, isSuperAdmin, platform, scope, orgID)
 	if err != nil {
 		return nil, err
 	}
 
+	// 从 Redis 获取排行榜数据，包含总数、分页起始位置和当前页数据范围
 	total, start, ranges, err := fetchRankingRanges(ctx, key, page, pageSize)
 	if err != nil {
 		return nil, err
 	}
 
 	entries, userIDs := parseRankingEntries(ranges)
-	userMap, err := s.loadUserMap(ctx, userIDs)
-	if err != nil {
-		return nil, err
-	}
-	luoguMap, leetcodeMap, err := s.loadPlatformDetailMaps(ctx, platform, userIDs)
+	projectionMap, err := s.loadRankingProjectionMap(ctx, userIDs)
 	if err != nil {
 		return nil, err
 	}
 
-	list := buildRankingList(entries, int(start), platform, userMap, luoguMap, leetcodeMap)
+	list := buildRankingList(entries, int(start), platform, projectionMap)
 	myRank, err := loadMyRank(ctx, key, userID)
 	if err != nil {
 		return nil, err
@@ -986,21 +909,27 @@ type rankingEntry struct {
 	Score  int
 }
 
+const (
+	rankingScopeCurrentOrg = "current_org"
+	rankingScopeAllMembers = "all_members"
+	rankingScopeOrg        = "org"
+)
+
 // normalizeRankingRequest 校验请求并规范分页与平台参数
 func normalizeRankingRequest(
 	userID uint,
 	req *request.OJRankingListReq,
-) (string, int, int, error) {
+) (string, int, int, string, *uint, error) {
 	if req == nil {
-		return "", 0, 0, errors.New("invalid request")
+		return "", 0, 0, "", nil, errors.New("invalid request")
 	}
 	if userID == 0 {
-		return "", 0, 0, errors.New("invalid user id")
+		return "", 0, 0, "", nil, errors.New("invalid user id")
 	}
 
 	platform := strings.ToLower(strings.TrimSpace(req.Platform))
 	if platform != "luogu" && platform != "leetcode" {
-		return "", 0, 0, svccontract.ErrInvalidPlatform
+		return "", 0, 0, "", nil, svccontract.ErrInvalidPlatform
 	}
 
 	page := req.Page
@@ -1015,33 +944,118 @@ func normalizeRankingRequest(
 		pageSize = 100
 	}
 
-	return platform, page, pageSize, nil
+	scope := strings.ToLower(strings.TrimSpace(req.Scope))
+	if scope == "" {
+		scope = rankingScopeCurrentOrg
+	}
+
+	var orgID *uint
+	if scope == rankingScopeOrg {
+		if req.OrgID == nil || *req.OrgID == 0 {
+			return "", 0, 0, "", nil, errors.New("org_id is required for org scope")
+		}
+		orgID = cloneUintPtr(req.OrgID)
+	}
+
+	return platform, page, pageSize, scope, orgID, nil
 }
 
-// getRankingKey 根据用户组织与平台生成排行榜 Redis Key
-func (s *OJService) getRankingKey(
+// getActiveRankingRequester 获取请求排行榜的用户信息，并判断是否为超级管理员
+func (s *OJService) getActiveRankingRequester(
 	ctx context.Context,
 	userID uint,
-	platform string,
-) (string, error) {
+) (*entity.User, bool, error) {
 	user, err := s.userRepo.GetByID(ctx, userID)
 	if err != nil {
-		return "", err
+		return nil, false, err
 	}
-	if user == nil || user.CurrentOrgID == nil || *user.CurrentOrgID == 0 {
-		return "", errors.New("user organization not found")
+	if user == nil {
+		return nil, false, errors.New("user not found")
 	}
 	if user.Freeze || user.Status != consts.UserStatusActive {
-		return "", errors.New("user is disabled")
+		return nil, false, errors.New("user is disabled")
 	}
-	inOrg, err := s.orgRepo.IsUserInOrg(ctx, userID, *user.CurrentOrgID)
+	roles, err := s.roleRepo.GetUserGlobalRoles(ctx, userID)
+	if err != nil {
+		return nil, false, err
+	}
+	for _, role := range roles {
+		if role != nil && role.Code == consts.RoleCodeSuperAdmin {
+			return user, true, nil
+		}
+	}
+	return user, false, nil
+}
+
+// resolveRankingKey 根据排行榜范围解析对应的 Redis 键
+func (s *OJService) resolveRankingKey(
+	ctx context.Context,
+	requester *entity.User,
+	isSuperAdmin bool,
+	platform string,
+	scope string,
+	orgID *uint,
+) (string, error) {
+	switch scope {
+	// 全员范围直接使用全局排行榜键，无需组织校验
+	case rankingScopeAllMembers:
+		return rediskey.RankingAllMembersZSetKey(platform), nil
+		// 组织范围需要校验组织 ID 和成员资格，并根据是否全员组织解析对应的排行榜键
+	case rankingScopeOrg:
+		if orgID == nil || *orgID == 0 {
+			return "", errors.New("org_id is required for org scope")
+		}
+		if !isSuperAdmin {
+			active, err := s.orgMemberRepo.IsUserActiveInOrg(ctx, requester.ID, *orgID)
+			if err != nil {
+				return "", err
+			}
+			if !active {
+				return "", errors.New("user organization not active")
+			}
+		}
+		return s.resolveOrgRankingKey(ctx, *orgID, platform)
+	case rankingScopeCurrentOrg:
+		if requester == nil || requester.CurrentOrgID == nil || *requester.CurrentOrgID == 0 {
+			return "", errors.New("user organization not found")
+		}
+		if requester.CurrentOrg != nil && isAllMembersBuiltinOrg(requester.CurrentOrg) {
+			return rediskey.RankingAllMembersZSetKey(platform), nil
+		}
+		active, err := s.orgMemberRepo.IsUserActiveInOrg(ctx, requester.ID, *requester.CurrentOrgID)
+		if err != nil {
+			return "", err
+		}
+		if !active {
+			return "", errors.New("user organization not active")
+		}
+		return s.resolveOrgRankingKey(ctx, *requester.CurrentOrgID, platform)
+	default:
+		return "", errors.New("invalid ranking scope")
+	}
+}
+
+// resolveOrgRankingKey 根据组织 ID 解析对应的排行榜 Redis 键
+func (s *OJService) resolveOrgRankingKey(
+	ctx context.Context,
+	orgID uint,
+	platform string,
+) (string, error) {
+	// 查询组织信息，判断是否为全员组织
+	org, err := s.orgRepo.GetByID(ctx, orgID)
 	if err != nil {
 		return "", err
 	}
-	if !inOrg {
-		return "", errors.New("user organization not active")
+	if org == nil {
+		return "", errors.New("organization not found")
 	}
-	return rediskey.RankingZSetKey(*user.CurrentOrgID, platform), nil
+	// 全员组织使用全局排行榜键，非全员组织使用特定组织排行榜键
+	if isAllMembersBuiltinOrg(org) {
+		return rediskey.RankingAllMembersZSetKey(platform), nil
+	}
+
+	// 非全员组织使用特定组织排行榜键
+	return rediskey.RankingOrgZSetKey(orgID, platform), nil
 }
 
 // fetchRankingRanges 从 Redis 拉取分页排行榜数据
@@ -1087,59 +1101,64 @@ func parseRankingEntries(ranges []redis.Z) ([]rankingEntry, []uint) {
 }
 
 // loadUserMap 批量加载用户信息并构建映射
-func (s *OJService) loadUserMap(
+func (s *OJService) loadRankingProjectionMap(
 	ctx context.Context,
 	userIDs []uint,
-) (map[uint]*entity.User, error) {
-	userMap := make(map[uint]*entity.User)
+) (map[uint]*rankingcache.UserProjection, error) {
+	projectionMap := make(map[uint]*rankingcache.UserProjection)
 	if len(userIDs) == 0 {
-		return userMap, nil
+		return projectionMap, nil
 	}
-	users, err := s.userRepo.GetByIDsActive(ctx, userIDs)
+
+	pipe := global.Redis.Pipeline()
+	cacheReads := make(map[uint]*redis.StringStringMapCmd, len(userIDs))
+	for _, userID := range userIDs {
+		cacheReads[userID] = pipe.HGetAll(ctx, rediskey.RankingUserHashKey(userID))
+	}
+	if _, err := pipe.Exec(ctx); err != nil {
+		return nil, err
+	}
+
+	missingUserIDs := make([]uint, 0)
+	for _, userID := range userIDs {
+		values, err := cacheReads[userID].Result()
+		if err != nil {
+			return nil, err
+		}
+		if len(values) == 0 {
+			missingUserIDs = append(missingUserIDs, userID)
+			continue
+		}
+		projection, ok := rankingcache.ProjectionFromHash(userID, values)
+		if !ok {
+			missingUserIDs = append(missingUserIDs, userID)
+			continue
+		}
+		projectionMap[userID] = projection
+	}
+
+	if len(missingUserIDs) == 0 {
+		return projectionMap, nil
+	}
+
+	items, err := s.rankingReadModelRepo.GetByUserIDs(ctx, missingUserIDs)
 	if err != nil {
 		return nil, err
 	}
-	for _, u := range users {
-		if u != nil {
-			userMap[u.ID] = u
-		}
-	}
-	return userMap, nil
-}
 
-// loadPlatformDetailMaps 按平台批量加载用户详情映射
-func (s *OJService) loadPlatformDetailMaps(
-	ctx context.Context,
-	platform string,
-	userIDs []uint,
-) (map[uint]*entity.LuoguUserDetail, map[uint]*entity.LeetcodeUserDetail, error) {
-	luoguMap := make(map[uint]*entity.LuoguUserDetail)
-	leetcodeMap := make(map[uint]*entity.LeetcodeUserDetail)
-	if len(userIDs) == 0 {
-		return luoguMap, leetcodeMap, nil
-	}
-	if platform == "luogu" {
-		details, err := s.luoguRepo.GetByUserIDs(ctx, userIDs)
-		if err != nil {
-			return nil, nil, err
+	cacheBackfills := make([]*rankingcache.UserProjection, 0, len(items))
+	for _, item := range items {
+		projection := rankingcache.FromReadModel(item)
+		if projection == nil {
+			continue
 		}
-		for _, d := range details {
-			if d != nil {
-				luoguMap[d.UserID] = d
-			}
-		}
-		return luoguMap, leetcodeMap, nil
+		cacheBackfills = append(cacheBackfills, projection)
+		projectionMap[projection.UserID] = projection
 	}
-	details, err := s.leetcodeRepo.GetByUserIDs(ctx, userIDs)
-	if err != nil {
-		return nil, nil, err
+	if err := rankingcache.WriteProjections(ctx, global.Redis, cacheBackfills); err != nil {
+		return nil, err
 	}
-	for _, d := range details {
-		if d != nil {
-			leetcodeMap[d.UserID] = d
-		}
-	}
-	return luoguMap, leetcodeMap, nil
+	return projectionMap, nil
 }
 
 // buildRankingList 组装排行榜列表，用户名统一使用 user.username
@@ -1147,47 +1166,36 @@ func buildRankingList(
 	entries []rankingEntry,
 	start int,
 	platform string,
-	userMap map[uint]*entity.User,
-	luoguMap map[uint]*entity.LuoguUserDetail,
-	leetcodeMap map[uint]*entity.LeetcodeUserDetail,
+	projectionMap map[uint]*rankingcache.UserProjection,
 ) []*resp.OJRankingListItem {
 	list := make([]*resp.OJRankingListItem, 0, len(entries))
 	for _, entry := range entries {
-		uid := entry.UserID
-		score := entry.Score
-		realName := ""
-		avatar := ""
-		userInfo := userMap[uid]
-		if userInfo == nil {
+		projection := projectionMap[entry.UserID]
+		if projection == nil || !projection.Active {
 			continue
 		}
-		if platform == "luogu" {
-			if detail := luoguMap[uid]; detail != nil {
-				avatar = detail.UserAvatar
-			}
-		} else {
-			if detail := leetcodeMap[uid]; detail != nil {
-				avatar = detail.UserAvatar
-			}
+		profile := projection.Platform(platform)
+		if strings.TrimSpace(profile.Identifier) == "" {
+			continue
 		}
-		realName = userInfo.Username
+		avatar := strings.TrimSpace(profile.Avatar)
 		if avatar == "" {
-			avatar = userInfo.Avatar
+			avatar = projection.Avatar
 		}
 		item := &resp.OJRankingListItem{
 			Rank:        start + len(list) + 1,
-			UserID:      uid,
-			RealName:    realName,
+			UserID:      entry.UserID,
+			RealName:    projection.Username,
 			Avatar:      avatar,
-			TotalPassed: score,
+			TotalPassed: entry.Score,
 		}
 		if platform == "luogu" {
 			item.PlatformDetails = &resp.OJRankingPlatformDetails{
-				Luogu: score,
+				Luogu: entry.Score,
 			}
 		} else {
 			item.PlatformDetails = &resp.OJRankingPlatformDetails{
-				Leetcode: score,
+				Leetcode: entry.Score,
 			}
 		}
 		list = append(list, item)
@@ -1217,6 +1225,17 @@ func loadMyRank(
 		return nil, err
 	}
 	return nil, nil
+}
+
+func (s *OJService) publishOJProfileProjectionEvent(
+	ctx context.Context,
+	userID uint,
+	platform string,
+) error {
+	if userID == 0 || s.cacheProjectionPublisher == nil {
+		return nil
+	}
+	return s.cacheProjectionPublisher.Publish(ctx, newOJProfileChangedProjectionEvent(userID, platform))
 }
 
 func (s *OJService) HandleLuoguBindPayload(

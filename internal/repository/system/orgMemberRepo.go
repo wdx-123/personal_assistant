@@ -149,6 +149,36 @@ func (r *orgMemberRepository) CountActiveMembersByOrgID(ctx context.Context, org
 	return count, err
 }
 
+func (r *orgMemberRepository) CountActiveMembersByOrgIDs(ctx context.Context, orgIDs []uint) (map[uint]int64, error) {
+	counts := make(map[uint]int64, len(orgIDs))
+	if len(orgIDs) == 0 {
+		return counts, nil
+	}
+	for _, orgID := range orgIDs {
+		counts[orgID] = 0
+	}
+
+	type memberCountRow struct {
+		OrgID       uint  `gorm:"column:org_id"`
+		MemberCount int64 `gorm:"column:member_count"`
+	}
+
+	var rows []memberCountRow
+	err := r.db.WithContext(ctx).
+		Model(&entity.OrgMember{}).
+		Select("org_id, COUNT(*) AS member_count").
+		Where("org_id IN ? AND member_status = ?", orgIDs, consts.OrgMemberStatusActive).
+		Group("org_id").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		counts[row.OrgID] = row.MemberCount
+	}
+	return counts, nil
+}
+
 // ListActiveOrgIDsByUser 获取用户加入的所有活跃组织ID列表
 func (r *orgMemberRepository) ListActiveOrgIDsByUser(ctx context.Context, userID uint) ([]uint, error) {
 	var orgIDs []uint

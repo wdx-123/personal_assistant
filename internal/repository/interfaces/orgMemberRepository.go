@@ -28,10 +28,13 @@ type OrgMemberRepository interface {
 	) error
 	// 批量设置组织内所有成员为被踢出状态（如解散组织时）
 	SetAllRemovedByOrg(ctx context.Context, orgID uint, operatorID *uint, reason string) error
-	// 获取组织内的活跃成员数量
+
+	// 判断用户在组织内是否活跃（即状态为加入且未过期）
 	IsUserActiveInOrg(ctx context.Context, userID, orgID uint) (bool, error)
 	// 获取组织内的活跃成员数量
 	CountActiveMembersByOrgID(ctx context.Context, orgID uint) (int64, error)
+	// 批量获取多个组织的活跃成员数量
+	CountActiveMembersByOrgIDs(ctx context.Context, orgIDs []uint) (map[uint]int64, error)
 	// 获取用户加入的所有活跃组织ID列表
 	ListActiveOrgIDsByUser(ctx context.Context, userID uint) ([]uint, error)
 	// 事务上下文切换

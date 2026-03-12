@@ -63,6 +63,8 @@ type UserRepository interface {
 
 	// UpdateCurrentOrgID 更新用户当前组织ID
 	UpdateCurrentOrgID(ctx context.Context, userID uint, orgID *uint) error
+	// ListIDsByCurrentOrgID 获取当前组织为指定 org 的用户 ID 列表
+	ListIDsByCurrentOrgID(ctx context.Context, orgID uint) ([]uint, error)
 	// ClearCurrentOrgByOrgID 将当前组织为指定 org 的用户置空
 	ClearCurrentOrgByOrgID(ctx context.Context, orgID uint) error
 

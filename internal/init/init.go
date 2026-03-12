@@ -95,7 +95,9 @@ func Init() {
 	}
 	if err := core.InitSubscribers(
 		context.Background(),
-		service.GroupApp.SystemServiceSupplier.GetOJSvc()); err != nil {
+		service.GroupApp.SystemServiceSupplier.GetOJSvc(),
+		service.GroupApp.SystemServiceSupplier.GetCacheProjectionSvc(),
+	); err != nil {
 		global.Log.Error("init subscribers failed", zap.Error(err))
 	}
 

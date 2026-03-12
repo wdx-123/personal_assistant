@@ -17,8 +17,8 @@ func InitConfig(path string) {
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.SetDefault("system.auto_migrate", true)
-	viper.SetDefault("redis.active_user_state_ttl_seconds", 600)        // 用户活跃态缓存默认10分钟过期，配合一定范围内的随机抖动，避免大量用户同时过期导致的缓存击穿问题
-	viper.SetDefault("redis.active_user_state_ttl_jitter_seconds", 120) // 活跃态缓存过期时间的随机抖动范围，单位为秒
+	viper.SetDefault("redis.active_user_state_ttl_seconds", 1800)       // 用户活跃态缓存默认30分钟过期，缓存失效后仍会回源数据库兜底校验
+	viper.SetDefault("redis.active_user_state_ttl_jitter_seconds", 300) // 活跃态缓存过期时间的随机抖动范围，单位为秒
 	viper.SetDefault("task.distributed_lock_enabled", true)
 	viper.SetDefault("task.distributed_lock_ttl_seconds", 30)
 	viper.SetDefault("task.outbox_failed_cleanup_retention_days", 30)
@@ -171,6 +171,12 @@ func InitConfig(path string) {
 	_ = viper.BindEnv("messaging.luogu_bind_topic", "MESSAGING_LUOGU_BIND_TOPIC")
 	_ = viper.BindEnv("messaging.luogu_bind_group", "MESSAGING_LUOGU_BIND_GROUP")
 	_ = viper.BindEnv("messaging.luogu_bind_consumer", "MESSAGING_LUOGU_BIND_CONSUMER")
+	_ = viper.BindEnv("messaging.leetcode_bind_topic", "MESSAGING_LEETCODE_BIND_TOPIC")
+	_ = viper.BindEnv("messaging.leetcode_bind_group", "MESSAGING_LEETCODE_BIND_GROUP")
+	_ = viper.BindEnv("messaging.leetcode_bind_consumer", "MESSAGING_LEETCODE_BIND_CONSUMER")
+	_ = viper.BindEnv("messaging.cache_projection_topic", "MESSAGING_CACHE_PROJECTION_TOPIC")
+	_ = viper.BindEnv("messaging.cache_projection_group", "MESSAGING_CACHE_PROJECTION_GROUP")
+	_ = viper.BindEnv("messaging.cache_projection_consumer", "MESSAGING_CACHE_PROJECTION_CONSUMER")
 	_ = viper.BindEnv("observability.enabled", "OBSERVABILITY_ENABLED")
 	_ = viper.BindEnv("observability.service_name", "OBSERVABILITY_SERVICE_NAME")
 	_ = viper.BindEnv("observability.service_trace.enabled", "OBSERVABILITY_SERVICE_TRACE_ENABLED")
@@ -258,6 +264,13 @@ func InitConfig(path string) {
 	_ = viper.BindEnv("messaging.redis_stream_block_ms", "MESSAGING_REDIS_STREAM_BLOCK_MS")
 	_ = viper.BindEnv("messaging.luogu_bind_topic", "MESSAGING_LUOGU_BIND_TOPIC")
 	_ = viper.BindEnv("messaging.luogu_bind_group", "MESSAGING_LUOGU_BIND_GROUP")
+	_ = viper.BindEnv("messaging.luogu_bind_consumer", "MESSAGING_LUOGU_BIND_CONSUMER")
+	_ = viper.BindEnv("messaging.leetcode_bind_topic", "MESSAGING_LEETCODE_BIND_TOPIC")
+	_ = viper.BindEnv("messaging.leetcode_bind_group", "MESSAGING_LEETCODE_BIND_GROUP")
+	_ = viper.BindEnv("messaging.leetcode_bind_consumer", "MESSAGING_LEETCODE_BIND_CONSUMER")
+	_ = viper.BindEnv("messaging.cache_projection_topic", "MESSAGING_CACHE_PROJECTION_TOPIC")
+	_ = viper.BindEnv("messaging.cache_projection_group", "MESSAGING_CACHE_PROJECTION_GROUP")
+	_ = viper.BindEnv("messaging.cache_projection_consumer", "MESSAGING_CACHE_PROJECTION_CONSUMER")
 	_ = viper.BindEnv("messaging.luogu_bind_consumer", "MESSAGING_LUOGU_BIND_CONSUMER")
 	_ = viper.BindEnv("messaging.leetcode_bind_topic", "MESSAGING_LEETCODE_BIND_TOPIC")
 	_ = viper.BindEnv("messaging.leetcode_bind_group", "MESSAGING_LEETCODE_BIND_GROUP")

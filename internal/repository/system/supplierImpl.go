@@ -27,6 +27,7 @@ type RepositorySupplier struct {
 	leetcodeUserQuestionRepository interfaces.LeetcodeUserQuestionRepository
 	luoguUserQuestionRepository    interfaces.LuoguUserQuestionRepository
 	outboxRepository               interfaces.OutboxRepository
+	rankingReadModelRepository     interfaces.RankingReadModelRepository
 	imageRepository                interfaces.ImageRepository
 	observabilityMetricRepository  interfaces.ObservabilityMetricRepository
 	observabilityTraceRepository   interfaces.ObservabilityTraceRepository
@@ -91,6 +92,10 @@ func (r *RepositorySupplier) GetLuoguUserQuestionRepository() interfaces.LuoguUs
 
 func (r *RepositorySupplier) GetOutboxRepository() interfaces.OutboxRepository {
 	return r.outboxRepository
+}
+
+func (r *RepositorySupplier) GetRankingReadModelRepository() interfaces.RankingReadModelRepository {
+	return r.rankingReadModelRepository
 }
 
 func (r *RepositorySupplier) GetImageRepository() interfaces.ImageRepository {

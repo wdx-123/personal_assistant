@@ -7,7 +7,7 @@ import (
 	"personal_assistant/global"
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
-	"personal_assistant/internal/model/entity"
+	readmodel "personal_assistant/internal/model/readmodel"
 	serviceContract "personal_assistant/internal/service/contract"
 	"personal_assistant/pkg/jwt"
 	"personal_assistant/pkg/response"
@@ -53,7 +53,7 @@ func (ctrl *OrgCtrl) GetOrgList(c *gin.Context) {
 	// 转换为响应 DTO
 	items := make([]*resp.OrgItem, 0, len(orgs))
 	for _, org := range orgs {
-		items = append(items, entityToOrgItem(org))
+		items = append(items, readModelToOrgItem(org))
 	}
 	response.BizOkWithPage(items, total, req.Page, req.PageSize, c)
 }
@@ -74,7 +74,7 @@ func (ctrl *OrgCtrl) GetOrgDetail(c *gin.Context) {
 		response.BizFailWithError(err, c)
 		return
 	}
-	response.BizOkWithData(entityToOrgItem(org), c)
+	response.BizOkWithData(readModelToOrgItem(org), c)
 }
 
 // CreateOrg 创建组织
@@ -269,8 +269,8 @@ func (ctrl *OrgCtrl) RecoverMember(c *gin.Context) {
 
 // ==================== 辅助函数 ====================
 
-// entityToOrgItem 将组织实体转换为响应DTO
-func entityToOrgItem(org *entity.Org) *resp.OrgItem {
+// readModelToOrgItem 将组织读模型转换为响应DTO。
+func readModelToOrgItem(org *readmodel.OrgWithMemberCount) *resp.OrgItem {
 	return &resp.OrgItem{
 		ID:          org.ID,
 		Name:        org.Name,
@@ -279,6 +279,7 @@ func entityToOrgItem(org *entity.Org) *resp.OrgItem {
 		Avatar:      org.Avatar,
 		AvatarID:    org.AvatarID,
 		OwnerID:     org.OwnerID,
+		MemberCount: org.MemberCount,
 		CreatedAt:   org.CreatedAt.Format(time.DateTime),
 		UpdatedAt:   org.UpdatedAt.Format(time.DateTime),
 	}

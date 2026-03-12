@@ -8,6 +8,7 @@ import (
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
+	readmodel "personal_assistant/internal/model/readmodel"
 	erro "personal_assistant/pkg/errors"
 
 	"github.com/gin-gonic/gin"
@@ -68,8 +69,8 @@ type UserServiceContract interface {
 }
 
 type OrgServiceContract interface {
-	GetOrgList(ctx context.Context, page, pageSize int, keyword string) ([]*entity.Org, int64, error)
-	GetOrgDetail(ctx context.Context, userID uint, orgID uint) (*entity.Org, error)
+	GetOrgList(ctx context.Context, page, pageSize int, keyword string) ([]*readmodel.OrgWithMemberCount, int64, error)
+	GetOrgDetail(ctx context.Context, userID uint, orgID uint) (*readmodel.OrgWithMemberCount, error)
 	CreateOrg(ctx context.Context, userID uint, req *request.CreateOrgReq) error
 	UpdateOrg(ctx context.Context, userID, orgID uint, req *request.UpdateOrgReq) error
 	DeleteOrg(ctx context.Context, userID, orgID uint, force bool) error
@@ -98,6 +99,14 @@ type OJServiceContract interface {
 	RebuildRankingCaches(ctx context.Context) error
 	HandleLuoguBindPayload(ctx context.Context, userID uint, payload *eventdto.LuoguBindPayload) error
 	HandleLeetcodeBindSignal(ctx context.Context, userID uint) error
+}
+
+type CacheProjectionServiceContract interface {
+	// HandleCacheProjectionEvent 处理缓存投影事件，根据事件类型和数据更新对应的缓存状态，确保系统内的缓存数据与底层数据源保持一致。
+	HandleCacheProjectionEvent(ctx context.Context, event *eventdto.CacheProjectionEvent) error
+
+	// RebuildAll 全量重建所有缓存数据，通常在系统启动或重大数据变更后调用，以确保缓存与数据库完全同步。该方法会依次重建各个模块的缓存，并在过程中记录重建结果和可能的错误。
+	RebuildAll(ctx context.Context) error
 }
 
 type ApiServiceContract interface {
@@ -164,4 +173,5 @@ type Supplier interface {
 	GetRoleSvc() RoleServiceContract
 	GetImageSvc() ImageServiceContract
 	GetObservabilitySvc() ObservabilityServiceContract
+	GetCacheProjectionSvc() CacheProjectionServiceContract
 }

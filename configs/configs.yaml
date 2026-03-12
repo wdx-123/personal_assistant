@@ -12,6 +12,8 @@ redis:
   address: ""  # 宿主机本地访问 Redis
   password: ""             # Redis 密码（默认）
   db: 0                    # 使用第 0 个数据库
+  active_user_state_ttl_seconds: 1800
+  active_user_state_ttl_jitter_seconds: 300
 system:
   host: 0.0.0.0 # 监听所有本地网卡；外部访问用机器实际IP
   port: 9000 # 服务对外暴露的端口号
@@ -188,6 +190,9 @@ messaging:
   leetcode_bind_topic: "leetcode.bind"
   leetcode_bind_group: "leetcode_bind_group"
   leetcode_bind_consumer: "leetcode_bind_consumer"
+  cache_projection_topic: "cache_projection"
+  cache_projection_group: "cache_projection_group"
+  cache_projection_consumer: "cache_projection_consumer"
 observability:
   enabled: true                      # 总开关
   service_name: "personal_assistant" # 服务名维度（需稳定）

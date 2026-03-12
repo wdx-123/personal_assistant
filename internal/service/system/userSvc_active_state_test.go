@@ -9,26 +9,26 @@ import (
 	"personal_assistant/global"
 	"personal_assistant/internal/model/config"
 	"personal_assistant/internal/model/consts"
+	eventdto "personal_assistant/internal/model/dto/event"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/interfaces"
 	bizerrors "personal_assistant/pkg/errors"
 
-	"github.com/alicebob/miniredis/v2"
-	"github.com/go-redis/redis/v8"
 	"go.uber.org/zap"
 )
 
-func TestUpdateUserStatusCachesInactiveState(t *testing.T) {
-	setupServiceRedis(t)
-
+func TestUpdateUserStatusPublishesInactiveProjectionEvent(t *testing.T) {
 	userRepo := &stubUserRepository{
 		user: &entity.User{MODEL: entity.MODEL{ID: 7}, Status: consts.UserStatusActive},
 	}
+	publisher := &stubCacheProjectionPublisher{}
 	svc := &UserService{
-		userRepo:      userRepo,
-		orgMemberRepo: &stubOrgMemberRepository{orgIDs: []uint{}},
+		txRunner:                 &stubTxRunner{},
+		userRepo:                 userRepo,
+		orgMemberRepo:            &stubOrgMemberRepository{orgIDs: []uint{}},
+		cacheProjectionPublisher: publisher,
 	}
 
 	err := svc.UpdateUserStatus(context.Background(), 99, 7, &request.AdminUpdateUserStatusReq{
@@ -41,18 +41,27 @@ func TestUpdateUserStatusCachesInactiveState(t *testing.T) {
 	if userRepo.updatedStatus != consts.UserStatusDisabled {
 		t.Fatalf("updated status = %v, want %v", userRepo.updatedStatus, consts.UserStatusDisabled)
 	}
-	if len(userRepo.cacheWrites) != 1 || userRepo.cacheWrites[0] {
-		t.Fatalf("cacheWrites = %v, want [false]", userRepo.cacheWrites)
+	if len(publisher.events) != 1 {
+		t.Fatalf("published events = %d, want 1", len(publisher.events))
+	}
+	if publisher.events[0].Kind != eventdto.CacheProjectionKindUserSnapshotChanged {
+		t.Fatalf("event kind = %q, want %q", publisher.events[0].Kind, eventdto.CacheProjectionKindUserSnapshotChanged)
+	}
+	if publisher.events[0].UserID != 7 {
+		t.Fatalf("event user id = %d, want 7", publisher.events[0].UserID)
 	}
 }
 
-func TestUpdateUserStatusCachesActiveState(t *testing.T) {
-	setupServiceRedis(t)
-
+func TestUpdateUserStatusPublishesActiveProjectionEvent(t *testing.T) {
 	userRepo := &stubUserRepository{
 		user: &entity.User{MODEL: entity.MODEL{ID: 8}, Status: consts.UserStatusDisabled},
 	}
-	svc := &UserService{userRepo: userRepo}
+	publisher := &stubCacheProjectionPublisher{}
+	svc := &UserService{
+		txRunner:                 &stubTxRunner{},
+		userRepo:                 userRepo,
+		cacheProjectionPublisher: publisher,
+	}
 
 	err := svc.UpdateUserStatus(context.Background(), 99, 8, &request.AdminUpdateUserStatusReq{
 		Status: "active",
@@ -63,21 +72,24 @@ func TestUpdateUserStatusCachesActiveState(t *testing.T) {
 	if userRepo.updatedStatus != consts.UserStatusActive {
 		t.Fatalf("updated status = %v, want %v", userRepo.updatedStatus, consts.UserStatusActive)
 	}
-	if len(userRepo.cacheWrites) != 1 || !userRepo.cacheWrites[0] {
-		t.Fatalf("cacheWrites = %v, want [true]", userRepo.cacheWrites)
+	if len(publisher.events) != 1 {
+		t.Fatalf("published events = %d, want 1", len(publisher.events))
+	}
+	if publisher.events[0].Kind != eventdto.CacheProjectionKindUserSnapshotChanged {
+		t.Fatalf("event kind = %q, want %q", publisher.events[0].Kind, eventdto.CacheProjectionKindUserSnapshotChanged)
 	}
 }
 
-func TestUpdateUserStatusReturnsBizErrorWhenCacheWriteFails(t *testing.T) {
-	setupServiceRedis(t)
-
+func TestUpdateUserStatusReturnsBizErrorWhenProjectionPublishFails(t *testing.T) {
 	userRepo := &stubUserRepository{
-		user:     &entity.User{MODEL: entity.MODEL{ID: 9}, Status: consts.UserStatusActive},
-		cacheErr: stderrors.New("redis down"),
+		user: &entity.User{MODEL: entity.MODEL{ID: 9}, Status: consts.UserStatusActive},
 	}
+	publisher := &stubCacheProjectionPublisher{publishErr: stderrors.New("outbox down")}
 	svc := &UserService{
-		userRepo:      userRepo,
-		orgMemberRepo: &stubOrgMemberRepository{orgIDs: []uint{}},
+		txRunner:                 &stubTxRunner{},
+		userRepo:                 userRepo,
+		orgMemberRepo:            &stubOrgMemberRepository{orgIDs: []uint{}},
+		cacheProjectionPublisher: publisher,
 	}
 	oldLog := global.Log
 	global.Log = zap.NewNop()
@@ -94,12 +106,12 @@ func TestUpdateUserStatusReturnsBizErrorWhenCacheWriteFails(t *testing.T) {
 	}
 
 	bizErr := bizerrors.FromError(err)
-	if bizErr == nil || bizErr.Code != bizerrors.CodeRedisError {
-		t.Fatalf("UpdateUserStatus() bizErr = %#v, want code %v", bizErr, bizerrors.CodeRedisError)
+	if bizErr == nil || bizErr.Code != bizerrors.CodeDBError {
+		t.Fatalf("UpdateUserStatus() bizErr = %#v, want code %v", bizErr, bizerrors.CodeDBError)
 	}
 }
 
-func TestCleanupDisabledUsersCachesInactiveState(t *testing.T) {
+func TestCleanupDisabledUsersPublishesDeletedProjectionEvent(t *testing.T) {
 	now := time.Now().Add(-48 * time.Hour)
 	userRepo := &stubUserRepository{
 		listDisabledUsers: []*entity.User{
@@ -113,11 +125,13 @@ func TestCleanupDisabledUsersCachesInactiveState(t *testing.T) {
 	orgMemberRepo := &stubOrgMemberRepository{orgIDs: []uint{}}
 	roleRepo := &stubRoleRepository{}
 	txRunner := &stubTxRunner{}
+	publisher := &stubCacheProjectionPublisher{}
 	svc := &UserService{
-		txRunner:      txRunner,
-		userRepo:      userRepo,
-		orgMemberRepo: orgMemberRepo,
-		roleRepo:      roleRepo,
+		txRunner:                 txRunner,
+		userRepo:                 userRepo,
+		orgMemberRepo:            orgMemberRepo,
+		roleRepo:                 roleRepo,
+		cacheProjectionPublisher: publisher,
 	}
 
 	oldConfig := global.Config
@@ -144,8 +158,14 @@ func TestCleanupDisabledUsersCachesInactiveState(t *testing.T) {
 	if len(userRepo.softDeleted) != 1 || userRepo.softDeleted[0] != 10 {
 		t.Fatalf("softDeleted = %v, want [10]", userRepo.softDeleted)
 	}
-	if len(userRepo.cacheWrites) != 1 || userRepo.cacheWrites[0] {
-		t.Fatalf("cacheWrites = %v, want [false]", userRepo.cacheWrites)
+	if len(publisher.events) != 1 {
+		t.Fatalf("published events = %d, want 1", len(publisher.events))
+	}
+	if publisher.events[0].Kind != eventdto.CacheProjectionKindUserDeleted {
+		t.Fatalf("event kind = %q, want %q", publisher.events[0].Kind, eventdto.CacheProjectionKindUserDeleted)
+	}
+	if publisher.events[0].UserID != 10 {
+		t.Fatalf("event user id = %d, want 10", publisher.events[0].UserID)
 	}
 	if txRunner.calls != 1 {
 		t.Fatalf("txRunner calls = %d, want 1", txRunner.calls)
@@ -176,7 +196,6 @@ type stubUserRepository struct {
 	updatedStatus     consts.UserStatus
 	updatedDisabledBy *uint
 	updatedReason     string
-	cacheWrites       []bool
 	softDeleted       []uint
 }
 
@@ -198,7 +217,6 @@ func (r *stubUserRepository) UpdateUserStatus(
 }
 
 func (r *stubUserRepository) CacheActiveState(_ context.Context, _ uint, active bool) error {
-	r.cacheWrites = append(r.cacheWrites, active)
 	return r.cacheErr
 }
 
@@ -242,22 +260,25 @@ func (r *stubRoleRepository) WithTx(_ any) interfaces.RoleRepository {
 	return r
 }
 
-var _ repository.TxRunner = (*stubTxRunner)(nil)
-
-func setupServiceRedis(t *testing.T) {
-	t.Helper()
-
-	srv, err := miniredis.Run()
-	if err != nil {
-		t.Fatalf("miniredis.Run() error = %v", err)
-	}
-	client := redis.NewClient(&redis.Options{Addr: srv.Addr()})
-
-	oldRedis := global.Redis
-	global.Redis = client
-	t.Cleanup(func() {
-		global.Redis = oldRedis
-		_ = client.Close()
-		srv.Close()
-	})
+type stubCacheProjectionPublisher struct {
+	events     []*eventdto.CacheProjectionEvent
+	publishErr error
 }
+
+func (p *stubCacheProjectionPublisher) Publish(_ context.Context, event *eventdto.CacheProjectionEvent) error {
+	if p.publishErr != nil {
+		return p.publishErr
+	}
+	p.events = append(p.events, event)
+	return nil
+}
+
+func (p *stubCacheProjectionPublisher) PublishInTx(_ context.Context, _ any, event *eventdto.CacheProjectionEvent) error {
+	if p.publishErr != nil {
+		return p.publishErr
+	}
+	p.events = append(p.events, event)
+	return nil
+}
+
+var _ repository.TxRunner = (*stubTxRunner)(nil)

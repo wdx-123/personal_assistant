@@ -4,35 +4,35 @@ import (
 	"context"
 	"fmt"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
-	"personal_assistant/global"
 	"personal_assistant/internal/model/consts"
+	eventdto "personal_assistant/internal/model/dto/event"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
+	readmodel "personal_assistant/internal/model/readmodel"
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/interfaces"
 	"personal_assistant/pkg/casbin"
 	"personal_assistant/pkg/errors"
 	"personal_assistant/pkg/imageops"
-	"personal_assistant/pkg/rediskey"
 
 	"github.com/gofrs/uuid"
 )
 
 // OrgService 组织管理服务
 type OrgService struct {
-	txRunner          repository.TxRunner
-	orgRepo           interfaces.OrgRepository
-	orgMemberRepo     interfaces.OrgMemberRepository
-	userRepo          interfaces.UserRepository
-	roleRepo          interfaces.RoleRepository
-	imageRepo         interfaces.ImageRepository
-	permissionService *PermissionService
-	casbinSvc         *casbin.Service
+	txRunner                 repository.TxRunner
+	orgRepo                  interfaces.OrgRepository
+	orgMemberRepo            interfaces.OrgMemberRepository
+	userRepo                 interfaces.UserRepository
+	roleRepo                 interfaces.RoleRepository
+	imageRepo                interfaces.ImageRepository
+	permissionService        *PermissionService
+	casbinSvc                *casbin.Service
+	cacheProjectionPublisher cacheProjectionEventPublisher
 }
 
 // NewOrgService 创建组织服务实例
@@ -46,6 +46,9 @@ func NewOrgService(repositoryGroup *repository.Group, permissionService *Permiss
 		imageRepo:         repositoryGroup.SystemRepositorySupplier.GetImageRepository(),
 		permissionService: permissionService,
 		casbinSvc:         casbin.NewCasbinService(),
+		cacheProjectionPublisher: newCacheProjectionOutboxPublisher(
+			repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
+		),
 	}
 }
 
@@ -57,8 +60,11 @@ func (s *OrgService) GetOrgList(
 	ctx context.Context,
 	page, pageSize int,
 	keyword string,
-) ([]*entity.Org, int64, error) {
+) ([]*readmodel.OrgWithMemberCount, int64, error) {
 	keyword = strings.TrimSpace(keyword)
+
+	var orgs []*entity.Org
+	var total int64
 
 	if page <= 0 {
 		// 不分页，获取所有
@@ -74,17 +80,26 @@ func (s *OrgService) GetOrgList(
 					filtered = append(filtered, org)
 				}
 			}
-			return filtered, int64(len(filtered)), nil
+			orgs = filtered
+			total = int64(len(filtered))
+		} else {
+			orgs = list
+			total = int64(len(list))
 		}
-		return list, int64(len(list)), nil
+	} else {
+		// 分页查询（支持关键词搜索）
+		var err error
+		orgs, total, err = s.orgRepo.GetOrgListWithKeyword(ctx, page, pageSize, keyword)
+		if err != nil {
+			return nil, 0, errors.Wrap(errors.CodeDBError, err)
+		}
 	}
 
-	// 分页查询（支持关键词搜索）
-	orgs, total, err := s.orgRepo.GetOrgListWithKeyword(ctx, page, pageSize, keyword)
+	items, err := s.buildOrgReadModels(ctx, orgs)
 	if err != nil {
 		return nil, 0, errors.Wrap(errors.CodeDBError, err)
 	}
-	return orgs, total, nil
+	return items, total, nil
 }
 
 // GetOrgDetail 获取组织详情
@@ -95,7 +110,7 @@ func (s *OrgService) GetOrgDetail(
 	ctx context.Context,
 	userID uint,
 	orgID uint,
-) (*entity.Org, error) {
+) (*readmodel.OrgWithMemberCount, error) {
 	// 1. 检查是否为超级管理员
 	isSuperAdmin := false
 	globalRoles, _ := s.roleRepo.GetUserGlobalRoles(ctx, userID)
@@ -122,7 +137,14 @@ func (s *OrgService) GetOrgDetail(
 	if err != nil {
 		return nil, errors.Wrap(errors.CodeOrgNotFound, err)
 	}
-	return org, nil
+	items, err := s.buildOrgReadModels(ctx, []*entity.Org{org})
+	if err != nil {
+		return nil, errors.Wrap(errors.CodeDBError, err)
+	}
+	if len(items) == 0 {
+		return nil, errors.New(errors.CodeOrgNotFound)
+	}
+	return items[0], nil
 }
 
 // GetMyOrgs 获取当前用户所属的组织列表
@@ -152,6 +174,15 @@ func (s *OrgService) CreateOrg(
 	userID uint,
 	req *request.CreateOrgReq,
 ) error {
+	creator, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return errors.Wrap(errors.CodeDBError, err)
+	}
+	if creator == nil {
+		return errors.New(errors.CodeUserNotFound)
+	}
+	oldCurrentOrgID := cloneUintPtr(creator.CurrentOrgID)
+
 	// 校验参数
 	name := strings.TrimSpace(req.Name)
 	if name == "" {
@@ -244,6 +275,13 @@ func (s *OrgService) CreateOrg(
 			if err := txImageRepo.UpdateCategoryByID(ctx, *avatarID, consts.CatAvatar); err != nil {
 				return errors.Wrap(errors.CodeDBError, err)
 			}
+		}
+		if err := s.publishCacheProjectionInTx(
+			ctx,
+			tx,
+			newCurrentOrgChangedProjectionEvent(userID, oldCurrentOrgID, &org.ID, []uint{org.ID}),
+		); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
 		}
 
 		return nil
@@ -464,6 +502,10 @@ func (s *OrgService) DeleteOrg(ctx context.Context, userID, orgID uint, force bo
 	if isAllMembersBuiltinOrg(org) {
 		return errors.New(errors.CodeOrgBuiltinProtected)
 	}
+	affectedUserIDs, err := s.userRepo.ListIDsByCurrentOrgID(ctx, orgID)
+	if err != nil {
+		return errors.Wrap(errors.CodeDBError, err)
+	}
 
 	// 非强制删除时，检查组织下是否还有成员（不包括 Owner 自己）
 	if !force {
@@ -494,6 +536,15 @@ func (s *OrgService) DeleteOrg(ctx context.Context, userID, orgID uint, force bo
 		if err := txUserRepo.ClearCurrentOrgByOrgID(ctx, orgID); err != nil {
 			return errors.Wrap(errors.CodeDBError, err)
 		}
+		for _, affectedUserID := range affectedUserIDs {
+			if err := s.publishCacheProjectionInTx(
+				ctx,
+				tx,
+				newCurrentOrgChangedProjectionEvent(affectedUserID, &orgID, nil, []uint{orgID}),
+			); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
 
 		// 2. 执行删除组织
 		if err := txOrgRepo.Delete(ctx, orgID); err != nil {
@@ -505,8 +556,20 @@ func (s *OrgService) DeleteOrg(ctx context.Context, userID, orgID uint, force bo
 
 // SetCurrentOrg 切换用户当前组织
 func (s *OrgService) SetCurrentOrg(ctx context.Context, userID, orgID uint) error {
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return errors.Wrap(errors.CodeDBError, err)
+	}
+	if user == nil {
+		return errors.New(errors.CodeUserNotFound)
+	}
+	oldCurrentOrgID := cloneUintPtr(user.CurrentOrgID)
+	if oldCurrentOrgID != nil && *oldCurrentOrgID == orgID {
+		return nil
+	}
+
 	// 校验组织存在
-	_, err := s.orgRepo.GetByID(ctx, orgID)
+	_, err = s.orgRepo.GetByID(ctx, orgID)
 	if err != nil {
 		return errors.Wrap(errors.CodeOrgNotFound, err)
 	}
@@ -521,10 +584,20 @@ func (s *OrgService) SetCurrentOrg(ctx context.Context, userID, orgID uint) erro
 	}
 
 	// 更新 current_org_id
-	if err := s.userRepo.UpdateCurrentOrgID(ctx, userID, &orgID); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-	return nil
+	return s.txRunner.InTx(ctx, func(tx any) error {
+		txUserRepo := s.userRepo.WithTx(tx)
+		if err := txUserRepo.UpdateCurrentOrgID(ctx, userID, &orgID); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if err := s.publishCacheProjectionInTx(
+			ctx,
+			tx,
+			newCurrentOrgChangedProjectionEvent(userID, oldCurrentOrgID, &orgID, []uint{orgID}),
+		); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		return nil
+	})
 }
 
 // JoinOrgByInviteCode 用户通过邀请码加入组织。
@@ -534,6 +607,14 @@ func (s *OrgService) JoinOrgByInviteCode(ctx context.Context, userID uint, invit
 	if inviteCode == "" {
 		return errors.New(errors.CodeInvalidParams)
 	}
+	user, err := s.userRepo.GetByID(ctx, userID)
+	if err != nil {
+		return errors.Wrap(errors.CodeDBError, err)
+	}
+	if user == nil {
+		return errors.New(errors.CodeUserNotFound)
+	}
+	oldCurrentOrgID := cloneUintPtr(user.CurrentOrgID)
 
 	org, err := s.orgRepo.GetByCode(ctx, inviteCode)
 	if err != nil {
@@ -598,6 +679,13 @@ func (s *OrgService) JoinOrgByInviteCode(ctx context.Context, userID uint, invit
 		if err := txUserRepo.UpdateCurrentOrgID(ctx, userID, &org.ID); err != nil {
 			return errors.Wrap(errors.CodeDBError, err)
 		}
+		if err := s.publishCacheProjectionInTx(
+			ctx,
+			tx,
+			newCurrentOrgChangedProjectionEvent(userID, oldCurrentOrgID, &org.ID, []uint{org.ID}),
+		); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
 		return nil
 	})
 }
@@ -624,6 +712,7 @@ func (s *OrgService) LeaveOrg(ctx context.Context, userID, orgID uint, reason st
 		txOrgMemberRepo := s.orgMemberRepo.WithTx(tx)
 		txRoleRepo := s.roleRepo.WithTx(tx)
 		txUserRepo := s.userRepo.WithTx(tx)
+		var event *eventdto.CacheProjectionEvent
 
 		member, err := txOrgMemberRepo.GetByOrgAndUserForUpdate(ctx, orgID, userID)
 		if err != nil {
@@ -659,6 +748,7 @@ func (s *OrgService) LeaveOrg(ctx context.Context, userID, orgID uint, reason st
 			return errors.Wrap(errors.CodeDBError, err)
 		}
 		if user != nil && user.CurrentOrgID != nil && *user.CurrentOrgID == orgID {
+			oldCurrentOrgID := cloneUintPtr(user.CurrentOrgID)
 			nextOrgID, fixErr := s.pickAnotherActiveOrgID(ctx, txOrgMemberRepo, userID, orgID)
 			if fixErr != nil {
 				return errors.Wrap(errors.CodeDBError, fixErr)
@@ -666,11 +756,14 @@ func (s *OrgService) LeaveOrg(ctx context.Context, userID, orgID uint, reason st
 			if err := txUserRepo.UpdateCurrentOrgID(ctx, userID, nextOrgID); err != nil {
 				return errors.Wrap(errors.CodeDBError, err)
 			}
+			event = newCurrentOrgChangedProjectionEvent(userID, oldCurrentOrgID, nextOrgID, []uint{orgID})
+		} else {
+			event = newUserSnapshotProjectionEvent(userID, []uint{orgID})
 		}
 
 		_ = s.clearUserOrgCasbinRoles(userID, orgID)
-		if err := s.removeUserFromOrgRanking(ctx, orgID, userID); err != nil {
-			return errors.Wrap(errors.CodeRedisError, err)
+		if err := s.publishCacheProjectionInTx(ctx, tx, event); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
 		}
 		return nil
 	})
@@ -699,6 +792,7 @@ func (s *OrgService) KickMember(ctx context.Context, operatorID, orgID, targetUs
 		txOrgMemberRepo := s.orgMemberRepo.WithTx(tx)
 		txRoleRepo := s.roleRepo.WithTx(tx)
 		txUserRepo := s.userRepo.WithTx(tx)
+		var event *eventdto.CacheProjectionEvent
 
 		member, err := txOrgMemberRepo.GetByOrgAndUserForUpdate(ctx, orgID, targetUserID)
 		if err != nil {
@@ -731,6 +825,7 @@ func (s *OrgService) KickMember(ctx context.Context, operatorID, orgID, targetUs
 			return errors.Wrap(errors.CodeDBError, err)
 		}
 		if user != nil && user.CurrentOrgID != nil && *user.CurrentOrgID == orgID {
+			oldCurrentOrgID := cloneUintPtr(user.CurrentOrgID)
 			nextOrgID, fixErr := s.pickAnotherActiveOrgID(ctx, txOrgMemberRepo, targetUserID, orgID)
 			if fixErr != nil {
 				return errors.Wrap(errors.CodeDBError, fixErr)
@@ -738,11 +833,14 @@ func (s *OrgService) KickMember(ctx context.Context, operatorID, orgID, targetUs
 			if err := txUserRepo.UpdateCurrentOrgID(ctx, targetUserID, nextOrgID); err != nil {
 				return errors.Wrap(errors.CodeDBError, err)
 			}
+			event = newCurrentOrgChangedProjectionEvent(targetUserID, oldCurrentOrgID, nextOrgID, []uint{orgID})
+		} else {
+			event = newUserSnapshotProjectionEvent(targetUserID, []uint{orgID})
 		}
 
 		_ = s.clearUserOrgCasbinRoles(targetUserID, orgID)
-		if err := s.removeUserFromOrgRanking(ctx, orgID, targetUserID); err != nil {
-			return errors.Wrap(errors.CodeRedisError, err)
+		if err := s.publishCacheProjectionInTx(ctx, tx, event); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
 		}
 		return nil
 	})
@@ -817,6 +915,13 @@ func (s *OrgService) RecoverMember(
 		}
 		if err := s.assignDefaultMemberRole(ctx, txRoleRepo, targetUserID, orgID); err != nil {
 			return err
+		}
+		if err := s.publishCacheProjectionInTx(
+			ctx,
+			tx,
+			newUserSnapshotProjectionEvent(targetUserID, []uint{orgID}),
+		); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
 		}
 		return nil
 	})
@@ -939,16 +1044,15 @@ func (s *OrgService) clearUserOrgCasbinRoles(userID, orgID uint) error {
 	return err
 }
 
-// removeUserFromOrgRanking 从组织的排行榜中移除用户（如离开/被踢出组织时）。
-func (s *OrgService) removeUserFromOrgRanking(
+func (s *OrgService) publishCacheProjectionInTx(
 	ctx context.Context,
-	orgID, userID uint,
+	tx any,
+	event *eventdto.CacheProjectionEvent,
 ) error {
-	member := strconv.FormatUint(uint64(userID), 10)
-	if err := global.Redis.ZRem(ctx, rediskey.RankingZSetKey(orgID, "luogu"), member).Err(); err != nil {
-		return err
+	if event == nil || s.cacheProjectionPublisher == nil {
+		return nil
 	}
-	return global.Redis.ZRem(ctx, rediskey.RankingZSetKey(orgID, "leetcode"), member).Err()
+	return s.cacheProjectionPublisher.PublishInTx(ctx, tx, event)
 }
 
 // generateInviteCode 生成唯一的邀请码，格式为 "ORG-" + 10位随机大写字母数字组合。
@@ -974,4 +1078,46 @@ func isAllMembersBuiltinOrg(org *entity.Org) bool {
 		return false
 	}
 	return org.IsBuiltin && org.BuiltinKey != nil && *org.BuiltinKey == consts.OrgBuiltinKeyAllMembers
+}
+
+func (s *OrgService) buildOrgReadModels(
+	ctx context.Context,
+	orgs []*entity.Org,
+) ([]*readmodel.OrgWithMemberCount, error) {
+	if len(orgs) == 0 {
+		return make([]*readmodel.OrgWithMemberCount, 0), nil
+	}
+
+	orgIDs := make([]uint, 0, len(orgs))
+	for _, org := range orgs {
+		if org == nil {
+			continue
+		}
+		orgIDs = append(orgIDs, org.ID)
+	}
+
+	counts, err := s.orgMemberRepo.CountActiveMembersByOrgIDs(ctx, orgIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]*readmodel.OrgWithMemberCount, 0, len(orgs))
+	for _, org := range orgs {
+		if org == nil {
+			continue
+		}
+		items = append(items, &readmodel.OrgWithMemberCount{
+			ID:          org.ID,
+			Name:        org.Name,
+			Description: org.Description,
+			Code:        org.Code,
+			Avatar:      org.Avatar,
+			AvatarID:    org.AvatarID,
+			OwnerID:     org.OwnerID,
+			MemberCount: counts[org.ID],
+			CreatedAt:   org.CreatedAt,
+			UpdatedAt:   org.UpdatedAt,
+		})
+	}
+	return items, nil
 }
