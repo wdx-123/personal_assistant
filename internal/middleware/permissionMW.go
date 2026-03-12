@@ -146,10 +146,10 @@ func (a *permissionAuth) extractUserInfo() bool {
 
 // loadUserRoles 加载用户角色信息
 func (a *permissionAuth) loadUserRoles() bool {
-	permissionService := a.serviceGroup.SystemServiceSupplier.GetPermissionSvc()
+	authorizationService := a.serviceGroup.SystemServiceSupplier.GetAuthorizationSvc()
 
 	// 获取用户角色列表
-	roles, err := permissionService.GetUserRoles(a.ctx, a.userID)
+	roles, err := authorizationService.GetUserRoles(a.ctx, a.userID)
 	if err != nil {
 		global.Log.Error("获取用户角色失败",
 			zap.Uint("userID", a.userID),
@@ -194,7 +194,7 @@ func (a *permissionAuth) checkSuperUser() bool {
 
 // checkAPIPermission 检查API权限
 func (a *permissionAuth) checkAPIPermission() bool {
-	permissionService := a.serviceGroup.SystemServiceSupplier.GetPermissionSvc()
+	authorizationService := a.serviceGroup.SystemServiceSupplier.GetAuthorizationSvc()
 
 	// 使用FullPath获取路由模板
 	apiPath := a.c.FullPath()
@@ -203,7 +203,8 @@ func (a *permissionAuth) checkAPIPermission() bool {
 	}
 
 	// 检查用户API权限
-	hasPermission, err := permissionService.CheckUserAPIPermission(
+	hasPermission, err := authorizationService.CheckUserAPIPermission(
+		a.ctx,
 		a.userID,
 		apiPath,
 		a.c.Request.Method,

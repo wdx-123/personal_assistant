@@ -162,7 +162,8 @@ func (r *roleRepository) AssignMenuToRole(
 	menuID uint,
 ) error {
 	return r.db.WithContext(ctx).
-		Exec("INSERT IGNORE INTO role_menus (role_id, menu_id) VALUES (?, ?)", roleID, menuID).
+		Table("role_menus").
+		Create(map[string]any{"role_id": roleID, "menu_id": menuID}).
 		Error
 }
 
@@ -294,14 +295,11 @@ func (r *roleRepository) replaceRoleAPIs(tx *gorm.DB, roleID uint, apiIDs []uint
 		return nil
 	}
 
-	var values []string
-	var args []interface{}
+	items := make([]entity.RoleAPI, 0, len(apiIDs))
 	for _, apiID := range apiIDs {
-		values = append(values, "(?, ?)")
-		args = append(args, roleID, apiID)
+		items = append(items, entity.RoleAPI{RoleID: roleID, APIID: apiID})
 	}
-	sql := "INSERT IGNORE INTO role_apis (role_id, api_id) VALUES " + strings.Join(values, ",")
-	return tx.Exec(sql, args...).Error
+	return tx.Create(&items).Error
 }
 
 // RemoveAPIFromAllRoles 从所有角色中移除指定API（删除API前解绑）
@@ -332,10 +330,11 @@ func (r *roleRepository) AssignRoleToUserInOrg(
 	orgID,
 	roleID uint,
 ) error {
-	return r.db.WithContext(ctx).
-		Exec("INSERT IGNORE INTO user_org_roles (user_id, org_id, role_id) VALUES (?, ?, ?)",
-			userID, orgID, roleID).
-		Error
+	return r.db.WithContext(ctx).Create(&entity.UserOrgRole{
+		UserID: userID,
+		OrgID:  orgID,
+		RoleID: roleID,
+	}).Error
 }
 
 // RemoveRoleFromUserInOrg 移除角色从用户组织中
@@ -368,15 +367,15 @@ func (r *roleRepository) ReplaceUserOrgRoles(
 			return nil
 		}
 
-		var values []string
-		var args []interface{}
+		items := make([]entity.UserOrgRole, 0, len(roleIDs))
 		for _, roleID := range roleIDs {
-			values = append(values, "(?, ?, ?)")
-			args = append(args, userID, orgID, roleID)
+			items = append(items, entity.UserOrgRole{
+				UserID: userID,
+				OrgID:  orgID,
+				RoleID: roleID,
+			})
 		}
-
-		sql := "INSERT IGNORE INTO user_org_roles (user_id, org_id, role_id) VALUES " + strings.Join(values, ",")
-		return tx.Exec(sql, args...).Error
+		return tx.Create(&items).Error
 	})
 }
 

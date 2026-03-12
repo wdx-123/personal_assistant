@@ -117,6 +117,14 @@
 - 推荐实现顺序：
   - `Config -> Core -> Init -> pkg封装/中间件 -> Service接入（如需要） -> Router暴露（如需要）`
 
+## 13. 权限与投影
+
+- 权限真相只认 DB 关系表；Casbin 是权限投影，不是业务真相。
+- `pkg/casbin` 只保留纯权限引擎能力，禁止承载 `owner / super_admin / capability 映射` 这类业务判断。
+- `internal/service` 只允许通过 `AuthorizationService` 做业务授权；业务 Service 禁止直接操作 `Enforcer`。
+- `role-menu / role-api / role-capability / menu-api` 变更统一写 DB + outbox，不允许在业务 Service 内直接全量刷新 Casbin。
+- `user-org-role / 成员状态` 变更允许同步收口当前主体投影，但仍必须补发异步修复事件。
+
 ## 提问引用规范
 
 在实现或评审过程中需要向用户澄清时，追加一行：

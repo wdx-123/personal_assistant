@@ -23,16 +23,17 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 	ss := &serviceSupplier{}
 
 	rawJWT := NewJWTService(repositoryGroup)
-	rawPermission := NewPermissionService(repositoryGroup)
+	rawAuthorization := NewAuthorizationService(repositoryGroup)
+	rawPermissionProjection := NewPermissionProjectionService(repositoryGroup)
 	rawBase := NewBaseService()
 	rawHealth := NewHealthService(repositoryGroup)
 	rawCacheProjection := NewCacheProjectionService(repositoryGroup)
-	rawUser := NewUserService(repositoryGroup, rawPermission)
-	rawOrg := NewOrgService(repositoryGroup, rawPermission)
+	rawUser := NewUserService(repositoryGroup, rawAuthorization, rawPermissionProjection)
+	rawOrg := NewOrgService(repositoryGroup, rawAuthorization, rawPermissionProjection)
 	rawOJ := NewOJService(repositoryGroup, rawCacheProjection)
-	rawAPI := NewApiService(repositoryGroup, rawPermission)
-	rawMenu := NewMenuService(repositoryGroup, rawPermission)
-	rawRole := NewRoleService(repositoryGroup, rawPermission)
+	rawAPI := NewApiService(repositoryGroup, rawPermissionProjection)
+	rawMenu := NewMenuService(repositoryGroup, rawPermissionProjection)
+	rawRole := NewRoleService(repositoryGroup, rawPermissionProjection)
 	rawImage := NewImageService(repositoryGroup)
 	rawObservability := obsquery.NewQueryService(
 		global.ObservabilityMetrics,
@@ -42,7 +43,8 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 	)
 
 	jwtSvc := contract.JWTServiceContract(rawJWT)
-	permissionSvc := contract.PermissionServiceContract(rawPermission)
+	authorizationSvc := contract.AuthorizationServiceContract(rawAuthorization)
+	permissionProjectionSvc := contract.PermissionProjectionServiceContract(rawPermissionProjection)
 	baseSvc := contract.BaseServiceContract(rawBase)
 	healthSvc := contract.HealthServiceContract(rawHealth)
 	userSvc := contract.UserServiceContract(rawUser)
@@ -72,7 +74,8 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 	}
 
 	ss.jwtService = jwtSvc
-	ss.permissionService = permissionSvc
+	ss.authorizationService = authorizationSvc
+	ss.permissionProjectionService = permissionProjectionSvc
 	ss.baseService = baseSvc
 	ss.healthService = healthSvc
 	ss.userService = userSvc

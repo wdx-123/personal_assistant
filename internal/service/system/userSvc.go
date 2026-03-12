@@ -3,7 +3,6 @@ package system
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/url"
 	"strings"
 	"time"
@@ -24,6 +23,7 @@ import (
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository"
 	"personal_assistant/pkg/util"
+	svccontract "personal_assistant/internal/service/contract"
 )
 
 type UserService struct {
@@ -33,13 +33,15 @@ type UserService struct {
 	orgRepo                  interfaces.OrgRepository
 	orgMemberRepo            interfaces.OrgMemberRepository
 	imageRepo                interfaces.ImageRepository // 图片仓储
-	permissionService        *PermissionService         // 权限服务，用于RBAC角色分配
+	authorizationService     svccontract.AuthorizationServiceContract
+	permissionProjectionSvc  svccontract.PermissionProjectionServiceContract
 	cacheProjectionPublisher cacheProjectionEventPublisher
 }
 
 func NewUserService(
 	repositoryGroup *repository.Group,
-	permissionService *PermissionService,
+	authorizationService svccontract.AuthorizationServiceContract,
+	permissionProjectionSvc svccontract.PermissionProjectionServiceContract,
 ) *UserService {
 	return &UserService{
 		txRunner:          repositoryGroup,
@@ -48,7 +50,8 @@ func NewUserService(
 		orgRepo:           repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
 		orgMemberRepo:     repositoryGroup.SystemRepositorySupplier.GetOrgMemberRepository(),
 		imageRepo:         repositoryGroup.SystemRepositorySupplier.GetImageRepository(),
-		permissionService: permissionService,
+		authorizationService:    authorizationService,
+		permissionProjectionSvc: permissionProjectionSvc,
 		cacheProjectionPublisher: newCacheProjectionOutboxPublisher(
 			repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
 		),
@@ -172,6 +175,16 @@ func (u *UserService) Register(
 				return bizerrors.Wrap(bizerrors.CodeDBError, err)
 			}
 		}
+		if u.permissionProjectionSvc != nil {
+			if err := u.permissionProjectionSvc.PublishSubjectBindingChangedInTx(ctx, tx, user.ID, targetOrg.ID); err != nil {
+				return bizerrors.Wrap(bizerrors.CodeDBError, err)
+			}
+			if allMembersOrg.ID != targetOrg.ID {
+				if err := u.permissionProjectionSvc.PublishSubjectBindingChangedInTx(ctx, tx, user.ID, allMembersOrg.ID); err != nil {
+					return bizerrors.Wrap(bizerrors.CodeDBError, err)
+				}
+			}
+		}
 
 		// 发布用户快照变更事件，触发缓存投影更新。包含用户ID和受影响的组织ID列表（邀请码组织和全体成员组织）。
 		if err := u.publishCacheProjectionInTx(ctx, tx, newUserSnapshotProjectionEvent(user.ID, nil)); err != nil {
@@ -183,16 +196,13 @@ func (u *UserService) Register(
 		return nil, err
 	}
 
-	// 同步 Casbin 角色关系（失败仅记录日志，不影响注册成功）。
-	if u.permissionService != nil && u.permissionService.casbinSvc != nil && u.permissionService.casbinSvc.Enforcer != nil {
-		subjectTarget := fmt.Sprintf("%d@%d", user.ID, targetOrg.ID)
-		if _, err := u.permissionService.casbinSvc.Enforcer.AddRoleForUser(subjectTarget, defaultRole.Code); err != nil {
-			global.Log.Error("注册后同步目标组织角色到Casbin失败", zap.Error(err))
+	if u.permissionProjectionSvc != nil {
+		if err := u.permissionProjectionSvc.SyncSubjectRoles(ctx, user.ID, targetOrg.ID); err != nil {
+			global.Log.Error("注册后同步目标组织角色投影失败", zap.Error(err))
 		}
 		if allMembersOrg.ID != targetOrg.ID {
-			subjectAll := fmt.Sprintf("%d@%d", user.ID, allMembersOrg.ID)
-			if _, err := u.permissionService.casbinSvc.Enforcer.AddRoleForUser(subjectAll, defaultRole.Code); err != nil {
-				global.Log.Error("注册后同步全体成员角色到Casbin失败", zap.Error(err))
+			if err := u.permissionProjectionSvc.SyncSubjectRoles(ctx, user.ID, allMembersOrg.ID); err != nil {
+				global.Log.Error("注册后同步全体成员角色投影失败", zap.Error(err))
 			}
 		}
 	}
@@ -557,12 +567,12 @@ func (u *UserService) AssignRole(
 		return bizerrors.New(bizerrors.CodeUserNotFound)
 	}
 
-	if u.permissionService == nil {
-		return bizerrors.NewWithMsg(bizerrors.CodeInternalError, "权限服务未初始化")
+	if u.authorizationService == nil {
+		return bizerrors.NewWithMsg(bizerrors.CodeInternalError, "授权服务未初始化")
 	}
 
 	// 权限检查：只有组织管理员或具有 OrgMemberAssignRole 能力的用户才能分配角色
-	if err := u.permissionService.AuthorizeOrgCapability(
+	if err := u.authorizationService.AuthorizeOrgCapability(
 		ctx,
 		operatorID,
 		req.OrgID,
@@ -579,8 +589,42 @@ func (u *UserService) AssignRole(
 		return bizerrors.NewWithMsg(bizerrors.CodeOrgMemberStatusConflict, "成员非 active 状态，禁止改角色")
 	}
 
-	// 调用权限服务进行角色分配（全量替换）
-	return u.permissionService.ReplaceUserRolesInOrg(ctx, req.UserID, req.OrgID, req.RoleIDs)
+	validRoleIDs := make([]uint, 0, len(req.RoleIDs))
+	for _, roleID := range req.RoleIDs {
+		if roleID == 0 {
+			continue
+		}
+		role, err := u.roleRepo.GetByID(ctx, roleID)
+		if err != nil {
+			return bizerrors.Wrap(bizerrors.CodeDBError, err)
+		}
+		if role == nil || role.ID == 0 {
+			return bizerrors.New(bizerrors.CodeRoleNotFound)
+		}
+		validRoleIDs = append(validRoleIDs, roleID)
+	}
+
+	if err := u.txRunner.InTx(ctx, func(tx any) error {
+		txRoleRepo := u.roleRepo.WithTx(tx)
+		if err := txRoleRepo.ReplaceUserOrgRoles(ctx, req.UserID, req.OrgID, validRoleIDs); err != nil {
+			return bizerrors.Wrap(bizerrors.CodeDBError, err)
+		}
+		if u.permissionProjectionSvc != nil {
+			if err := u.permissionProjectionSvc.PublishSubjectBindingChangedInTx(ctx, tx, req.UserID, req.OrgID); err != nil {
+				return bizerrors.Wrap(bizerrors.CodeDBError, err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	if u.permissionProjectionSvc != nil {
+		if err := u.permissionProjectionSvc.SyncSubjectRoles(ctx, req.UserID, req.OrgID); err != nil {
+			return bizerrors.Wrap(bizerrors.CodeInternalError, err)
+		}
+	}
+	return nil
 }
 
 // DeactivateAccount 主动注销账号（等同禁用）
@@ -666,6 +710,11 @@ func (u *UserService) CleanupDisabledUsers(ctx context.Context) (int, error) {
 				if err := txRoleRepo.DeleteUserOrgRoles(ctx, item.ID, orgID); err != nil {
 					return bizerrors.Wrap(bizerrors.CodeDBError, err)
 				}
+				if u.permissionProjectionSvc != nil {
+					if err := u.permissionProjectionSvc.PublishSubjectBindingChangedInTx(ctx, tx, item.ID, orgID); err != nil {
+						return bizerrors.Wrap(bizerrors.CodeDBError, err)
+					}
+				}
 			}
 			if err := txUserRepo.SoftDeleteAndAnonymize(ctx, item.ID); err != nil {
 				return err
@@ -680,6 +729,13 @@ func (u *UserService) CleanupDisabledUsers(ctx context.Context) (int, error) {
 			return nil
 		}); err != nil {
 			return cleaned, err
+		}
+		if u.permissionProjectionSvc != nil {
+			for _, orgID := range orgIDs {
+				if err := u.permissionProjectionSvc.SyncSubjectRoles(ctx, item.ID, orgID); err != nil {
+					return cleaned, bizerrors.Wrap(bizerrors.CodeInternalError, err)
+				}
+			}
 		}
 		cleaned++
 	}

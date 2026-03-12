@@ -17,4 +17,8 @@ type Messaging struct {
 	CacheProjectionTopic      string `json:"cache_projection_topic" yaml:"cache_projection_topic"`
 	CacheProjectionGroup      string `json:"cache_projection_group" yaml:"cache_projection_group"`
 	CacheProjectionConsumer   string `json:"cache_projection_consumer" yaml:"cache_projection_consumer"`
+	PermissionProjectionTopic string `json:"permission_projection_topic" yaml:"permission_projection_topic"`
+	PermissionProjectionGroup string `json:"permission_projection_group" yaml:"permission_projection_group"`
+	PermissionProjectionConsumer string `json:"permission_projection_consumer" yaml:"permission_projection_consumer"`
+	PermissionPolicyReloadChannel string `json:"permission_policy_reload_channel" yaml:"permission_policy_reload_channel"`
 }

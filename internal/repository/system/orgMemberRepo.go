@@ -189,3 +189,13 @@ func (r *orgMemberRepository) ListActiveOrgIDsByUser(ctx context.Context, userID
 		Pluck("org_id", &orgIDs).Error
 	return orgIDs, err
 }
+
+func (r *orgMemberRepository) ListUserIDsByOrg(ctx context.Context, orgID uint) ([]uint, error) {
+	var userIDs []uint
+	err := r.db.WithContext(ctx).
+		Model(&entity.OrgMember{}).
+		Where("org_id = ?", orgID).
+		Order("user_id ASC").
+		Pluck("user_id", &userIDs).Error
+	return userIDs, err
+}

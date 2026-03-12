@@ -96,6 +96,7 @@ func Init() {
 	if err := core.InitSubscribers(
 		context.Background(),
 		service.GroupApp.SystemServiceSupplier.GetOJSvc(),
+		service.GroupApp.SystemServiceSupplier.GetPermissionProjectionSvc(),
 		service.GroupApp.SystemServiceSupplier.GetCacheProjectionSvc(),
 	); err != nil {
 		global.Log.Error("init subscribers failed", zap.Error(err))
@@ -106,8 +107,8 @@ func Init() {
 		SystemApiGroup: apiSystem.SetUp(service.GroupApp),
 	}
 	// 同步权限数据
-	permissionService := service.GroupApp.SystemServiceSupplier.GetPermissionSvc()
-	if err := permissionService.SyncAllPermissionsToCasbin(ctx); err != nil {
+	permissionProjectionSvc := service.GroupApp.SystemServiceSupplier.GetPermissionProjectionSvc()
+	if err := permissionProjectionSvc.RebuildAll(ctx); err != nil {
 		global.Log.Error("权限同步失败", zap.Error(err))
 	}
 	// 启动定时任务

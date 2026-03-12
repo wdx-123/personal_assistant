@@ -47,4 +47,6 @@ type APIRepository interface {
 	GetAPIsByRoleID(ctx context.Context, roleID uint) ([]*entity.API, error)
 	// CheckUserAPIPermission 检查用户在组织内是否有特定API权限
 	CheckUserAPIPermission(ctx context.Context, userID, orgID uint, path, method string) (bool, error)
+	// WithTx 在事务上下文中返回一个新的 API 仓储实例
+	WithTx(tx any) APIRepository
 }

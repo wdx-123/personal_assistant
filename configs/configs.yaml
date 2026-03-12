@@ -193,6 +193,10 @@ messaging:
   cache_projection_topic: "cache_projection"
   cache_projection_group: "cache_projection_group"
   cache_projection_consumer: "cache_projection_consumer"
+  permission_projection_topic: "permission_projection"
+  permission_projection_group: "permission_projection_group"
+  permission_projection_consumer: "permission_projection_consumer"
+  permission_policy_reload_channel: "permission_policy_reload"
 observability:
   enabled: true                      # 总开关
   service_name: "personal_assistant" # 服务名维度（需稳定）

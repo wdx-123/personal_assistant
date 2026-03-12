@@ -18,6 +18,13 @@ func NewMenuRepository(db *gorm.DB) interfaces.MenuRepository {
 	return &menuRepository{db: db}
 }
 
+func (m *menuRepository) WithTx(tx any) interfaces.MenuRepository {
+	if transaction, ok := tx.(*gorm.DB); ok {
+		return &menuRepository{db: transaction}
+	}
+	return m
+}
+
 // 基础CRUD操作
 func (m *menuRepository) GetByID(ctx context.Context, id uint) (*entity.Menu, error) {
 	var menu entity.Menu
@@ -168,7 +175,10 @@ func (m *menuRepository) CountByNameLike(ctx context.Context, name string) (int6
 // 菜单API关系管理
 
 func (m *menuRepository) AssignAPIToMenu(ctx context.Context, menuID, apiID uint) error {
-	return m.db.WithContext(ctx).Exec("INSERT IGNORE INTO menu_apis (menu_id, api_id) VALUES (?, ?)", menuID, apiID).Error
+	return m.db.WithContext(ctx).Create(&entity.MenuAPI{
+		MenuID: menuID,
+		APIID:  apiID,
+	}).Error
 }
 
 // RemoveAPIFromMenu 从菜单移除API

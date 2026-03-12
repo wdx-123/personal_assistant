@@ -15,7 +15,9 @@ import (
 	"gorm.io/gorm"
 
 	"personal_assistant/global"
+	cfg "personal_assistant/internal/model/config"
 	"personal_assistant/internal/model/consts"
+	eventdto "personal_assistant/internal/model/dto/event"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository"
@@ -26,11 +28,12 @@ import (
 )
 
 type authorizationTestEnv struct {
-	db          *gorm.DB
-	enforcer    *casbinlib.Enforcer
-	permission  *PermissionService
-	orgService  *OrgService
-	userService *UserService
+	db            *gorm.DB
+	enforcer      *casbinlib.Enforcer
+	authorization *AuthorizationService
+	projection    *PermissionProjectionService
+	orgService    *OrgService
+	userService   *UserService
 }
 
 func newAuthorizationTestEnv(t *testing.T) *authorizationTestEnv {
@@ -46,10 +49,15 @@ func newAuthorizationTestEnv(t *testing.T) *authorizationTestEnv {
 		&entity.Org{},
 		&entity.OrgMember{},
 		&entity.Role{},
+		&entity.Menu{},
+		&entity.API{},
+		&entity.MenuAPI{},
+		&entity.RoleAPI{},
 		&entity.Capability{},
 		&entity.UserOrgRole{},
 		&entity.RoleCapability{},
 		&entity.Image{},
+		&entity.OutboxEvent{},
 	); err != nil {
 		t.Fatalf("auto migrate: %v", err)
 	}
@@ -65,9 +73,20 @@ func newAuthorizationTestEnv(t *testing.T) *authorizationTestEnv {
 	}
 
 	oldEnforcer := global.CasbinEnforcer
+	oldConfig := global.Config
 	global.CasbinEnforcer = enforcer
+	global.Config = &cfg.Config{
+		System: cfg.System{
+			DefaultRoleCode: consts.RoleCodeMember,
+		},
+		Messaging: cfg.Messaging{
+			PermissionProjectionTopic:     "permission_projection",
+			PermissionPolicyReloadChannel: "permission_policy_reload",
+		},
+	}
 	t.Cleanup(func() {
 		global.CasbinEnforcer = oldEnforcer
+		global.Config = oldConfig
 	})
 
 	repoGroup := &repository.Group{
@@ -76,15 +95,19 @@ func newAuthorizationTestEnv(t *testing.T) *authorizationTestEnv {
 			Connection:   db,
 		}),
 	}
-	permissionService := NewPermissionService(repoGroup)
-	permissionService.casbinSvc = &pkgcasbin.Service{Enforcer: enforcer}
+
+	authorizationService := NewAuthorizationService(repoGroup)
+	authorizationService.casbinSvc = pkgcasbin.NewServiceWithEnforcer(enforcer)
+	projectionService := NewPermissionProjectionService(repoGroup)
+	projectionService.casbinSvc = pkgcasbin.NewServiceWithEnforcer(enforcer)
 
 	return &authorizationTestEnv{
-		db:          db,
-		enforcer:    enforcer,
-		permission:  permissionService,
-		orgService:  NewOrgService(repoGroup, permissionService),
-		userService: NewUserService(repoGroup, permissionService),
+		db:            db,
+		enforcer:      enforcer,
+		authorization: authorizationService,
+		projection:    projectionService,
+		orgService:    NewOrgService(repoGroup, authorizationService, projectionService),
+		userService:   NewUserService(repoGroup, authorizationService, projectionService),
 	}
 }
 
@@ -146,13 +169,65 @@ func grantGlobalRole(t *testing.T, env *authorizationTestEnv, userID uint, roleC
 	}
 }
 
+func createRole(t *testing.T, env *authorizationTestEnv, code string) *entity.Role {
+	t.Helper()
+	role := &entity.Role{
+		Name:   code,
+		Code:   code,
+		Status: 1,
+	}
+	if err := env.db.Create(role).Error; err != nil {
+		t.Fatalf("create role %s: %v", code, err)
+	}
+	return role
+}
+
+func createCapability(t *testing.T, env *authorizationTestEnv, code string) *entity.Capability {
+	t.Helper()
+	capability := &entity.Capability{
+		Code:      code,
+		Name:      code,
+		Status:    1,
+		GroupCode: "test_group",
+		GroupName: "测试分组",
+		Domain:    "test",
+	}
+	if err := env.db.Create(capability).Error; err != nil {
+		t.Fatalf("create capability %s: %v", code, err)
+	}
+	return capability
+}
+
+func assignUserRole(t *testing.T, env *authorizationTestEnv, userID, orgID, roleID uint) {
+	t.Helper()
+	relation := &entity.UserOrgRole{
+		UserID: userID,
+		OrgID:  orgID,
+		RoleID: roleID,
+	}
+	if err := env.db.Create(relation).Error; err != nil {
+		t.Fatalf("assign user role: %v", err)
+	}
+}
+
+func bindRoleCapability(t *testing.T, env *authorizationTestEnv, roleID, capabilityID uint) {
+	t.Helper()
+	relation := &entity.RoleCapability{
+		RoleID:       roleID,
+		CapabilityID: capabilityID,
+	}
+	if err := env.db.Create(relation).Error; err != nil {
+		t.Fatalf("bind role capability: %v", err)
+	}
+}
+
 func grantOrgCapability(t *testing.T, env *authorizationTestEnv, userID, orgID uint, roleCode, capabilityCode string) {
 	t.Helper()
-	subject := fmt.Sprintf("%d@%d", userID, orgID)
+	subject := pkgcasbin.BuildSubject(userID, orgID)
 	if _, err := env.enforcer.AddRoleForUser(subject, roleCode); err != nil {
 		t.Fatalf("add role for subject: %v", err)
 	}
-	if _, err := env.enforcer.AddPermissionForUser(roleCode, capabilityCode, "operate"); err != nil {
+	if _, err := env.enforcer.AddPermissionForUser(roleCode, capabilityCode, pkgcasbin.ActionOperate); err != nil {
 		t.Fatalf("add capability permission: %v", err)
 	}
 }
@@ -171,14 +246,14 @@ func assertBizCode(t *testing.T, err error, want bizerrors.BizCode) {
 	}
 }
 
-func TestPermissionServiceAuthorizeOrgCapability(t *testing.T) {
+func TestAuthorizationServiceAuthorizeOrgCapability(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("owner bypass", func(t *testing.T) {
 		env := newAuthorizationTestEnv(t)
 		org := createOrg(t, env, 11)
 
-		if err := env.permission.AuthorizeOrgCapability(ctx, 11, org.ID, consts.CapabilityCodeOrgManageUpdate); err != nil {
+		if err := env.authorization.AuthorizeOrgCapability(ctx, 11, org.ID, consts.CapabilityCodeOrgManageUpdate); err != nil {
 			t.Fatalf("owner should bypass capability check: %v", err)
 		}
 	})
@@ -188,7 +263,7 @@ func TestPermissionServiceAuthorizeOrgCapability(t *testing.T) {
 		org := createOrg(t, env, 11)
 		grantGlobalRole(t, env, 22, consts.RoleCodeSuperAdmin)
 
-		if err := env.permission.AuthorizeOrgCapability(ctx, 22, org.ID, consts.CapabilityCodeOrgManageDelete); err != nil {
+		if err := env.authorization.AuthorizeOrgCapability(ctx, 22, org.ID, consts.CapabilityCodeOrgManageDelete); err != nil {
 			t.Fatalf("super admin should bypass capability check: %v", err)
 		}
 	})
@@ -198,7 +273,7 @@ func TestPermissionServiceAuthorizeOrgCapability(t *testing.T) {
 		org := createOrg(t, env, 11)
 		grantOrgCapability(t, env, 22, org.ID, "org_operator", consts.CapabilityCodeOrgManageUpdate)
 
-		if err := env.permission.AuthorizeOrgCapability(ctx, 22, org.ID, consts.CapabilityCodeOrgManageUpdate); err != nil {
+		if err := env.authorization.AuthorizeOrgCapability(ctx, 22, org.ID, consts.CapabilityCodeOrgManageUpdate); err != nil {
 			t.Fatalf("capability should allow action: %v", err)
 		}
 	})
@@ -207,23 +282,23 @@ func TestPermissionServiceAuthorizeOrgCapability(t *testing.T) {
 		env := newAuthorizationTestEnv(t)
 		org := createOrg(t, env, 11)
 
-		err := env.permission.AuthorizeOrgCapability(ctx, 22, org.ID, consts.CapabilityCodeOrgManageUpdate)
+		err := env.authorization.AuthorizeOrgCapability(ctx, 22, org.ID, consts.CapabilityCodeOrgManageUpdate)
 		assertBizCode(t, err, bizerrors.CodePermissionDenied)
 	})
 
 	t.Run("org not found", func(t *testing.T) {
 		env := newAuthorizationTestEnv(t)
 
-		err := env.permission.AuthorizeOrgCapability(ctx, 22, 404, consts.CapabilityCodeOrgManageUpdate)
+		err := env.authorization.AuthorizeOrgCapability(ctx, 22, 404, consts.CapabilityCodeOrgManageUpdate)
 		assertBizCode(t, err, bizerrors.CodeOrgNotFound)
 	})
 
 	t.Run("casbin error wrapped", func(t *testing.T) {
 		env := newAuthorizationTestEnv(t)
 		org := createOrg(t, env, 11)
-		env.permission.casbinSvc = &pkgcasbin.Service{}
+		env.authorization.casbinSvc = pkgcasbin.NewServiceWithEnforcer(nil)
 
-		err := env.permission.AuthorizeOrgCapability(ctx, 22, org.ID, consts.CapabilityCodeOrgManageUpdate)
+		err := env.authorization.AuthorizeOrgCapability(ctx, 22, org.ID, consts.CapabilityCodeOrgManageUpdate)
 		assertBizCode(t, err, bizerrors.CodeInternalError)
 	})
 }
@@ -307,4 +382,86 @@ func TestAuthorizeOrgMemberActionHonorsBypassAndCapability(t *testing.T) {
 		err := env.orgService.authorizeOrgMemberAction(ctx, 22, org.ID, consts.OrgMemberActionKick)
 		assertBizCode(t, err, bizerrors.CodePermissionDenied)
 	})
+}
+
+func TestAssignRoleUpdatesSubjectProjectionImmediately(t *testing.T) {
+	ctx := context.Background()
+	env := newAuthorizationTestEnv(t)
+	org := createOrg(t, env, 11)
+	operator := createUser(t, env, "00000002")
+	target := createUser(t, env, "00000003")
+	currentOrgID := org.ID
+	target.CurrentOrgID = &currentOrgID
+	if err := env.db.Model(&entity.User{}).Where("id = ?", target.ID).Update("current_org_id", currentOrgID).Error; err != nil {
+		t.Fatalf("set current org: %v", err)
+	}
+	if err := env.db.Create(&entity.OrgMember{OrgID: org.ID, UserID: target.ID, MemberStatus: consts.OrgMemberStatusActive}).Error; err != nil {
+		t.Fatalf("create org member: %v", err)
+	}
+
+	role := createRole(t, env, "org_auditor")
+	grantOrgCapability(t, env, operator.ID, org.ID, "org_operator", consts.CapabilityCodeOrgMemberAssignRole)
+	if _, err := env.enforcer.AddPermissionForUser(role.Code, consts.CapabilityCodeOrgManageUpdate, pkgcasbin.ActionOperate); err != nil {
+		t.Fatalf("grant role capability: %v", err)
+	}
+
+	if err := env.userService.AssignRole(ctx, operator.ID, &request.AssignUserRoleReq{
+		UserID:  target.ID,
+		OrgID:   org.ID,
+		RoleIDs: []uint{role.ID},
+	}); err != nil {
+		t.Fatalf("assign role: %v", err)
+	}
+
+	ok, err := env.authorization.CheckUserCapabilityInOrg(ctx, target.ID, org.ID, consts.CapabilityCodeOrgManageUpdate)
+	if err != nil {
+		t.Fatalf("check capability after assign: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected assigned role projection to take effect immediately")
+	}
+
+	var outboxCount int64
+	if err := env.db.Model(&entity.OutboxEvent{}).Where("event_type = ?", "permission_projection").Count(&outboxCount).Error; err != nil {
+		t.Fatalf("count outbox: %v", err)
+	}
+	if outboxCount == 0 {
+		t.Fatalf("expected subject binding event to be written to outbox")
+	}
+}
+
+func TestPermissionGraphChangedEventRebuildsProjection(t *testing.T) {
+	ctx := context.Background()
+	env := newAuthorizationTestEnv(t)
+	org := createOrg(t, env, 11)
+	user := createUser(t, env, "00000004")
+	role := createRole(t, env, "org_manager")
+	capability := createCapability(t, env, consts.CapabilityCodeOrgManageUpdate)
+
+	assignUserRole(t, env, user.ID, org.ID, role.ID)
+	bindRoleCapability(t, env, role.ID, capability.ID)
+
+	ok, err := env.authorization.CheckUserCapabilityInOrg(ctx, user.ID, org.ID, consts.CapabilityCodeOrgManageUpdate)
+	if err != nil {
+		t.Fatalf("check capability before rebuild: %v", err)
+	}
+	if ok {
+		t.Fatalf("expected capability to be unavailable before projection rebuild")
+	}
+
+	if err := env.projection.HandlePermissionProjectionEvent(ctx, &eventdto.PermissionProjectionEvent{
+		Kind:          eventdto.PermissionProjectionKindPermissionGraphChanged,
+		AggregateType: "role",
+		AggregateID:   role.ID,
+	}); err != nil {
+		t.Fatalf("handle permission graph event: %v", err)
+	}
+
+	ok, err = env.authorization.CheckUserCapabilityInOrg(ctx, user.ID, org.ID, consts.CapabilityCodeOrgManageUpdate)
+	if err != nil {
+		t.Fatalf("check capability after rebuild: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected capability to be available after projection rebuild")
+	}
 }

@@ -17,6 +17,11 @@
 一、前端层：展示/交互控制
 二、API 层：入口访问控制
 三、Service / action 层：资源操作授权
+
+对应着：
+   UI 展示层权限
+   API 入口层权限
+   业务动作层权限
 ```
 
 
@@ -37,8 +42,16 @@
 2. 角色-菜单：`role_menus`
 3. 菜单-API：`menu_apis`
 4. 角色-API（直绑）：`role_apis`
+5. 角色-capability：`role_capabilities`
 
-### 2.2 最终权限来源（并集）
+### 2.2 权限真相与投影
+
+1. DB 关系表是唯一业务真相。
+2. Casbin 只保存权限投影，用于 API / capability 访问判断。
+3. `AuthorizationService` 负责 owner / super_admin / capability / API 鉴权。
+4. `PermissionProjectionService` 负责 Casbin 重建、主体修复、事件消费和 reload 广播。
+
+### 2.3 最终权限来源（并集）
 
 系统会同步两路 API 权限到 Casbin：
 
@@ -78,7 +91,7 @@ Casbin 使用 `gorm-adapter`，策略持久化在 `casbin_rule`。
 
 ---
 
-## 4. Casbin 初始化与全量同步
+## 4. Casbin 初始化与权限投影
 
 ### 4.1 初始化
 
@@ -89,19 +102,29 @@ Casbin 使用 `gorm-adapter`，策略持久化在 `casbin_rule`。
 3. 创建 `Enforcer`
 4. 开启 `EnableAutoSave(true)`
 
-### 4.2 启动同步
+### 4.2 启动基线重建
 
 在 `internal/init/init.go` 启动阶段调用：
 
-- `permissionService.SyncAllPermissionsToCasbin(ctx)`
+- `permissionProjectionService.RebuildAll(ctx)`
 
-同步顺序：
+冷启动基线：
 
-1. `ClearAllPermission`（`ClearPolicy + SavePolicy`）
-2. `SyncUserRolesToCasbin`（写 `g, user@org, roleCode`）
-3. `SyncRoleMenusToCasbin`
-4. `SyncMenuAPIsToCasbin`
-5. `SyncRoleAPIsToCasbin`
+1. 从 DB 回源读取 `user_org_roles / role_menus / menu_apis / role_apis / role_capabilities`
+2. 组装权限快照
+3. 执行 `pkg/casbin.RebuildFromSnapshot`
+
+### 4.3 运行时事件链路
+
+1. 主体绑定类变更：
+   - 事务内写 DB + `subject_binding_changed` outbox
+   - 事务提交后同步当前实例 `SyncSubjectRoles`
+   - 异步消费时再按 `user_id + org_id` 回源修复
+2. 权限图谱类变更：
+   - 事务内写 DB + `permission_graph_changed` outbox
+   - 异步消费时执行 Casbin 全量重建
+3. 消费成功后广播 `permission_policy_reload`
+4. 其他实例收到广播后执行 `ReloadPolicy`
 
 ---
 
@@ -122,18 +145,18 @@ Casbin 使用 `gorm-adapter`，策略持久化在 `casbin_rule`。
 
 1. 白名单放行
 2. 读取 JWT claims，拿 `userID`
-3. 加载用户角色（`PermissionService.GetUserRoles`）
+3. 加载用户角色（`AuthorizationService.GetUserRoles`）
 4. 若包含 `super_admin`，直接放行
 5. 非超管执行 API 权限校验：
    - `apiPath = c.FullPath()`（优先路由模板）
-   - 调 `CheckUserAPIPermission(userID, apiPath, method)`
+   - 调 `AuthorizationService.CheckUserAPIPermission(ctx, userID, apiPath, method)`
 
 ### 5.3 subject 生成
 
-`PermissionService.getUserSubject`：
+`AuthorizationService.getUserSubject`：
 
 1. 读取 `users.current_org_id`
-2. 生成 `subject = fmt.Sprintf("%d@%d", userID, currentOrgID)`
+2. 通过 `pkg/casbin.BuildSubject` 生成 `subject = userID@orgID`
 3. 若未设置当前组织，则返回错误
 
 ---
@@ -163,7 +186,7 @@ Casbin 使用 `gorm-adapter`，策略持久化在 `casbin_rule`。
 
 对组织域写操作，除 API 中间件外，Service 层还会做一次资源级授权：
 
-1. 入口统一收口到 `PermissionService.AuthorizeOrgCapability`
+1. 入口统一收口到 `AuthorizationService.AuthorizeOrgCapability`
 2. 若操作者是目标组织 owner，直接放行
 3. 若操作者拥有全局 `super_admin`，直接放行
 4. 其余按 `subject = userID@orgID` 检查 capability
@@ -186,33 +209,29 @@ Casbin 使用 `gorm-adapter`，策略持久化在 `casbin_rule`。
 
 ## 7. 权限写入入口与一致性策略
 
-### 7.1 用户角色分配
+### 7.1 主体绑定类变更
 
-入口：`AssignRoleToUserInOrg` / `ReplaceUserRolesInOrg`
+入口示例：注册、入组、退组、踢人、恢复成员、改角色
 
-1. 先写 DB（`user_org_roles`）
-2. 再更新 Casbin（`AddRoleForUser` / `DeleteRolesForUser + AddRoleForUser`）
-3. 关键场景包含补偿回滚日志
+1. 事务内先写 DB
+2. 同事务写 `subject_binding_changed` outbox
+3. 提交后同步当前实例 `SyncSubjectRoles`
+4. 异步消费者兜底修复全部实例
 
-### 7.2 角色权限合并分配（`assign_permission`）
+### 7.2 权限图谱类变更
 
-入口：`RoleService.AssignPermissions`
+入口示例：角色分配菜单/API/capability、菜单绑定 API、API 变更
 
-1. Redis 锁防并发
-2. 校验角色存在
-3. 过滤有效菜单 ID
-4. 过滤有效 API ID
-5. 校验 capability code 列表全部有效
-6. 事务内同时替换 `role_menus`、`role_apis`、`role_capabilities`
-7. 单次调用 `RefreshAllPermissions` 立即生效
+1. 事务内更新关系表
+2. 同事务写 `permission_graph_changed` outbox
+3. 异步消费者执行 Casbin 全量重建
+4. 重建完成后广播 `permission_policy_reload`
 
 ### 7.3 失败语义
 
-`AssignPermissions` 当前语义：
-
-1. DB 关系在单个事务内更新
-2. 若事务提交后刷新 Casbin 失败，接口返回失败，但已写入 DB 的关系不会自动回滚
-3. 后续可通过再次刷新恢复内存策略一致性
+1. 事务提交成功后，即使投影消费延迟，DB 仍是唯一真相。
+2. 当前实例主体绑定写路径会同步收口，保证本实例即时生效。
+3. 图谱类变更通过异步重建和 reload 广播在多实例间收敛；错过广播的实例由下次变更或重启时基线重建修复。
 
 ---
 
@@ -288,9 +307,11 @@ Casbin 使用 `gorm-adapter`，策略持久化在 `casbin_rule`。
 每次发布前至少检查：
 
 1. `user_org_roles`、`role_menus`、`menu_apis`、`role_apis` 数据是否完整。
+2. `role_capabilities` 数据是否完整。
 2. `users.current_org_id` 是否正确维护（否则 subject 无法生成）。
-3. 启动日志中 `SyncAllPermissionsToCasbin` 是否成功。
-4. `assign_permission` 后是否即时生效。
+3. 启动日志中 `RebuildAll` 是否成功。
+4. `subject_binding_changed / permission_graph_changed` 是否成功写出并被消费。
+5. `permission_policy_reload` 广播后其他实例是否成功 `ReloadPolicy`。
 
 ### 12.1 模型维度一致性校验（重要）
 
@@ -309,7 +330,8 @@ Casbin 使用 `gorm-adapter`，策略持久化在 `casbin_rule`。
 2. 查角色关系：`user_org_roles` 是否有 `user_id + org_id` 记录。
 3. 查菜单链路：`role_menus`、`menu_apis` 是否贯通。
 4. 查直绑链路：`role_apis` 是否有目标 API。
-5. 必要时执行一次全量刷新：`RefreshAllPermissions`。
+5. 查 capability 链路：`role_capabilities` 是否有目标 capability。
+6. 必要时执行一次基线重建：`PermissionProjectionService.RebuildAll`。
 
 ---
 

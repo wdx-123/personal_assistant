@@ -64,4 +64,6 @@ type MenuRepository interface {
 
 	// GetAllMenuAPIRelations 获取所有菜单与API的关联关系（用于Casbin同步）
 	GetAllMenuAPIRelations(ctx context.Context) ([]map[string]interface{}, error)
+	// WithTx 在事务上下文中返回一个新的菜单仓储实例
+	WithTx(tx any) MenuRepository
 }

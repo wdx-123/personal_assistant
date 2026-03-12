@@ -91,6 +91,7 @@ func initOJSubscribers(ctx context.Context, ojSvc contract.OJServiceContract) er
 func InitSubscribers(
 	ctx context.Context,
 	ojSvc contract.OJServiceContract,
+	permissionProjectionSvc contract.PermissionProjectionServiceContract,
 	cacheProjectionSvc contract.CacheProjectionServiceContract,
 ) error {
 	if ctx == nil {
@@ -101,6 +102,9 @@ func InitSubscribers(
 	}
 
 	if err := initOJSubscribers(ctx, ojSvc); err != nil {
+		return err
+	}
+	if err := initPermissionSubscribers(ctx, permissionProjectionSvc); err != nil {
 		return err
 	}
 	if cacheProjectionSvc == nil {
@@ -128,6 +132,70 @@ func InitSubscribers(
 		})
 		if err != nil && !errors.Is(err, context.Canceled) {
 			global.Log.Error("cache projection subscriber stopped", zap.Error(err))
+		}
+	}()
+	return nil
+}
+
+func initPermissionSubscribers(
+	ctx context.Context,
+	permissionProjectionSvc contract.PermissionProjectionServiceContract,
+) error {
+	if permissionProjectionSvc == nil {
+		return nil
+	}
+
+	cfg := global.Config.Messaging
+	topic := strings.TrimSpace(cfg.PermissionProjectionTopic)
+	group := strings.TrimSpace(cfg.PermissionProjectionGroup)
+	consumer := strings.TrimSpace(cfg.PermissionProjectionConsumer)
+	if topic == "" || group == "" || consumer == "" {
+		return errors.New("permission projection messaging config missing")
+	}
+
+	subscriber := messaging.NewRedisStreamSubscriber(global.Redis, global.Log, group, consumer)
+	go func() {
+		err := subscriber.Subscribe(ctx, topic, func(ctx context.Context, msg *messaging.Message) error {
+			var payload eventdto.PermissionProjectionEvent
+			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+				return err
+			}
+			return permissionProjectionSvc.HandlePermissionProjectionEvent(ctx, &payload)
+		})
+		if err != nil && !errors.Is(err, context.Canceled) {
+			global.Log.Error("permission projection subscriber stopped", zap.Error(err))
+		}
+	}()
+
+	channel := strings.TrimSpace(cfg.PermissionPolicyReloadChannel)
+	if channel == "" {
+		return errors.New("permission policy reload channel config missing")
+	}
+
+	pubsub := global.Redis.Subscribe(ctx, channel)
+	if _, err := pubsub.Receive(ctx); err != nil {
+		_ = pubsub.Close()
+		return err
+	}
+	go func() {
+		messageCh := pubsub.Channel()
+		defer func() {
+			if err := pubsub.Close(); err != nil && global.Log != nil {
+				global.Log.Warn("close permission reload pubsub failed", zap.Error(err))
+			}
+		}()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case _, ok := <-messageCh:
+				if !ok {
+					return
+				}
+				if err := permissionProjectionSvc.ReloadPolicy(ctx); err != nil {
+					global.Log.Error("reload permission policy failed", zap.Error(err))
+				}
+			}
 		}
 	}()
 	return nil

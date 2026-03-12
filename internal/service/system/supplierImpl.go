@@ -5,7 +5,8 @@ import "personal_assistant/internal/service/contract"
 // supplier implementation 用于底层实现
 type serviceSupplier struct {
 	jwtService             contract.JWTServiceContract
-	permissionService      contract.PermissionServiceContract
+	authorizationService   contract.AuthorizationServiceContract
+	permissionProjectionService contract.PermissionProjectionServiceContract
 	baseService            contract.BaseServiceContract
 	healthService          contract.HealthServiceContract
 	userService            contract.UserServiceContract
@@ -22,8 +23,12 @@ type serviceSupplier struct {
 func (s *serviceSupplier) GetJWTSvc() contract.JWTServiceContract {
 	return s.jwtService
 }
-func (s *serviceSupplier) GetPermissionSvc() contract.PermissionServiceContract {
-	return s.permissionService
+func (s *serviceSupplier) GetAuthorizationSvc() contract.AuthorizationServiceContract {
+	return s.authorizationService
+}
+
+func (s *serviceSupplier) GetPermissionProjectionSvc() contract.PermissionProjectionServiceContract {
+	return s.permissionProjectionService
 }
 func (s *serviceSupplier) GetBaseSvc() contract.BaseServiceContract {
 	return s.baseService

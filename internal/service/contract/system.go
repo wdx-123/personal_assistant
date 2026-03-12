@@ -22,19 +22,34 @@ type JWTServiceContract interface {
 	JoinInBlacklist(ctx context.Context, jwtList entity.JwtBlacklist) error
 }
 
-type PermissionServiceContract interface {
-	SyncAllPermissionsToCasbin(ctx context.Context) error
+type AuthorizationServiceContract interface {
+	// GetUserRoles 获取用户角色
 	GetUserRoles(ctx context.Context, userID uint) ([]entity.Role, error)
-	CheckUserAPIPermission(userID uint, apiPath, method string) (bool, error)
-
-	// CheckUserMenuPermission 检查用户是否有访问菜单的权限（基于菜单绑定的 API 权限）
+	// CheckUserAPIPermission 检查用户API权限
+	CheckUserAPIPermission(ctx context.Context, userID uint, apiPath, method string) (bool, error)
+	// CheckUserCapabilityInOrg 检查用户在组织中的能力
 	CheckUserCapabilityInOrg(ctx context.Context, userID, orgID uint, capabilityCode string) (bool, error)
+	// AuthorizeOrgCapability 授权组织能力
+	AuthorizeOrgCapability(ctx context.Context, operatorID, orgID uint, capabilityCode string) error
+}
 
-	// GetUserCapabilitiesInOrg 获取用户在特定组织内的 capability 列表
-	GetAllCapabilityGroups(ctx context.Context) ([]resp.CapabilityGroupItem, error)
-
-	// GetUserCapabilitiesInOrg 获取用户在特定组织内的 capability 列表
-	GetRoleCapabilityCodes(ctx context.Context, roleID uint) ([]string, error)
+type PermissionProjectionServiceContract interface {
+	// RebuildAll 重建所有权限投影
+	RebuildAll(ctx context.Context) error
+	// ReloadPolicy 重新加载策略
+	ReloadPolicy(ctx context.Context) error
+	// SyncSubjectRoles 同步主体角色
+	SyncSubjectRoles(ctx context.Context, userID, orgID uint) error
+	// PublishSubjectBindingChanged 发布主体绑定变更事件
+	PublishSubjectBindingChanged(ctx context.Context, userID, orgID uint) error
+	// PublishSubjectBindingChangedInTx 发布主体绑定变更事件（事务中）
+	PublishSubjectBindingChangedInTx(ctx context.Context, tx any, userID, orgID uint) error
+	// PublishPermissionGraphChanged 发布权限图变更事件
+	PublishPermissionGraphChanged(ctx context.Context, aggregateType string, aggregateID uint) error
+	// PublishPermissionGraphChangedInTx 发布权限图变更事件（事务中）
+	PublishPermissionGraphChangedInTx(ctx context.Context, tx any, aggregateType string, aggregateID uint) error
+	// HandlePermissionProjectionEvent 处理权限投影事件
+	HandlePermissionProjectionEvent(ctx context.Context, event *eventdto.PermissionProjectionEvent) error
 }
 
 type BaseServiceContract interface {
@@ -162,7 +177,8 @@ type ObservabilityServiceContract interface {
 
 type Supplier interface {
 	GetJWTSvc() JWTServiceContract
-	GetPermissionSvc() PermissionServiceContract
+	GetAuthorizationSvc() AuthorizationServiceContract
+	GetPermissionProjectionSvc() PermissionProjectionServiceContract
 	GetBaseSvc() BaseServiceContract
 	GetHealthSvc() HealthServiceContract
 	GetUserSvc() UserServiceContract

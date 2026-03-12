@@ -227,19 +227,25 @@ func NewConfig() *Config {
 	}
 
 	_messaging := &Messaging{
-		RedisStreamReadCount:      viper.GetInt("messaging.redis_stream_read_count"),
-		RedisStreamBlockMs:        viper.GetInt("messaging.redis_stream_block_ms"),
-		OutboxRelayLockEnabled:    viper.GetBool("messaging.outbox_relay_lock_enabled"),
-		OutboxRelayLockTTLSeconds: viper.GetInt("messaging.outbox_relay_lock_ttl_seconds"),
-		LuoguBindTopic:            viper.GetString("messaging.luogu_bind_topic"),
-		LuoguBindGroup:            viper.GetString("messaging.luogu_bind_group"),
-		LuoguBindConsumer:         viper.GetString("messaging.luogu_bind_consumer"),
-		LeetcodeBindTopic:         viper.GetString("messaging.leetcode_bind_topic"),
-		LeetcodeBindGroup:         viper.GetString("messaging.leetcode_bind_group"),
-		LeetcodeBindConsumer:      viper.GetString("messaging.leetcode_bind_consumer"),
-		CacheProjectionTopic:      viper.GetString("messaging.cache_projection_topic"),
-		CacheProjectionGroup:      viper.GetString("messaging.cache_projection_group"),
-		CacheProjectionConsumer:   viper.GetString("messaging.cache_projection_consumer"),
+		RedisStreamReadCount:         viper.GetInt("messaging.redis_stream_read_count"),
+		RedisStreamBlockMs:           viper.GetInt("messaging.redis_stream_block_ms"),
+		OutboxRelayLockEnabled:       viper.GetBool("messaging.outbox_relay_lock_enabled"),
+		OutboxRelayLockTTLSeconds:    viper.GetInt("messaging.outbox_relay_lock_ttl_seconds"),
+		LuoguBindTopic:               viper.GetString("messaging.luogu_bind_topic"),
+		LuoguBindGroup:               viper.GetString("messaging.luogu_bind_group"),
+		LuoguBindConsumer:            viper.GetString("messaging.luogu_bind_consumer"),
+		LeetcodeBindTopic:            viper.GetString("messaging.leetcode_bind_topic"),
+		LeetcodeBindGroup:            viper.GetString("messaging.leetcode_bind_group"),
+		LeetcodeBindConsumer:         viper.GetString("messaging.leetcode_bind_consumer"),
+		CacheProjectionTopic:         viper.GetString("messaging.cache_projection_topic"),
+		CacheProjectionGroup:         viper.GetString("messaging.cache_projection_group"),
+		CacheProjectionConsumer:      viper.GetString("messaging.cache_projection_consumer"),
+		PermissionProjectionTopic:    viper.GetString("messaging.permission_projection_topic"),
+		PermissionProjectionGroup:    viper.GetString("messaging.permission_projection_group"),
+		PermissionProjectionConsumer: viper.GetString("messaging.permission_projection_consumer"),
+		PermissionPolicyReloadChannel: viper.GetString(
+			"messaging.permission_policy_reload_channel",
+		),
 	}
 
 	_observability := &Observability{

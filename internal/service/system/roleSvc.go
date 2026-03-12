@@ -23,6 +23,7 @@ import (
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/interfaces"
+	svccontract "personal_assistant/internal/service/contract"
 	"personal_assistant/pkg/errors"
 	"personal_assistant/pkg/redislock"
 
@@ -39,23 +40,26 @@ const (
 
 // RoleService 角色管理服务
 type RoleService struct {
-	txRunner          repository.TxRunner
-	roleRepo          interfaces.RoleRepository
-	capabilityRepo    interfaces.CapabilityRepository
-	menuRepo          interfaces.MenuRepository
-	apiRepo           interfaces.APIRepository
-	permissionService *PermissionService
+	txRunner                repository.TxRunner
+	roleRepo                interfaces.RoleRepository
+	capabilityRepo          interfaces.CapabilityRepository
+	menuRepo                interfaces.MenuRepository
+	apiRepo                 interfaces.APIRepository
+	permissionProjectionSvc svccontract.PermissionProjectionServiceContract
 }
 
 // NewRoleService 创建角色服务实例
-func NewRoleService(repositoryGroup *repository.Group, permissionService *PermissionService) *RoleService {
+func NewRoleService(
+	repositoryGroup *repository.Group,
+	permissionProjectionSvc svccontract.PermissionProjectionServiceContract,
+) *RoleService {
 	return &RoleService{
-		txRunner:          repositoryGroup,
-		roleRepo:          repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
-		capabilityRepo:    repositoryGroup.SystemRepositorySupplier.GetCapabilityRepository(),
-		menuRepo:          repositoryGroup.SystemRepositorySupplier.GetMenuRepository(),
-		apiRepo:           repositoryGroup.SystemRepositorySupplier.GetAPIRepository(),
-		permissionService: permissionService,
+		txRunner:                repositoryGroup,
+		roleRepo:                repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
+		capabilityRepo:          repositoryGroup.SystemRepositorySupplier.GetCapabilityRepository(),
+		menuRepo:                repositoryGroup.SystemRepositorySupplier.GetMenuRepository(),
+		apiRepo:                 repositoryGroup.SystemRepositorySupplier.GetAPIRepository(),
+		permissionProjectionSvc: permissionProjectionSvc,
 	}
 }
 
@@ -167,10 +171,18 @@ func (s *RoleService) UpdateRole(ctx context.Context, id uint, req *request.Upda
 		role.Status = *req.Status
 	}
 
-	if err := s.roleRepo.Update(ctx, role); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-	return nil
+	return s.txRunner.InTx(ctx, func(tx any) error {
+		txRoleRepo := s.roleRepo.WithTx(tx)
+		if err := txRoleRepo.Update(ctx, role); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if s.permissionProjectionSvc != nil {
+			if err := s.permissionProjectionSvc.PublishPermissionGraphChangedInTx(ctx, tx, "role", role.ID); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
+		return nil
+	})
 }
 
 // DeleteRole 删除角色
@@ -197,20 +209,27 @@ func (s *RoleService) DeleteRole(ctx context.Context, id uint) error {
 		return errors.NewWithMsg(errors.CodeInvalidParams, "该角色正在被使用，无法删除")
 	}
 
-	// 清空菜单关联
-	if err := s.roleRepo.ClearRoleMenus(ctx, id); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-	// 清空角色直绑API关联
-	if err := s.roleRepo.ClearRoleAPIs(ctx, id); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-
-	// 软删除角色
-	if err := s.roleRepo.Delete(ctx, id); err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
-	}
-	return nil
+	return s.txRunner.InTx(ctx, func(tx any) error {
+		txRoleRepo := s.roleRepo.WithTx(tx)
+		// 清空菜单关联
+		if err := txRoleRepo.ClearRoleMenus(ctx, id); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		// 清空角色直绑API关联
+		if err := txRoleRepo.ClearRoleAPIs(ctx, id); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		// 软删除角色
+		if err := txRoleRepo.Delete(ctx, id); err != nil {
+			return errors.Wrap(errors.CodeDBError, err)
+		}
+		if s.permissionProjectionSvc != nil {
+			if err := s.permissionProjectionSvc.PublishPermissionGraphChangedInTx(ctx, tx, "role", id); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
+		return nil
+	})
 }
 
 // ==================== 菜单权限分配 ====================
@@ -270,12 +289,14 @@ func (s *RoleService) AssignPermissions(
 		if err := txCapabilityRepo.ReplaceRoleCapabilities(ctx, roleID, capabilityIDs); err != nil {
 			return errors.Wrap(errors.CodeDBError, err)
 		}
+		if s.permissionProjectionSvc != nil {
+			if err := s.permissionProjectionSvc.PublishPermissionGraphChangedInTx(ctx, tx, "role", roleID); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+		}
 		return nil
 	}); err != nil {
 		return err
-	}
-	if err := s.permissionService.RefreshAllPermissions(ctx); err != nil {
-		return errors.Wrap(errors.CodeInternalError, err)
 	}
 	return nil
 }
@@ -321,11 +342,11 @@ func (s *RoleService) GetRoleMenuAPIMap(
 	sort.Slice(assignedMenuIDs, func(i, j int) bool { return assignedMenuIDs[i] < assignedMenuIDs[j] })
 	sort.Slice(directAPIIDs, func(i, j int) bool { return directAPIIDs[i] < directAPIIDs[j] })
 	sort.Slice(assignedAPIIDs, func(i, j int) bool { return assignedAPIIDs[i] < assignedAPIIDs[j] })
-	assignedCapabilityCodes, err := s.permissionService.GetRoleCapabilityCodes(ctx, roleID)
+	assignedCapabilityCodes, err := s.capabilityRepo.GetRoleCapabilityCodes(ctx, roleID)
 	if err != nil {
 		return nil, errors.Wrap(errors.CodeDBError, err)
 	}
-	capabilityGroups, err := s.permissionService.GetAllCapabilityGroups(ctx)
+	capabilityGroups, err := s.getAllCapabilityGroups(ctx)
 	if err != nil {
 		return nil, errors.Wrap(errors.CodeDBError, err)
 	}
@@ -469,6 +490,55 @@ func (s *RoleService) filterValidCapabilityCodes(
 		return nil, errors.NewWithMsg(errors.CodeInvalidParams, "存在无效 capability_codes")
 	}
 	return capabilities, nil
+}
+
+func (s *RoleService) getAllCapabilityGroups(ctx context.Context) ([]response.CapabilityGroupItem, error) {
+	capabilities, err := s.capabilityRepo.GetAllActive(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if len(capabilities) == 0 {
+		return nil, nil
+	}
+
+	groupOrder := make([]string, 0)
+	groupMap := make(map[string]*response.CapabilityGroupItem)
+	for _, capability := range capabilities {
+		if capability == nil {
+			continue
+		}
+		groupCode := strings.TrimSpace(capability.GroupCode)
+		groupName := strings.TrimSpace(capability.GroupName)
+		if groupCode == "" {
+			groupCode = "default"
+		}
+		group, ok := groupMap[groupCode]
+		if !ok {
+			group = &response.CapabilityGroupItem{
+				GroupCode:    groupCode,
+				GroupName:    groupName,
+				Capabilities: make([]response.CapabilityItem, 0),
+			}
+			groupMap[groupCode] = group
+			groupOrder = append(groupOrder, groupCode)
+		}
+		if group.GroupName == "" {
+			group.GroupName = groupName
+		}
+		group.Capabilities = append(group.Capabilities, response.CapabilityItem{
+			Code:   capability.Code,
+			Name:   capability.Name,
+			Desc:   capability.Desc,
+			Status: capability.Status,
+		})
+	}
+
+	result := make([]response.CapabilityGroupItem, 0, len(groupOrder))
+	for _, groupCode := range groupOrder {
+		group := groupMap[groupCode]
+		result = append(result, *group)
+	}
+	return result, nil
 }
 
 func (s *RoleService) buildRoleMenuTree(
