@@ -621,7 +621,7 @@ func (s *OrgService) SetCurrentOrg(ctx context.Context, userID, orgID uint) erro
 }
 
 // JoinOrgByInviteCode 用户通过邀请码加入组织。
-// 规则：left 可恢复为 active；removed 默认禁止自助加入；重新加入仅授予 member 角色。
+// 规则：left 可恢复为 active；removed 默认禁止自助加入；重新加入仅授予默认角色。
 func (s *OrgService) JoinOrgByInviteCode(ctx context.Context, userID uint, inviteCode string) error {
 	inviteCode = strings.TrimSpace(inviteCode)
 	if inviteCode == "" {
@@ -687,12 +687,12 @@ func (s *OrgService) JoinOrgByInviteCode(ctx context.Context, userID uint, invit
 			shouldResetDefaultRole = true
 		}
 
-		// left->active / 首次加入时仅保留默认 member 角色，不恢复历史角色。
+		// left->active / 首次加入时仅保留默认角色，不恢复历史角色。
 		if shouldResetDefaultRole {
 			if err := txRoleRepo.DeleteUserOrgRoles(ctx, userID, org.ID); err != nil {
 				return errors.Wrap(errors.CodeDBError, err)
 			}
-			if err := s.assignDefaultMemberRole(ctx, txRoleRepo, userID, org.ID); err != nil {
+			if err := s.assignDefaultOrgRole(ctx, txRoleRepo, userID, org.ID); err != nil {
 				return err
 			}
 			shouldSyncSubject = true
@@ -905,7 +905,7 @@ func (s *OrgService) KickMember(ctx context.Context, operatorID, orgID, targetUs
 	return nil
 }
 
-// RecoverMember 管理员恢复成员（removed/left -> active），恢复后仅授予 member 角色。
+// RecoverMember 管理员恢复成员（removed/left -> active），恢复后仅授予默认角色。
 func (s *OrgService) RecoverMember(
 	ctx context.Context,
 	operatorID, orgID, targetUserID uint,
@@ -927,7 +927,7 @@ func (s *OrgService) RecoverMember(
 		return errors.New(errors.CodeOrgBuiltinProtected)
 	}
 
-	// 开启事务，恢复成员状态，并重置为默认 member 角色（删除原有角色）。
+	// 开启事务，恢复成员状态，并重置为默认角色（删除原有角色）。
 	shouldSyncSubject := false
 	if err := s.txRunner.InTx(ctx, func(tx any) error {
 		txOrgMemberRepo := s.orgMemberRepo.WithTx(tx)
@@ -969,11 +969,11 @@ func (s *OrgService) RecoverMember(
 			return nil
 		}
 
-		// 恢复成员后重置为默认 member 角色：删除原有角色并分配默认 member 角色（不恢复历史角色）。
+		// 恢复成员后重置为默认角色：删除原有角色并分配默认角色（不恢复历史角色）。
 		if err := txRoleRepo.DeleteUserOrgRoles(ctx, targetUserID, orgID); err != nil {
 			return errors.Wrap(errors.CodeDBError, err)
 		}
-		if err := s.assignDefaultMemberRole(ctx, txRoleRepo, targetUserID, orgID); err != nil {
+		if err := s.assignDefaultOrgRole(ctx, txRoleRepo, targetUserID, orgID); err != nil {
 			return err
 		}
 		shouldSyncSubject = true
@@ -1085,20 +1085,17 @@ func (s *OrgService) pickAnotherActiveOrgID(
 	return nil, nil
 }
 
-// assignDefaultMemberRole 给用户分配组织内默认的 member 角色（如首次加入/恢复组织时）。
-func (s *OrgService) assignDefaultMemberRole(
+// assignDefaultOrgRole 给用户分配组织内的默认角色（如首次加入/恢复组织时）。
+func (s *OrgService) assignDefaultOrgRole(
 	ctx context.Context,
 	roleRepo interfaces.RoleRepository,
 	userID, orgID uint,
 ) error {
-	memberRole, err := roleRepo.GetByCode(ctx, consts.RoleCodeMember)
+	defaultRole, err := resolveDefaultOrgRole(ctx, roleRepo)
 	if err != nil {
-		return errors.Wrap(errors.CodeDBError, err)
+		return err
 	}
-	if memberRole == nil {
-		return errors.New(errors.CodeRoleNotFound)
-	}
-	if err := roleRepo.AssignRoleToUserInOrg(ctx, userID, orgID, memberRole.ID); err != nil {
+	if err := roleRepo.AssignRoleToUserInOrg(ctx, userID, orgID, defaultRole.ID); err != nil {
 		return errors.Wrap(errors.CodeDBError, err)
 	}
 	return nil

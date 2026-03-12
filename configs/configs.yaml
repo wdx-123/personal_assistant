@@ -22,8 +22,8 @@ system:
   auto_migrate: true
   use_multipoint: true # 是否启用"多点"能力（如多客户端连接、多节点通信等场景）
   sessions_secret: "" # Session 加密/签名的密钥（保障会话安全）
-  default_role_code: "user" # 新用户注册时的默认角色代码
-  default_role_name: "普通用户" # 默认角色的显示名称
+  default_role_code: "member" # 新用户注册/加入组织时的默认角色代码
+  default_role_name: "普通成员" # 默认角色的显示名称
   bind_cool_down_hours: 48 # 换绑冷却时间（小时），防止频繁换绑
 zap:
   level: warn #  日志级别为error：仅记录错误信息，不包含info和debug信息

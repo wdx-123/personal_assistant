@@ -15,7 +15,7 @@ type System struct {
 	SessionsSecret string `json:"sessions_secret" yaml:"sessions_secret"` // 用于加密会话的密钥，确保会话数据的安全性
 
 	// 角色配置相关
-	DefaultRoleCode string `json:"default_role_code" yaml:"default_role_code"` // 新用户注册时的默认角色代码，如 "user"
+	DefaultRoleCode string `json:"default_role_code" yaml:"default_role_code"` // 新用户注册/加入组织时的默认角色代码，如 "member"
 	DefaultRoleName string `json:"default_role_name" yaml:"default_role_name"` // 默认角色的显示名称，用于日志和错误提示
 
 	// 业务逻辑相关
