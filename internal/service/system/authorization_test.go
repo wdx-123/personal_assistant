@@ -80,6 +80,7 @@ func newAuthorizationTestEnv(t *testing.T) *authorizationTestEnv {
 			DefaultRoleCode: consts.RoleCodeMember,
 		},
 		Messaging: cfg.Messaging{
+			CacheProjectionTopic:          "cache_projection",
 			PermissionProjectionTopic:     "permission_projection",
 			PermissionPolicyReloadChannel: "permission_policy_reload",
 		},
