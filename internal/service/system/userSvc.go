@@ -99,21 +99,10 @@ func (u *UserService) Register(
 		return nil, bizerrors.NewWithMsg(bizerrors.CodeOrgNotFound, "系统内置组织不存在")
 	}
 
-	// 获取默认角色（优先使用系统配置的默认角色code，如果配置无效则回退到 member 角色）。如果默认角色不存在，则注册失败。
-	defaultRoleCode := strings.TrimSpace(global.Config.System.DefaultRoleCode)
-	if defaultRoleCode == "" {
-		defaultRoleCode = consts.RoleCodeMember
-	}
-	// 获取默认角色，如果不存在则注册失败。
-	defaultRole, err := u.roleRepo.GetByCode(ctx, defaultRoleCode)
-	if err != nil || defaultRole == nil {
-		defaultRole, err = u.roleRepo.GetByCode(ctx, consts.RoleCodeMember)
-		if err != nil || defaultRole == nil {
-			if err != nil {
-				return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
-			}
-			return nil, bizerrors.New(bizerrors.CodeRoleNotFound)
-		}
+	// 获取默认角色：优先使用系统配置的默认角色 code，未命中时回退到内置 member 角色。
+	defaultRole, err := resolveDefaultOrgRole(ctx, u.roleRepo)
+	if err != nil {
+		return nil, err
 	}
 
 	// 3. 创建用户实例（不直接设置RoleID，通过权限服务分配）
@@ -164,12 +153,12 @@ func (u *UserService) Register(
 			}
 		}
 
-		// 邀请码组织 + 全体成员组织均授予默认 member 角色。
+		// 邀请码组织 + 全体成员组织均授予默认角色。
 		if err := txRoleRepo.AssignRoleToUserInOrg(ctx, user.ID, targetOrg.ID, defaultRole.ID); err != nil {
 			return bizerrors.Wrap(bizerrors.CodeDBError, err)
 		}
 
-		// 如果邀请码组织不是全体成员组织，则全体成员组织也授予默认 member 角色。
+		// 如果邀请码组织不是全体成员组织，则全体成员组织也授予默认角色。
 		if allMembersOrg.ID != targetOrg.ID {
 			if err := txRoleRepo.AssignRoleToUserInOrg(ctx, user.ID, allMembersOrg.ID, defaultRole.ID); err != nil {
 				return bizerrors.Wrap(bizerrors.CodeDBError, err)
