@@ -101,6 +101,7 @@ func (ctrl *OJCtrl) GetRankingList(c *gin.Context) {
 		Success("获取成功", out)
 }
 
+// GetStats 获取用户OJ统计数据，包括总AC数、总提交数、AC题目列表等信息
 func (ctrl *OJCtrl) GetStats(c *gin.Context) {
 	var req request.OJStatsReq
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -146,4 +147,31 @@ func (ctrl *OJCtrl) GetStats(c *gin.Context) {
 	response.NewResponse[resp.BindOJAccountResp, resp.BindOJAccountResp](c).
 		SetCode(bizerrors.CodeSuccess).
 		Success("获取成功", out)
+}
+
+func (ctrl *OJCtrl) GetCurve(c *gin.Context) {
+	var req request.OJCurveReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		global.Log.Error("刷题曲线参数绑定失败", zap.Error(err))
+		response.BizFailWithCodeMsg(bizerrors.CodeBindFailed, fmt.Sprintf("参数错误: %v", err), c)
+		return
+	}
+
+	userID := jwt.GetUserID(c)
+	if userID == 0 {
+		response.BizResult(bizerrors.CodeLoginRequired, gin.H{"reload": true}, "用户未登录", c)
+		return
+	}
+
+	out, err := ctrl.ojService.GetCurve(c.Request.Context(), userID, &req)
+	if err != nil {
+		global.Log.Error("获取刷题曲线失败",
+			zap.Uint("user_id", userID),
+			zap.String("platform", req.Platform),
+			zap.Error(err))
+		response.BizFailWithError(err, c)
+		return
+	}
+
+	response.BizOkWithData(out, c)
 }

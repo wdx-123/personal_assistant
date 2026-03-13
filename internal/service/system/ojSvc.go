@@ -22,6 +22,7 @@ import (
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/interfaces"
 	svccontract "personal_assistant/internal/service/contract"
+	bizerrors "personal_assistant/pkg/errors"
 	"personal_assistant/pkg/observability/contextid"
 	"personal_assistant/pkg/observability/w3c"
 	"personal_assistant/pkg/rankingcache"
@@ -36,25 +37,28 @@ import (
 )
 
 type OJService struct {
-	userRepo                 interfaces.UserRepository
-	orgRepo                  interfaces.OrgRepository
-	orgMemberRepo            interfaces.OrgMemberRepository
-	roleRepo                 interfaces.RoleRepository
-	leetcodeRepo             interfaces.LeetcodeUserDetailRepository
-	luoguRepo                interfaces.LuoguUserDetailRepository
-	leetcodeQuestionBankRepo interfaces.LeetcodeQuestionBankRepository
-	luoguQuestionBankRepo    interfaces.LuoguQuestionBankRepository
-	leetcodeUserQuestionRepo interfaces.LeetcodeUserQuestionRepository
-	luoguUserQuestionRepo    interfaces.LuoguUserQuestionRepository
-	rankingReadModelRepo     interfaces.RankingReadModelRepository
-	outboxRepo               interfaces.OutboxRepository
-	cacheProjectionPublisher cacheProjectionEventPublisher
-	cacheProjectionSvc       svccontract.CacheProjectionServiceContract
+	userRepo                  interfaces.UserRepository
+	orgRepo                   interfaces.OrgRepository
+	orgMemberRepo             interfaces.OrgMemberRepository
+	roleRepo                  interfaces.RoleRepository
+	leetcodeRepo              interfaces.LeetcodeUserDetailRepository
+	luoguRepo                 interfaces.LuoguUserDetailRepository
+	leetcodeQuestionBankRepo  interfaces.LeetcodeQuestionBankRepository
+	luoguQuestionBankRepo     interfaces.LuoguQuestionBankRepository
+	leetcodeUserQuestionRepo  interfaces.LeetcodeUserQuestionRepository
+	luoguUserQuestionRepo     interfaces.LuoguUserQuestionRepository
+	ojDailyStatsRepo          interfaces.OJDailyStatsRepository
+	rankingReadModelRepo      interfaces.RankingReadModelRepository
+	outboxRepo                interfaces.OutboxRepository
+	cacheProjectionPublisher  cacheProjectionEventPublisher
+	cacheProjectionSvc        svccontract.CacheProjectionServiceContract
+	ojDailyStatsProjectionSvc svccontract.OJDailyStatsProjectionServiceContract
 }
 
 func NewOJService(
 	repositoryGroup *repository.Group,
 	cacheProjectionSvc svccontract.CacheProjectionServiceContract,
+	ojDailyStatsProjectionSvc svccontract.OJDailyStatsProjectionServiceContract,
 ) *OJService {
 	return &OJService{
 		userRepo:                 repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
@@ -67,12 +71,14 @@ func NewOJService(
 		luoguQuestionBankRepo:    repositoryGroup.SystemRepositorySupplier.GetLuoguQuestionBankRepository(),
 		leetcodeUserQuestionRepo: repositoryGroup.SystemRepositorySupplier.GetLeetcodeUserQuestionRepository(),
 		luoguUserQuestionRepo:    repositoryGroup.SystemRepositorySupplier.GetLuoguUserQuestionRepository(),
+		ojDailyStatsRepo:         repositoryGroup.SystemRepositorySupplier.GetOJDailyStatsRepository(),
 		rankingReadModelRepo:     repositoryGroup.SystemRepositorySupplier.GetRankingReadModelRepository(),
 		outboxRepo:               repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
 		cacheProjectionPublisher: newCacheProjectionOutboxPublisher(
 			repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
 		),
-		cacheProjectionSvc: cacheProjectionSvc,
+		cacheProjectionSvc:        cacheProjectionSvc,
+		ojDailyStatsProjectionSvc: ojDailyStatsProjectionSvc,
 	}
 }
 
@@ -153,6 +159,246 @@ func (s *OJService) GetUserStats(
 	}, nil
 }
 
+// GetCurve 获取用户的 OJ 做题曲线数据，返回最近 30 天每天的做题数和累计总数，
+// 以及当前总做题数和最后同步时间。如果数据不完整或过旧，会尝试修复后重新查询。
+func (s *OJService) GetCurve(
+	ctx context.Context,
+	userID uint,
+	req *request.OJCurveReq,
+) (*resp.OJCurveResp, error) {
+	if req == nil {
+		return nil, bizerrors.New(bizerrors.CodeInvalidParams)
+	}
+	if userID == 0 {
+		return nil, bizerrors.New(bizerrors.CodeLoginRequired)
+	}
+
+	// 1. 验证平台参数
+	platform := normalizeOJDailyStatsPlatform(req.Platform)
+	if platform == "" {
+		return nil, bizerrors.New(bizerrors.CodeOJPlatformInvalid)
+	}
+
+	// 2. 加载构建曲线所需的原始数据，包括当前总做题数、详情更新时间和是否已绑定
+	currentTotal, detailUpdatedAt, bound, err := s.loadOJCurveSource(ctx, userID, platform)
+	if err != nil {
+		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	if !bound {
+		return &resp.OJCurveResp{
+			Platform: platform,
+			Bound:    false,
+			Points:   []*resp.OJCurvePoint{},
+		}, nil
+	}
+
+	const curveDays = 30
+	fromDate, toDateExclusive := buildOJDailyStatsWindowRange(curveDays)
+	toDate := toDateExclusive.AddDate(0, 0, -1)
+
+	// 2. 查询最近窗口的数据
+	rows, err := s.ojDailyStatsRepo.ListRange(ctx, userID, platform, fromDate, toDate)
+	if err != nil {
+		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+
+	// 3. 如果数据不完整或过旧，尝试修复后重新查询
+	if needsOJCurveRebuild(rows, detailUpdatedAt, curveDays) && s.ojDailyStatsProjectionSvc != nil {
+		if err := s.ojDailyStatsProjectionSvc.RebuildRecentWindow(ctx, userID, platform, false); err != nil {
+			return nil, bizerrors.Wrap(bizerrors.CodeOJSyncFailed, err)
+		}
+		rows, err = s.ojDailyStatsRepo.ListRange(ctx, userID, platform, fromDate, toDate)
+		if err != nil {
+			return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
+		}
+	}
+
+	return buildOJCurveResponse(platform, currentTotal, detailUpdatedAt, fromDate, curveDays, rows), nil
+}
+
+// loadOJCurveSource 加载构建 OJ 曲线所需的原始数据，
+// 包括当前总做题数、详情更新时间和是否已绑定。根据平台不同从对应的用户详情表加载。
+func (s *OJService) loadOJCurveSource(
+	ctx context.Context,
+	userID uint,
+	platform string,
+) (int, time.Time, bool, error) {
+	switch platform {
+	case "leetcode":
+		detail, err := s.leetcodeRepo.GetByUserID(ctx, userID)
+		if err != nil {
+			return 0, time.Time{}, false, err
+		}
+		if detail == nil {
+			return 0, time.Time{}, false, nil
+		}
+		return detail.TotalNumber, detail.UpdatedAt, true, nil
+	case "luogu":
+		detail, err := s.luoguRepo.GetByUserID(ctx, userID)
+		if err != nil {
+			return 0, time.Time{}, false, err
+		}
+		if detail == nil {
+			return 0, time.Time{}, false, nil
+		}
+		return detail.PassedNumber, detail.UpdatedAt, true, nil
+	default:
+		return 0, time.Time{}, false, svccontract.ErrInvalidPlatform
+	}
+}
+
+func needsOJCurveRebuild(
+	rows []*entity.OJUserDailyStat, // 最近窗口内的原始数据行列表，可能不连续或过旧
+	detailUpdatedAt time.Time, // 用户详情的最后更新时间，用于判断数据是否过旧
+	expectedDays int,
+) bool {
+	if len(rows) != expectedDays {
+		return true
+	}
+
+	latestSourceUpdatedAt := time.Time{}
+	seenDates := make(map[string]struct{}, len(rows))
+	for _, row := range rows {
+		if row == nil {
+			return true
+		}
+		// 数据行的日期必须在最近窗口范围内，否则视为不完整
+		key := row.StatDate.In(ojDailyStatsLocation()).Format("2006-01-02")
+		if _, exists := seenDates[key]; exists {
+			return true
+		}
+		seenDates[key] = struct{}{}
+		// 数据行的来源更新时间必须不晚于用户详情的更新时间，否则视为过旧
+		if row.SourceUpdatedAt.After(latestSourceUpdatedAt) {
+			latestSourceUpdatedAt = row.SourceUpdatedAt
+		}
+	}
+
+	if detailUpdatedAt.IsZero() {
+		return false
+	}
+	return latestSourceUpdatedAt.Before(detailUpdatedAt)
+}
+
+func buildOJCurveResponse(
+	platform string,
+	currentTotal int,
+	detailUpdatedAt time.Time,
+	startDate time.Time,
+	curveDays int,
+	rows []*entity.OJUserDailyStat,
+) *resp.OJCurveResp {
+	rowMap := make(map[string]*entity.OJUserDailyStat, len(rows))
+	var (
+		firstRow            *entity.OJUserDailyStat
+		latestSourceUpdated time.Time
+	)
+	for _, row := range rows {
+		if row == nil {
+			continue
+		}
+		if firstRow == nil {
+			firstRow = row
+		}
+		key := row.StatDate.In(ojDailyStatsLocation()).Format("2006-01-02")
+		rowMap[key] = row
+		if row.SourceUpdatedAt.After(latestSourceUpdated) {
+			latestSourceUpdated = row.SourceUpdatedAt
+		}
+	}
+
+	runningTotal := currentTotal
+	if firstRow != nil {
+		runningTotal = firstRow.SolvedTotal - firstRow.SolvedCount
+		if runningTotal < 0 {
+			runningTotal = 0
+		}
+	}
+
+	// 按照日期顺序构建曲线点，填充缺失日期，计算累计总数
+	points := make([]*resp.OJCurvePoint, 0, curveDays)
+	for i := 0; i < curveDays; i++ {
+		statDate := startDate.AddDate(0, 0, i)
+		key := statDate.Format("2006-01-02")
+		solvedCount := 0
+		if row, ok := rowMap[key]; ok {
+			solvedCount = row.SolvedCount
+			runningTotal = row.SolvedTotal
+		}
+		points = append(points, &resp.OJCurvePoint{
+			Date:        key,
+			SolvedCount: solvedCount,
+			SolvedTotal: runningTotal,
+		})
+	}
+
+	lastSyncAt := detailUpdatedAt
+	if latestSourceUpdated.After(lastSyncAt) {
+		lastSyncAt = latestSourceUpdated
+	}
+	var lastSyncAtPtr *time.Time
+	if !lastSyncAt.IsZero() {
+		lastSyncCopy := lastSyncAt
+		lastSyncAtPtr = &lastSyncCopy
+	}
+
+	return &resp.OJCurveResp{
+		Platform:     platform,
+		Bound:        true,
+		CurrentTotal: currentTotal,
+		LastSyncAt:   lastSyncAtPtr,
+		Points:       points,
+	}
+}
+
+// resolveOJDailyStatsRepairWindowDays 获取修复窗口天数，默认为 35 天
+func shouldRefreshLeetcodeCurve(
+	u *entity.LeetcodeUserDetail,
+	total int,
+) bool {
+	if u == nil {
+		return true
+	}
+	return u.TotalNumber != total
+}
+
+// shouldRefreshLuoguCurve 只根据当前总做题数变化决定是否刷新洛谷曲线。
+func shouldRefreshLuoguCurve(
+	u *entity.LuoguUserDetail,
+	passedCount int,
+	passedLen int,
+) bool {
+	if u == nil {
+		return true
+	}
+	if passedCount <= 0 {
+		passedCount = passedLen
+	}
+	return u.PassedNumber != passedCount
+}
+
+func (s *OJService) publishOJDailyStatsProjectionEvent(
+	ctx context.Context,
+	userID uint,
+	platform string,
+	reset bool,
+) error {
+	if s == nil || s.ojDailyStatsProjectionSvc == nil || userID == 0 {
+		return nil
+	}
+
+	kind := eventdto.OJDailyStatsProjectionKindRefreshRecentWindow
+	if reset {
+		kind = eventdto.OJDailyStatsProjectionKindResetAndRebuildRecentWindow
+	}
+	return s.ojDailyStatsProjectionSvc.PublishOJDailyStatsProjectionEvent(ctx, &eventdto.OJDailyStatsProjectionEvent{
+		Kind:       kind,
+		UserID:     userID,
+		Platform:   platform,
+		WindowDays: resolveOJDailyStatsRepairWindowDays(),
+	})
+}
+
 // bindLeetCode 绑定LeetCode账号
 func (s *OJService) bindLeetCode(
 	ctx context.Context,
@@ -224,6 +470,7 @@ func (s *OJService) bindLeetCode(
 		UserID:       userID,
 		LastBindAt:   &now,
 	}
+	resetCurve := existing == nil || strings.TrimSpace(existing.UserSlug) != userSlug
 	if err := s.publishLeetcodeBindOutbox(ctx, userID); err != nil {
 		return nil, err
 	}
@@ -233,6 +480,13 @@ func (s *OJService) bindLeetCode(
 	}
 	if err := s.updateRankingCache(ctx, userID, "leetcode", saved.TotalNumber); err != nil {
 		return nil, err
+	}
+	if err := s.publishOJDailyStatsProjectionEvent(ctx, userID, "leetcode", resetCurve); err != nil {
+		global.Log.Error("failed to publish oj daily stats projection event",
+			zap.Uint("user_id", userID),
+			zap.String("platform", "leetcode"),
+			zap.Bool("reset", resetCurve),
+			zap.Error(err))
 	}
 	return &resp.BindOJAccountResp{
 		Platform:     "leetcode",
@@ -466,6 +720,10 @@ func (s *OJService) syncSingleLeetcodeUser( // 单用户力扣同步
 	if userSlug == "" {                                      // slug 为空时兜底
 		userSlug = identifier // 使用输入标识
 	}
+	curveShouldRefresh := false
+	if shouldRefreshLeetcodeCurve(u, total) {
+		curveShouldRefresh = true
+	}
 
 	if err := s.updateLeetcodeUserInfoIfChanged(ctx, u, userSlug, realName, avatar, easy, medium, hard, total); err != nil { // 写入用户详情
 		global.Log.Error("failed to update leetcode user info", zap.Error(err)) // 记录失败日志
@@ -487,8 +745,19 @@ func (s *OJService) syncSingleLeetcodeUser( // 单用户力扣同步
 	if err := s.upsertLeetcodeProblems(ctx, recentOut.Data.RecentAccepted); err != nil { // 同步题库
 		global.Log.Error("failed to upsert leetcode problems", zap.Error(err)) // 记录题库同步失败
 	}
-	if _, err := s.syncLeetcodeUserSolvedRelations(ctx, u.ID, recentOut.Data.RecentAccepted); err != nil { // 同步做题关系
+	newRecords, err := s.syncLeetcodeUserSolvedRelations(ctx, u.ID, recentOut.Data.RecentAccepted)
+	if err != nil { // 同步做题关系
 		global.Log.Error("failed to sync leetcode user relations", zap.Error(err)) // 记录关系同步失败
+	} else if newRecords > 0 {
+		curveShouldRefresh = true
+	}
+	if curveShouldRefresh {
+		if err := s.publishOJDailyStatsProjectionEvent(ctx, u.UserID, "leetcode", false); err != nil {
+			global.Log.Error("failed to publish oj daily stats projection event",
+				zap.Uint("user_id", u.UserID),
+				zap.String("platform", "leetcode"),
+				zap.Error(err))
+		}
 	}
 
 	return nil // 正常结束
@@ -505,6 +774,11 @@ func (s *OJService) syncSingleLuoguUser(
 	if out == nil || !out.OK {
 		return errors.New("luogu api response not ok")
 	}
+	curveShouldRefresh := shouldRefreshLuoguCurve(
+		u,
+		out.Data.PassedCount,
+		len(out.Data.Passed),
+	)
 
 	if err := s.upsertLuoguProblems(ctx, out.Data.Passed); err != nil {
 		global.Log.Error("failed to upsert luogu problems", zap.Error(err))
@@ -529,6 +803,14 @@ func (s *OJService) syncSingleLuoguUser(
 	}
 	if err := s.updateRankingCache(ctx, u.UserID, "luogu", passed); err != nil {
 		global.Log.Error("failed to publish luogu ranking projection", zap.Error(err))
+	}
+	if curveShouldRefresh || newRecords > 0 {
+		if err := s.publishOJDailyStatsProjectionEvent(ctx, u.UserID, "luogu", false); err != nil {
+			global.Log.Error("failed to publish oj daily stats projection event",
+				zap.Uint("user_id", u.UserID),
+				zap.String("platform", "luogu"),
+				zap.Error(err))
+		}
 	}
 
 	return nil
@@ -1266,8 +1548,17 @@ func (s *OJService) HandleLuoguBindPayload(
 			return err
 		}
 
-		if _, err := s.syncLuoguUserSolvedRelations(ctx, detail.ID, payload.Passed); err != nil {
+		newRecords, err := s.syncLuoguUserSolvedRelations(ctx, detail.ID, payload.Passed)
+		if err != nil {
 			return err
+		}
+		if newRecords > 0 {
+			if err := s.publishOJDailyStatsProjectionEvent(ctx, userID, "luogu", false); err != nil {
+				global.Log.Error("failed to publish oj daily stats projection event",
+					zap.Uint("user_id", userID),
+					zap.String("platform", "luogu"),
+					zap.Error(err))
+			}
 		}
 
 		return nil
@@ -1304,8 +1595,17 @@ func (s *OJService) HandleLeetcodeBindSignal( // 处理 LeetCode 绑定后的异
 	if err := s.upsertLeetcodeProblems(ctx, out.Data.RecentAccepted); err != nil { // 写入题库
 		return err // 向上返回错误
 	}
-	if _, err := s.syncLeetcodeUserSolvedRelations(ctx, detail.ID, out.Data.RecentAccepted); err != nil { // 同步用户题目关系
+	newRecords, err := s.syncLeetcodeUserSolvedRelations(ctx, detail.ID, out.Data.RecentAccepted)
+	if err != nil { // 同步用户题目关系
 		return err // 向上返回错误
+	}
+	if newRecords > 0 {
+		if err := s.publishOJDailyStatsProjectionEvent(ctx, userID, "leetcode", false); err != nil {
+			global.Log.Error("failed to publish oj daily stats projection event",
+				zap.Uint("user_id", userID),
+				zap.String("platform", "leetcode"),
+				zap.Error(err))
+		}
 	}
 	return nil // 正常结束
 }
@@ -1463,6 +1763,13 @@ func (s *OJService) upsertLuoguBindAndPublish(
 
 		if err := s.updateRankingCache(ctx, userID, "luogu", passed); err != nil {
 			return err
+		}
+		if err := s.publishOJDailyStatsProjectionEvent(ctx, userID, "luogu", true); err != nil {
+			global.Log.Error("failed to publish oj daily stats projection event",
+				zap.Uint("user_id", userID),
+				zap.String("platform", "luogu"),
+				zap.Bool("reset", true),
+				zap.Error(err))
 		}
 
 		return nil

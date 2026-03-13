@@ -50,6 +50,16 @@ func (t *tracedOJService) GetUserStats(
 	})
 }
 
+func (t *tracedOJService) GetCurve(
+	ctx context.Context,
+	userID uint,
+	req *request.OJCurveReq,
+) (*resp.OJCurveResp, error) {
+	return runTraced(ctx, "oj", "GetCurve", func(inner context.Context) (*resp.OJCurveResp, error) {
+		return t.next.GetCurve(inner, userID, req)
+	})
+}
+
 func (t *tracedOJService) SyncAllLuoguUsers(ctx context.Context) error {
 	return runTracedErr(ctx, "oj", "SyncAllLuoguUsers", t.next.SyncAllLuoguUsers)
 }

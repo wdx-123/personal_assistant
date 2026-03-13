@@ -4,20 +4,21 @@ import "personal_assistant/internal/service/contract"
 
 // supplier implementation 用于底层实现
 type serviceSupplier struct {
-	jwtService                  contract.JWTServiceContract
-	authorizationService        contract.AuthorizationServiceContract
-	permissionProjectionService contract.PermissionProjectionServiceContract
-	baseService                 contract.BaseServiceContract
-	healthService               contract.HealthServiceContract
-	userService                 contract.UserServiceContract
-	orgService                  contract.OrgServiceContract
-	ojService                   contract.OJServiceContract
-	apiService                  contract.ApiServiceContract
-	menuService                 contract.MenuServiceContract
-	roleService                 contract.RoleServiceContract
-	imageService                contract.ImageServiceContract
-	observabilityService        contract.ObservabilityServiceContract
-	cacheProjectionService      contract.CacheProjectionServiceContract
+	jwtService                    contract.JWTServiceContract
+	authorizationService          contract.AuthorizationServiceContract
+	permissionProjectionService   contract.PermissionProjectionServiceContract
+	baseService                   contract.BaseServiceContract
+	healthService                 contract.HealthServiceContract
+	userService                   contract.UserServiceContract
+	orgService                    contract.OrgServiceContract
+	ojService                     contract.OJServiceContract
+	apiService                    contract.ApiServiceContract
+	menuService                   contract.MenuServiceContract
+	roleService                   contract.RoleServiceContract
+	imageService                  contract.ImageServiceContract
+	observabilityService          contract.ObservabilityServiceContract
+	cacheProjectionService        contract.CacheProjectionServiceContract
+	ojDailyStatsProjectionService contract.OJDailyStatsProjectionServiceContract
 }
 
 func (s *serviceSupplier) GetJWTSvc() contract.JWTServiceContract {
@@ -69,4 +70,8 @@ func (s *serviceSupplier) GetObservabilitySvc() contract.ObservabilityServiceCon
 
 func (s *serviceSupplier) GetCacheProjectionSvc() contract.CacheProjectionServiceContract {
 	return s.cacheProjectionService
+}
+
+func (s *serviceSupplier) GetOJDailyStatsProjectionSvc() contract.OJDailyStatsProjectionServiceContract {
+	return s.ojDailyStatsProjectionService
 }

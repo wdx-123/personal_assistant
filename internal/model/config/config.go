@@ -210,6 +210,9 @@ func NewConfig() *Config {
 		LeetcodeSyncUserIntervalSeconds: viper.GetInt("task.leetcode_sync_user_interval_seconds"), // 读取力扣用户间隔
 		LeetcodeSyncIntervalSeconds:     viper.GetInt("task.leetcode_sync_interval_seconds"),      // 读取力扣全量间隔
 		RankingSyncIntervalSeconds:      viper.GetInt("task.ranking_sync_interval_seconds"),       // 读取排行榜间隔
+		OJDailyStatsRepairCron:          viper.GetString("task.oj_daily_stats_repair_cron"),
+		OJDailyStatsRepairBatchSize:     viper.GetInt("task.oj_daily_stats_repair_batch_size"),
+		OJDailyStatsRepairWindowDays:    viper.GetInt("task.oj_daily_stats_repair_window_days"),
 		ImageOrphanCleanupCron:          viper.GetString("task.image_orphan_cleanup_cron"),
 		DisabledUserCleanupEnabled:      viper.GetBool("task.disabled_user_cleanup_enabled"),
 		DisabledUserRetentionDays:       viper.GetInt("task.disabled_user_retention_days"),
@@ -227,16 +230,21 @@ func NewConfig() *Config {
 	}
 
 	_messaging := &Messaging{
-		RedisStreamReadCount:         viper.GetInt("messaging.redis_stream_read_count"),
-		RedisStreamBlockMs:           viper.GetInt("messaging.redis_stream_block_ms"),
-		OutboxRelayLockEnabled:       viper.GetBool("messaging.outbox_relay_lock_enabled"),
-		OutboxRelayLockTTLSeconds:    viper.GetInt("messaging.outbox_relay_lock_ttl_seconds"),
-		LuoguBindTopic:               viper.GetString("messaging.luogu_bind_topic"),
-		LuoguBindGroup:               viper.GetString("messaging.luogu_bind_group"),
-		LuoguBindConsumer:            viper.GetString("messaging.luogu_bind_consumer"),
-		LeetcodeBindTopic:            viper.GetString("messaging.leetcode_bind_topic"),
-		LeetcodeBindGroup:            viper.GetString("messaging.leetcode_bind_group"),
-		LeetcodeBindConsumer:         viper.GetString("messaging.leetcode_bind_consumer"),
+		RedisStreamReadCount:        viper.GetInt("messaging.redis_stream_read_count"),
+		RedisStreamBlockMs:          viper.GetInt("messaging.redis_stream_block_ms"),
+		OutboxRelayLockEnabled:      viper.GetBool("messaging.outbox_relay_lock_enabled"),
+		OutboxRelayLockTTLSeconds:   viper.GetInt("messaging.outbox_relay_lock_ttl_seconds"),
+		LuoguBindTopic:              viper.GetString("messaging.luogu_bind_topic"),
+		LuoguBindGroup:              viper.GetString("messaging.luogu_bind_group"),
+		LuoguBindConsumer:           viper.GetString("messaging.luogu_bind_consumer"),
+		LeetcodeBindTopic:           viper.GetString("messaging.leetcode_bind_topic"),
+		LeetcodeBindGroup:           viper.GetString("messaging.leetcode_bind_group"),
+		LeetcodeBindConsumer:        viper.GetString("messaging.leetcode_bind_consumer"),
+		OJDailyStatsProjectionTopic: viper.GetString("messaging.oj_daily_stats_projection_topic"),
+		OJDailyStatsProjectionGroup: viper.GetString("messaging.oj_daily_stats_projection_group"),
+		OJDailyStatsProjectionConsumer: viper.GetString(
+			"messaging.oj_daily_stats_projection_consumer",
+		),
 		CacheProjectionTopic:         viper.GetString("messaging.cache_projection_topic"),
 		CacheProjectionGroup:         viper.GetString("messaging.cache_projection_group"),
 		CacheProjectionConsumer:      viper.GetString("messaging.cache_projection_consumer"),

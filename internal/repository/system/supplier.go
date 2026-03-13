@@ -22,6 +22,7 @@ type Supplier interface {
 	GetLuoguQuestionBankRepository() interfaces.LuoguQuestionBankRepository
 	GetLeetcodeUserQuestionRepository() interfaces.LeetcodeUserQuestionRepository
 	GetLuoguUserQuestionRepository() interfaces.LuoguUserQuestionRepository
+	GetOJDailyStatsRepository() interfaces.OJDailyStatsRepository
 	GetOutboxRepository() interfaces.OutboxRepository
 	GetRankingReadModelRepository() interfaces.RankingReadModelRepository
 	GetImageRepository() interfaces.ImageRepository
@@ -47,6 +48,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 	var luoguQuestionBankRepo interfaces.LuoguQuestionBankRepository
 	var leetcodeUserQuestionRepo interfaces.LeetcodeUserQuestionRepository
 	var luoguUserQuestionRepo interfaces.LuoguUserQuestionRepository
+	var ojDailyStatsRepo interfaces.OJDailyStatsRepository
 	var outboxRepo interfaces.OutboxRepository
 	var rankingReadModelRepo interfaces.RankingReadModelRepository
 	var imageRepo interfaces.ImageRepository
@@ -72,6 +74,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			luoguQuestionBankRepo = NewLuoguQuestionBankRepository(db)
 			leetcodeUserQuestionRepo = NewLeetcodeUserQuestionRepository(db)
 			luoguUserQuestionRepo = NewLuoguUserQuestionRepository(db)
+			ojDailyStatsRepo = NewOJDailyStatsRepository(db)
 			outboxRepo = NewOutboxRepository(db)
 			rankingReadModelRepo = NewRankingReadModelRepository(db)
 			imageRepo = NewImageRepository(db)
@@ -103,6 +106,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			luoguQuestionBankRepo = NewLuoguQuestionBankRepository(db)
 			leetcodeUserQuestionRepo = NewLeetcodeUserQuestionRepository(db)
 			luoguUserQuestionRepo = NewLuoguUserQuestionRepository(db)
+			ojDailyStatsRepo = NewOJDailyStatsRepository(db)
 			outboxRepo = NewOutboxRepository(db)
 			rankingReadModelRepo = NewRankingReadModelRepository(db)
 			imageRepo = NewImageRepository(db)
@@ -127,6 +131,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 		luoguQuestionBankRepository:    luoguQuestionBankRepo,
 		leetcodeUserQuestionRepository: leetcodeUserQuestionRepo,
 		luoguUserQuestionRepository:    luoguUserQuestionRepo,
+		ojDailyStatsRepository:         ojDailyStatsRepo,
 		outboxRepository:               outboxRepo,
 		rankingReadModelRepository:     rankingReadModelRepo,
 		imageRepository:                imageRepo,

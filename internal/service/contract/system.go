@@ -109,11 +109,19 @@ type OJServiceContract interface {
 	BindOJAccount(ctx context.Context, userID uint, req *request.BindOJAccountReq) (*resp.BindOJAccountResp, error)
 	GetRankingList(ctx context.Context, userID uint, req *request.OJRankingListReq) (*resp.OJRankingListResp, error)
 	GetUserStats(ctx context.Context, userID uint, req *request.OJStatsReq) (*resp.BindOJAccountResp, error)
+	GetCurve(ctx context.Context, userID uint, req *request.OJCurveReq) (*resp.OJCurveResp, error)
 	SyncAllLuoguUsers(ctx context.Context) error
 	SyncAllLeetcodeUsers(ctx context.Context) error
 	RebuildRankingCaches(ctx context.Context) error
 	HandleLuoguBindPayload(ctx context.Context, userID uint, payload *eventdto.LuoguBindPayload) error
 	HandleLeetcodeBindSignal(ctx context.Context, userID uint) error
+}
+
+type OJDailyStatsProjectionServiceContract interface {
+	PublishOJDailyStatsProjectionEvent(ctx context.Context, event *eventdto.OJDailyStatsProjectionEvent) error
+	HandleOJDailyStatsProjectionEvent(ctx context.Context, event *eventdto.OJDailyStatsProjectionEvent) error
+	RebuildRecentWindow(ctx context.Context, userID uint, platform string, reset bool) error
+	RepairRecentWindow(ctx context.Context) error
 }
 
 type CacheProjectionServiceContract interface {
@@ -190,4 +198,5 @@ type Supplier interface {
 	GetImageSvc() ImageServiceContract
 	GetObservabilitySvc() ObservabilityServiceContract
 	GetCacheProjectionSvc() CacheProjectionServiceContract
+	GetOJDailyStatsProjectionSvc() OJDailyStatsProjectionServiceContract
 }

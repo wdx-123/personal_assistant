@@ -98,6 +98,7 @@ func Init() {
 		service.GroupApp.SystemServiceSupplier.GetOJSvc(),
 		service.GroupApp.SystemServiceSupplier.GetPermissionProjectionSvc(),
 		service.GroupApp.SystemServiceSupplier.GetCacheProjectionSvc(),
+		service.GroupApp.SystemServiceSupplier.GetOJDailyStatsProjectionSvc(),
 	); err != nil {
 		global.Log.Error("init subscribers failed", zap.Error(err))
 	}

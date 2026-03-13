@@ -176,6 +176,9 @@ task:
   leetcode_sync_user_interval_seconds: 10 # 力扣用户同步间隔秒数
   leetcode_sync_interval_seconds: 3600 # 力扣全量同步间隔秒数
   ranking_sync_interval_seconds: 3600
+  oj_daily_stats_repair_cron: "@daily"
+  oj_daily_stats_repair_batch_size: 100
+  oj_daily_stats_repair_window_days: 35
   disabled_user_cleanup_enabled: true
   disabled_user_retention_days: 30
   disabled_user_cleanup_cron: "@daily"
@@ -190,6 +193,9 @@ messaging:
   leetcode_bind_topic: "leetcode.bind"
   leetcode_bind_group: "leetcode_bind_group"
   leetcode_bind_consumer: "leetcode_bind_consumer"
+  oj_daily_stats_projection_topic: "oj_daily_stats_projection"
+  oj_daily_stats_projection_group: "oj_daily_stats_projection_group"
+  oj_daily_stats_projection_consumer: "oj_daily_stats_projection_consumer"
   cache_projection_topic: "cache_projection"
   cache_projection_group: "cache_projection_group"
   cache_projection_consumer: "cache_projection_consumer"
