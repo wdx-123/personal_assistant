@@ -87,12 +87,45 @@ func initOJSubscribers(ctx context.Context, ojSvc contract.OJServiceContract) er
 	return nil
 }
 
+func initOJDailyStatsProjectionSubscribers(
+	ctx context.Context,
+	ojDailyStatsProjectionSvc contract.OJDailyStatsProjectionServiceContract,
+) error {
+	if ojDailyStatsProjectionSvc == nil {
+		return nil
+	}
+
+	cfg := global.Config.Messaging
+	topic := strings.TrimSpace(cfg.OJDailyStatsProjectionTopic)
+	group := strings.TrimSpace(cfg.OJDailyStatsProjectionGroup)
+	consumer := strings.TrimSpace(cfg.OJDailyStatsProjectionConsumer)
+	if topic == "" || group == "" || consumer == "" {
+		return errors.New("oj daily stats projection messaging config missing")
+	}
+
+	subscriber := messaging.NewRedisStreamSubscriber(global.Redis, global.Log, group, consumer)
+	go func() {
+		err := subscriber.Subscribe(ctx, topic, func(ctx context.Context, msg *messaging.Message) error {
+			var payload eventdto.OJDailyStatsProjectionEvent
+			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+				return err
+			}
+			return ojDailyStatsProjectionSvc.HandleOJDailyStatsProjectionEvent(ctx, &payload)
+		})
+		if err != nil && !errors.Is(err, context.Canceled) {
+			global.Log.Error("oj daily stats projection subscriber stopped", zap.Error(err))
+		}
+	}()
+	return nil
+}
+
 // InitSubscribers 初始化所有事件订阅器。
 func InitSubscribers(
 	ctx context.Context,
 	ojSvc contract.OJServiceContract,
 	permissionProjectionSvc contract.PermissionProjectionServiceContract,
 	cacheProjectionSvc contract.CacheProjectionServiceContract,
+	ojDailyStatsProjectionSvc contract.OJDailyStatsProjectionServiceContract,
 ) error {
 	if ctx == nil {
 		ctx = context.Background()
@@ -105,6 +138,9 @@ func InitSubscribers(
 		return err
 	}
 	if err := initPermissionSubscribers(ctx, permissionProjectionSvc); err != nil {
+		return err
+	}
+	if err := initOJDailyStatsProjectionSubscribers(ctx, ojDailyStatsProjectionSvc); err != nil {
 		return err
 	}
 	if cacheProjectionSvc == nil {

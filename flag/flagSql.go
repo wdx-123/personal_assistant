@@ -33,6 +33,7 @@ func SQL() error {
 		&entity.LuoguQuestionBank{},      // 洛谷题库题目表
 		&entity.LeetcodeUserQuestion{},   // 力扣用户以做题目表
 		&entity.LuoguUserQuestion{},      // 洛谷用户以做题目表
+		&entity.OJUserDailyStat{},        // OJ 刷题曲线日聚合读模型
 		&entity.Login{},                  // 登录日志表
 		&entity.UserToken{},              // 用户Token记录表
 		&entity.TokenBlacklist{},         // Token黑名单表

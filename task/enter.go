@@ -110,6 +110,17 @@ func RankingSyncTask() {
 	})
 }
 
+// OJDailyStatsRepairTask 刷题曲线日聚合修复任务。
+func OJDailyStatsRepairTask() {
+	runServiceTask("OJDailyStatsRepairTask", func(ctx context.Context) error {
+		svc := service.GroupApp.SystemServiceSupplier.GetOJDailyStatsProjectionSvc()
+		if svc == nil {
+			return nil
+		}
+		return svc.RepairRecentWindow(ctx)
+	})
+}
+
 // ImageOrphanCleanupTask 孤儿图片定时清理。
 // 查找已软删除且无活跃引用的存储 key，删除对应物理文件后清除 DB 记录。
 func ImageOrphanCleanupTask() {
@@ -154,6 +165,14 @@ func RegisterScheduledTasks(c *cron.Cron) error {
 	}
 	if _, err := c.AddFunc(fmt.Sprintf("@every %ds", rankingInterval), RankingSyncTask); err != nil {
 		return fmt.Errorf("注册 RankingSyncTask 失败: %w", err)
+	}
+
+	curveRepairCron := strings.TrimSpace(global.Config.Task.OJDailyStatsRepairCron)
+	if curveRepairCron == "" {
+		curveRepairCron = "@daily"
+	}
+	if _, err := c.AddFunc(curveRepairCron, OJDailyStatsRepairTask); err != nil {
+		return fmt.Errorf("注册 OJDailyStatsRepairTask 失败: %w", err)
 	}
 
 	// 孤儿图片清理 — cron 表达式由配置驱动

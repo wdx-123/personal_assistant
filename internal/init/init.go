@@ -30,7 +30,15 @@ func Init() {
 	core.InitConfig("configs")
 	// 初始化日志
 	global.Log = core.InitLogger()
+
+	// 敏感数据编解码器（依赖配置）
+	if err := core.InitSensitiveDataCodec(); err != nil {
+		global.Log.Error("init sensitive data codec failed", zap.Error(err))
+		os.Exit(1)
+	}
+
 	infrastructure.Init()
+
 	// 为jwt黑名单开启本地存储
 	core.OtherInit()
 	// 连接数据库，初始化gorm
@@ -42,6 +50,7 @@ func Init() {
 			os.Exit(1)
 		}
 	}
+
 	// 连接redis
 	global.Redis = core.ConnectRedis()
 	// 初始化Casbin
@@ -98,6 +107,7 @@ func Init() {
 		service.GroupApp.SystemServiceSupplier.GetOJSvc(),
 		service.GroupApp.SystemServiceSupplier.GetPermissionProjectionSvc(),
 		service.GroupApp.SystemServiceSupplier.GetCacheProjectionSvc(),
+		service.GroupApp.SystemServiceSupplier.GetOJDailyStatsProjectionSvc(),
 	); err != nil {
 		global.Log.Error("init subscribers failed", zap.Error(err))
 	}

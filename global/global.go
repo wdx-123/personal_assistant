@@ -5,6 +5,7 @@ import (
 	obsmetrics "personal_assistant/pkg/observability/metrics"
 	obstrace "personal_assistant/pkg/observability/trace"
 	"personal_assistant/pkg/ratelimit"
+	sensitivedata "personal_assistant/pkg/security/sensitivedata"
 
 	"github.com/casbin/casbin/v2"
 	"github.com/gin-gonic/gin"
@@ -26,6 +27,7 @@ var (
 	// 上传限流器（由 core.InitUploadRateLimiters 初始化）
 	UploadGlobalLimiter *ratelimit.Limiter // 上传接口全局限流器
 	UploadUserLimiter   *ratelimit.Limiter // 上传接口用户级限流器
+	SensitiveDataCodec  *sensitivedata.Codec
 
 	// 观测基础设施后端
 	ObservabilityMetrics obsmetrics.MetricsBackend // 观测指标后端

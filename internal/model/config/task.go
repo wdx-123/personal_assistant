@@ -21,6 +21,9 @@ type Task struct {
 	LeetcodeSyncUserIntervalSeconds          int    `json:"leetcode_sync_user_interval_seconds" yaml:"leetcode_sync_user_interval_seconds"` // 力扣用户间隔秒数
 	LeetcodeSyncIntervalSeconds              int    `json:"leetcode_sync_interval_seconds" yaml:"leetcode_sync_interval_seconds"`           // 力扣全量同步间隔秒数
 	RankingSyncIntervalSeconds               int    `json:"ranking_sync_interval_seconds" yaml:"ranking_sync_interval_seconds"`             // 排行榜同步间隔秒数
+	OJDailyStatsRepairCron                   string `json:"oj_daily_stats_repair_cron" yaml:"oj_daily_stats_repair_cron"`                   // 刷题曲线聚合修复 cron
+	OJDailyStatsRepairBatchSize              int    `json:"oj_daily_stats_repair_batch_size" yaml:"oj_daily_stats_repair_batch_size"`       // 每轮修复批次大小
+	OJDailyStatsRepairWindowDays             int    `json:"oj_daily_stats_repair_window_days" yaml:"oj_daily_stats_repair_window_days"`     // 重建最近窗口天数
 	ImageOrphanCleanupCron                   string `json:"image_orphan_cleanup_cron" yaml:"image_orphan_cleanup_cron"`                     // 孤儿图片清理 cron 表达式，默认 @daily
 
 	// DisabledUserCleanupEnabled 是否启用禁用账号清理任务
