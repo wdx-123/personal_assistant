@@ -17,6 +17,8 @@ func InitConfig(path string) {
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.SetDefault("system.auto_migrate", true)
+	viper.SetDefault("security.sensitive_data.enabled", false)
+	viper.SetDefault("security.sensitive_data.cipher_prefix", "enc:v1:")
 	viper.SetDefault("redis.active_user_state_ttl_seconds", 1800)       // 用户活跃态缓存默认30分钟过期，缓存失效后仍会回源数据库兜底校验
 	viper.SetDefault("redis.active_user_state_ttl_jitter_seconds", 300) // 活跃态缓存过期时间的随机抖动范围，单位为秒
 	viper.SetDefault("task.distributed_lock_enabled", true)
@@ -122,6 +124,10 @@ func InitConfig(path string) {
 	_ = viper.BindEnv("jwt.access_token_expiry_time", "JWT_ACCESS_TOKEN_EXPIRY_TIME")
 	_ = viper.BindEnv("jwt.refresh_token_expiry_time", "JWT_REFRESH_TOKEN_EXPIRY_TIME")
 	_ = viper.BindEnv("jwt.issuer", "JWT_ISSUER")
+	_ = viper.BindEnv("security.sensitive_data.enabled", "SECURITY_SENSITIVE_DATA_ENABLED")
+	_ = viper.BindEnv("security.sensitive_data.cipher_prefix", "SECURITY_SENSITIVE_DATA_CIPHER_PREFIX")
+	_ = viper.BindEnv("security.sensitive_data.aes_key_base64", "SECURITY_SENSITIVE_DATA_AES_KEY_BASE64")
+	_ = viper.BindEnv("security.sensitive_data.hash_key_base64", "SECURITY_SENSITIVE_DATA_HASH_KEY_BASE64")
 
 	// 绑定MySQL相关配置到环境变量（补充完整）
 	_ = viper.BindEnv("mysql.host", "DB_HOST")

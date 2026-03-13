@@ -25,6 +25,12 @@ system:
   default_role_code: "member" # 新用户注册/加入组织时的默认角色代码
   default_role_name: "普通成员" # 默认角色的显示名称
   bind_cool_down_hours: 48 # 换绑冷却时间（小时），防止频繁换绑
+security:
+  sensitive_data:
+    enabled: false               # 敏感数据编解码器总开关；关闭时不初始化
+    cipher_prefix: "enc:v1:"     # 密文前缀；为空时回落到默认 enc:v1:
+    aes_key_base64: ""           # AES-256-GCM 密钥，需 base64 解码后为 32 字节
+    hash_key_base64: ""          # HMAC-SHA256 密钥，需 base64 解码后为 32 字节
 zap:
   level: warn #  日志级别为error：仅记录错误信息，不包含info和debug信息
   filename: log/assist_backed_app.log # 日志文件存储路径及名称：日志会写入项目根目录下的log文件夹，文件名为go_blog.log，便于统一管理和查找

@@ -4,9 +4,10 @@ import "github.com/spf13/viper"
 
 // Config 应用全局配置结构体，包含所有核心模块配置
 type Config struct {
-	Redis         Redis         `json:"redis" yaml:"redis"`     // Redis配置
-	Mysql         Mysql         `json:"mysql" yaml:"mysql"`     // MySQL数据库配置
-	System        System        `json:"system" yaml:"system"`   // 系统服务配置
+	Redis         Redis         `json:"redis" yaml:"redis"`   // Redis配置
+	Mysql         Mysql         `json:"mysql" yaml:"mysql"`   // MySQL数据库配置
+	System        System        `json:"system" yaml:"system"` // 系统服务配置
+	Security      Security      `json:"security" yaml:"security"`
 	Zap           Zap           `json:"zap" yaml:"zap"`         // 日志配置
 	JWT           JWT           `json:"jwt" yaml:"jwt"`         // JWT认证配置
 	Upload        Upload        `json:"upload" yaml:"upload"`   // 文件上传配置
@@ -60,6 +61,14 @@ func NewConfig() *Config {
 
 		// 业务逻辑配置
 		BindCoolDownHours: viper.GetInt("system.bind_cool_down_hours"),
+	}
+	_security := &Security{
+		SensitiveData: SensitiveData{
+			Enabled:       viper.GetBool("security.sensitive_data.enabled"),
+			CipherPrefix:  viper.GetString("security.sensitive_data.cipher_prefix"),
+			AESKeyBase64:  viper.GetString("security.sensitive_data.aes_key_base64"),
+			HashKeyBase64: viper.GetString("security.sensitive_data.hash_key_base64"),
+		},
 	}
 	// 日志配置初始化
 	_zap := &Zap{
@@ -314,6 +323,7 @@ func NewConfig() *Config {
 		Redis:         *_redis,
 		Mysql:         *_mysql,
 		System:        *_system,
+		Security:      *_security,
 		Zap:           *_zap,
 		JWT:           *_jwt,
 		Upload:        *_upload,

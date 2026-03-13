@@ -1,0 +1,487 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "personal_assistant - OJ 成绩曲线接口",
+    "version": "1.0.0",
+    "description": "仅覆盖 1 个接口：POST /oj/curve。\n\n接口定位：\n- 该接口注册在 BusinessGroup，下游会经过 JWTAuth 与 ActiveUserMW。\n- 不经过 PermissionMiddleware，因此只要求登录且账号处于 active 状态。\n- 请求体为 JSON，Controller 使用 ShouldBindJSON 绑定。\n- 成功和大多数业务失败使用新版 BizResponse：code/success/message/data/timestamp。\n- JWT 缺失或 Token 无效时，当前中间件仍返回旧版响应壳：code/data/error，且 HTTP 状态码为 200。\n- ActiveUserMW 拦截账号禁用时，返回 HTTP 401 的 BizResponse。\n\n当前实现语义：\n- platform 仅支持 leetcode 和 luogu，且必须使用小写。\n- 接口返回最近 30 天的刷题曲线，按日期升序输出。\n- 若每日投影数据缺失或落后于用户详情更新时间，Service 会先尝试触发最近窗口修复，再重新查询。\n- 用户未绑定对应平台账号时，不返回业务失败，而是返回成功响应，data.bound=false，points=[]。\n- 日期按 Asia/Shanghai 时区窗口构建，date 字段格式固定为 YYYY-MM-DD。"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:9000",
+      "description": "本地开发环境（请按实际地址修改）"
+    }
+  ],
+  "tags": [
+    {
+      "name": "OJ-成绩曲线",
+      "description": "获取当前登录用户在指定 OJ 平台最近 30 天的刷题曲线。"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    },
+    {
+      "AccessTokenHeader": []
+    }
+  ],
+  "paths": {
+    "/oj/curve": {
+      "post": {
+        "tags": [
+          "OJ-成绩曲线"
+        ],
+        "summary": "获取 OJ 成绩曲线",
+        "description": "返回当前登录用户在指定 OJ 平台最近 30 天的刷题趋势。\n\n处理规则：\n- 仅允许查询当前登录用户自己的数据，不支持传 user_id。\n- platform=leetcode 时读取力扣绑定详情和每日统计投影。\n- platform=luogu 时读取洛谷绑定详情和每日统计投影。\n- 若用户已绑定，但最近 30 天投影数据条数不足、日期不连续，或数据源更新时间落后于用户详情更新时间，服务端会尝试自动重建最近窗口；若重建失败则返回 40006。\n- 响应中的 points 按日期升序排列；已绑定用户通常固定返回 30 个点，缺失日期会补 0。\n- 未绑定平台账号时返回成功响应，bound=false，current_total=0，points 为空数组。",
+        "operationId": "GetOJCurve",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OJCurveReq"
+              },
+              "examples": {
+                "查询力扣曲线": {
+                  "summary": "查询 LeetCode 最近 30 天曲线",
+                  "value": {
+                    "platform": "leetcode"
+                  }
+                },
+                "查询洛谷曲线": {
+                  "summary": "查询洛谷最近 30 天曲线",
+                  "value": {
+                    "platform": "luogu"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与响应壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseOJCurveSuccess"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizResponseError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "查询成功-已绑定": {
+                    "summary": "已绑定平台账号，返回最近 30 天曲线",
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "platform": "leetcode",
+                        "bound": true,
+                        "current_total": 428,
+                        "last_sync_at": "2026-03-13T08:12:45+08:00",
+                        "points": [
+                          {
+                            "date": "2026-02-12",
+                            "solved_count": 0,
+                            "solved_total": 381
+                          },
+                          {
+                            "date": "2026-02-13",
+                            "solved_count": 2,
+                            "solved_total": 383
+                          },
+                          {
+                            "date": "2026-02-14",
+                            "solved_count": 1,
+                            "solved_total": 384
+                          },
+                          {
+                            "date": "2026-03-13",
+                            "solved_count": 3,
+                            "solved_total": 428
+                          }
+                        ]
+                      },
+                      "timestamp": 1773399165123
+                    }
+                  },
+                  "查询成功-未绑定": {
+                    "summary": "用户未绑定目标平台账号时的成功返回",
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "platform": "luogu",
+                        "bound": false,
+                        "current_total": 0,
+                        "points": []
+                      },
+                      "timestamp": 1773399166123
+                    }
+                  },
+                  "参数绑定失败": {
+                    "summary": "platform 缺失或不是 leetcode/luogu 时的控制器校验失败",
+                    "value": {
+                      "code": 10002,
+                      "success": false,
+                      "message": "参数错误: Key: 'OJCurveReq.Platform' Error:Field validation for 'Platform' failed on the 'oneof' tag",
+                      "data": null,
+                      "timestamp": 1773399167123
+                    }
+                  },
+                  "数据同步失败": {
+                    "summary": "最近窗口自动重建失败",
+                    "value": {
+                      "code": 40006,
+                      "success": false,
+                      "message": "OJ数据同步失败",
+                      "data": null,
+                      "timestamp": 1773399168123
+                    }
+                  },
+                  "数据库错误": {
+                    "summary": "查询绑定详情或每日统计投影失败",
+                    "value": {
+                      "code": 10005,
+                      "success": false,
+                      "message": "数据库错误",
+                      "data": null,
+                      "timestamp": 1773399169123
+                    }
+                  },
+                  "未登录-缺少AccessToken": {
+                    "summary": "JWTAuth 中间件拦截",
+                    "value": {
+                      "code": 11005,
+                      "data": {
+                        "message": "Access token is required",
+                        "reload": true
+                      },
+                      "error": "Access token is required"
+                    }
+                  },
+                  "Token无效": {
+                    "summary": "JWTAuth 中间件拦截",
+                    "value": {
+                      "code": 11003,
+                      "data": {
+                        "message": "Invalid access token",
+                        "reload": true
+                      },
+                      "error": "Invalid access token"
+                    }
+                  },
+                  "Token过期": {
+                    "summary": "JWTAuth 中间件拦截",
+                    "value": {
+                      "code": 11001,
+                      "data": {
+                        "message": "Access token expired, please refresh",
+                        "reload": true
+                      },
+                      "error": "Access token expired, please refresh"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseUnauthorized"
+                },
+                "example": {
+                  "code": 11000,
+                  "success": false,
+                  "message": "账号已禁用",
+                  "data": null,
+                  "timestamp": 1773399170123
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "标准 Bearer Token 方式：Authorization: Bearer <access_token>"
+      },
+      "AccessTokenHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-access-token",
+        "description": "当前 JWT 中间件同样支持通过 x-access-token 请求头传递 access token。"
+      }
+    },
+    "schemas": {
+      "OJCurveReq": {
+        "type": "object",
+        "description": "OJ 成绩曲线查询请求体。",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "leetcode",
+              "luogu"
+            ],
+            "description": "OJ 平台标识。必须为小写。\n- leetcode：力扣\n- luogu：洛谷",
+            "example": "leetcode"
+          }
+        },
+        "required": [
+          "platform"
+        ]
+      },
+      "OJCurveRespData": {
+        "type": "object",
+        "description": "成绩曲线数据。未绑定平台账号时，bound=false，points=[]。",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "leetcode",
+              "luogu"
+            ],
+            "description": "实际返回的平台标识。"
+          },
+          "bound": {
+            "type": "boolean",
+            "description": "当前用户是否已绑定该平台账号。"
+          },
+          "current_total": {
+            "type": "integer",
+            "description": "当前平台总通过题数。\n- leetcode：TotalNumber\n- luogu：PassedNumber\n未绑定时返回 0。"
+          },
+          "last_sync_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "最近一次用于构建曲线的数据同步时间，RFC3339 格式。若暂无可用时间则可能省略。"
+          },
+          "points": {
+            "type": "array",
+            "description": "最近 30 天曲线点，按日期升序排列。\n- 已绑定时通常固定 30 个点，缺失日期会补零。\n- 未绑定时返回空数组。",
+            "items": {
+              "$ref": "#/components/schemas/OJCurvePoint"
+            }
+          }
+        },
+        "required": [
+          "platform",
+          "bound",
+          "current_total",
+          "points"
+        ]
+      },
+      "OJCurvePoint": {
+        "type": "object",
+        "description": "单日曲线点。",
+        "properties": {
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "统计日期，格式为 YYYY-MM-DD，按 Asia/Shanghai 时区窗口生成。",
+            "example": "2026-03-13"
+          },
+          "solved_count": {
+            "type": "integer",
+            "description": "该自然日新增通过题数。没有新增则为 0。",
+            "example": 3
+          },
+          "solved_total": {
+            "type": "integer",
+            "description": "截至该自然日结束时的累计通过题数。",
+            "example": 428
+          }
+        },
+        "required": [
+          "date",
+          "solved_count",
+          "solved_total"
+        ]
+      },
+      "BizResponseOJCurveSuccess": {
+        "type": "object",
+        "description": "查询成功时的新版 BizResponse。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0
+            ],
+            "description": "业务码。0 表示成功。"
+          },
+          "success": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "固定为 true。"
+          },
+          "message": {
+            "type": "string",
+            "description": "成功消息。当前实现固定为“操作成功”。"
+          },
+          "data": {
+            "$ref": "#/components/schemas/OJCurveRespData"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "服务端响应时间戳（毫秒）。"
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizResponseError": {
+        "type": "object",
+        "description": "Controller 或 Service 返回的新版业务失败响应壳。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "业务错误码。当前接口常见值：10002=参数绑定失败，10005=数据库错误，40006=OJ 数据同步失败。"
+          },
+          "success": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "description": "固定为 false。"
+          },
+          "message": {
+            "type": "string",
+            "description": "错误消息。\n- 参数绑定失败时会包含具体字段校验信息。\n- Service 返回 BizError 时通常使用错误码默认文案。"
+          },
+          "data": {
+            "nullable": true,
+            "description": "当前接口失败时通常为 null。",
+            "example": null
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "服务端响应时间戳（毫秒）。"
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "AuthResponseData": {
+        "type": "object",
+        "description": "JWTAuth 旧版失败响应中的 data 结构。",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "认证失败原因。"
+          },
+          "reload": {
+            "type": "boolean",
+            "description": "提示前端应重置登录态并重新登录。"
+          }
+        },
+        "required": [
+          "message",
+          "reload"
+        ]
+      },
+      "LegacyTokenErrorResponse": {
+        "type": "object",
+        "description": "JWTAuth 中间件返回的旧版认证失败响应壳。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              11001,
+              11003,
+              11005
+            ],
+            "description": "认证相关业务码。11005=需要登录，11001=Token 已过期，11003=Token 无效。"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AuthResponseData"
+          },
+          "error": {
+            "type": "string",
+            "description": "认证失败原因。"
+          }
+        },
+        "required": [
+          "code",
+          "data",
+          "error"
+        ]
+      },
+      "BizResponseUnauthorized": {
+        "type": "object",
+        "description": "ActiveUserMW 拦截时返回的新版 BizResponse。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              11000
+            ],
+            "description": "未授权业务码。"
+          },
+          "success": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "description": "固定为 false。"
+          },
+          "message": {
+            "type": "string",
+            "description": "未授权说明，例如“账号已禁用”。"
+          },
+          "data": {
+            "nullable": true,
+            "description": "当前中间件返回为 null。",
+            "example": null
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "服务端响应时间戳（毫秒）。"
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      }
+    }
+  }
+}
