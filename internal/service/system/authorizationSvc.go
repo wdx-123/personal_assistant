@@ -35,14 +35,12 @@ func NewAuthorizationService(repositoryGroup *repository.Group) *AuthorizationSe
 
 // GetUserRoles 获取用户角色
 func (s *AuthorizationService) GetUserRoles(ctx context.Context, userID uint) ([]entity.Role, error) {
-	globalRoles, err := s.roleRepo.GetUserGlobalRoles(ctx, userID)
+	globalRoles, isSuperAdmin, err := s.loadGlobalRoles(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("获取全局角色失败: %w", err)
+		return nil, err
 	}
-	for _, role := range globalRoles {
-		if role != nil && role.Code == consts.RoleCodeSuperAdmin {
-			return toRoleSlice(globalRoles), nil
-		}
+	if isSuperAdmin {
+		return toRoleSlice(globalRoles), nil
 	}
 
 	_, orgID, err := s.getUserSubject(ctx, userID)
@@ -59,6 +57,12 @@ func (s *AuthorizationService) GetUserRoles(ctx context.Context, userID uint) ([
 	}
 
 	return toRoleSlice(append(globalRoles, orgRoles...)), nil
+}
+
+// IsSuperAdmin 判断用户是否具备全局超级管理员角色。
+func (s *AuthorizationService) IsSuperAdmin(ctx context.Context, userID uint) (bool, error) {
+	_, isSuperAdmin, err := s.loadGlobalRoles(ctx, userID)
+	return isSuperAdmin, err
 }
 
 // CheckUserAPIPermission 检查用户是否有访问API的权限
@@ -118,14 +122,12 @@ func (s *AuthorizationService) CanOperateOrgCapability(
 	}
 
 	// 检查用户是否具有全局超级管理员角色
-	globalRoles, err := s.roleRepo.GetUserGlobalRoles(ctx, operatorID)
+	_, isSuperAdmin, err := s.loadGlobalRoles(ctx, operatorID)
 	if err != nil {
 		return false, bizerrors.Wrap(bizerrors.CodeDBError, err)
 	}
-	for _, role := range globalRoles {
-		if role != nil && role.Code == consts.RoleCodeSuperAdmin {
-			return true, nil
-		}
+	if isSuperAdmin {
+		return true, nil
 	}
 
 	ok, err := s.CheckUserCapabilityInOrg(ctx, operatorID, orgID, capabilityCode)
@@ -182,6 +184,22 @@ func (s *AuthorizationService) getUserSubject(
 		return subject, user.CurrentOrgID, nil
 	}
 	return "", nil, fmt.Errorf("未设置当前组织")
+}
+
+func (s *AuthorizationService) loadGlobalRoles(
+	ctx context.Context,
+	userID uint,
+) ([]*entity.Role, bool, error) {
+	globalRoles, err := s.roleRepo.GetUserGlobalRoles(ctx, userID)
+	if err != nil {
+		return nil, false, fmt.Errorf("获取全局角色失败: %w", err)
+	}
+	for _, role := range globalRoles {
+		if role != nil && role.Code == consts.RoleCodeSuperAdmin {
+			return globalRoles, true, nil
+		}
+	}
+	return globalRoles, false, nil
 }
 
 // toRoleSlice 将 []*entity.Role 转换为 []entity.Role，过滤掉 nil 值

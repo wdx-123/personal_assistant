@@ -10,18 +10,24 @@ import (
 	bizerrors "personal_assistant/pkg/errors"
 )
 
-func TestOrgServiceGetOrgListReturnsActiveMemberCountForPagedQuery(t *testing.T) {
+func TestOrgServiceGetOrgListReturnsVisibleOrgsForRegularUserPagedQuery(t *testing.T) {
 	env := newAuthorizationTestEnv(t)
+	requester := createUser(t, env, "00000010")
 	orgA := createOrg(t, env, 11)
 	orgB := createOrg(t, env, 22)
+	orgHidden := createOrg(t, env, 33)
 
-	seedOrgMember(t, env, orgA.ID, 11, consts.OrgMemberStatusActive)
+	seedOrgMember(t, env, orgA.ID, orgA.OwnerID, consts.OrgMemberStatusActive)
+	seedOrgMember(t, env, orgA.ID, requester.ID, consts.OrgMemberStatusActive)
 	seedOrgMember(t, env, orgA.ID, 12, consts.OrgMemberStatusActive)
 	seedOrgMember(t, env, orgA.ID, 13, consts.OrgMemberStatusLeft)
 	seedOrgMember(t, env, orgA.ID, 14, consts.OrgMemberStatusRemoved)
-	seedOrgMember(t, env, orgB.ID, 22, consts.OrgMemberStatusActive)
+	seedOrgMember(t, env, orgB.ID, orgB.OwnerID, consts.OrgMemberStatusActive)
+	seedOrgMember(t, env, orgB.ID, requester.ID, consts.OrgMemberStatusActive)
+	seedOrgMember(t, env, orgHidden.ID, orgHidden.OwnerID, consts.OrgMemberStatusActive)
+	seedOrgMember(t, env, orgHidden.ID, requester.ID, consts.OrgMemberStatusLeft)
 
-	items, total, err := env.orgService.GetOrgList(context.Background(), 1, 10, "")
+	items, total, err := env.orgService.GetOrgList(context.Background(), requester.ID, 1, 10, "")
 	if err != nil {
 		t.Fatalf("GetOrgList() error = %v", err)
 	}
@@ -33,33 +39,43 @@ func TestOrgServiceGetOrgListReturnsActiveMemberCountForPagedQuery(t *testing.T)
 	for _, item := range items {
 		counts[item.ID] = item.MemberCount
 	}
-	if counts[orgA.ID] != 2 {
-		t.Fatalf("orgA member_count = %d, want 2", counts[orgA.ID])
+	if _, ok := counts[orgHidden.ID]; ok {
+		t.Fatalf("hidden org %d should not be visible", orgHidden.ID)
 	}
-	if counts[orgB.ID] != 1 {
-		t.Fatalf("orgB member_count = %d, want 1", counts[orgB.ID])
+	if counts[orgA.ID] != 3 {
+		t.Fatalf("orgA member_count = %d, want 3", counts[orgA.ID])
+	}
+	if counts[orgB.ID] != 2 {
+		t.Fatalf("orgB member_count = %d, want 2", counts[orgB.ID])
 	}
 }
 
-func TestOrgServiceGetOrgListReturnsMemberCountForUnpagedKeywordQuery(t *testing.T) {
+func TestOrgServiceGetOrgListReturnsVisibleOrgsForRegularUserUnpagedKeywordQuery(t *testing.T) {
 	env := newAuthorizationTestEnv(t)
+	requester := createUser(t, env, "00000011")
 	orgMatch := createOrg(t, env, 11)
-	orgOther := createOrg(t, env, 22)
+	orgHidden := createOrg(t, env, 22)
+	orgOther := createOrg(t, env, 33)
 
 	orgMatch.Name = "Alpha Team"
 	if err := env.db.Save(orgMatch).Error; err != nil {
 		t.Fatalf("save matched org: %v", err)
+	}
+	orgHidden.Name = "Alpha Hidden"
+	if err := env.db.Save(orgHidden).Error; err != nil {
+		t.Fatalf("save hidden org: %v", err)
 	}
 	orgOther.Name = "Beta Team"
 	if err := env.db.Save(orgOther).Error; err != nil {
 		t.Fatalf("save other org: %v", err)
 	}
 
-	seedOrgMember(t, env, orgMatch.ID, 11, consts.OrgMemberStatusActive)
-	seedOrgMember(t, env, orgMatch.ID, 12, consts.OrgMemberStatusActive)
-	seedOrgMember(t, env, orgOther.ID, 22, consts.OrgMemberStatusActive)
+	seedOrgMember(t, env, orgMatch.ID, orgMatch.OwnerID, consts.OrgMemberStatusActive)
+	seedOrgMember(t, env, orgMatch.ID, requester.ID, consts.OrgMemberStatusActive)
+	seedOrgMember(t, env, orgHidden.ID, requester.ID, consts.OrgMemberStatusRemoved)
+	seedOrgMember(t, env, orgOther.ID, requester.ID, consts.OrgMemberStatusActive)
 
-	items, total, err := env.orgService.GetOrgList(context.Background(), 0, 0, "Alpha")
+	items, total, err := env.orgService.GetOrgList(context.Background(), requester.ID, 0, 0, "Alpha")
 	if err != nil {
 		t.Fatalf("GetOrgList() error = %v", err)
 	}
@@ -74,6 +90,30 @@ func TestOrgServiceGetOrgListReturnsMemberCountForUnpagedKeywordQuery(t *testing
 	}
 	if items[0].MemberCount != 2 {
 		t.Fatalf("member_count = %d, want 2", items[0].MemberCount)
+	}
+}
+
+func TestOrgServiceGetOrgListReturnsAllOrgsForSuperAdmin(t *testing.T) {
+	env := newAuthorizationTestEnv(t)
+	admin := createUser(t, env, "00000012")
+	grantGlobalRole(t, env, admin.ID, consts.RoleCodeSuperAdmin)
+	orgA := createOrg(t, env, 11)
+	orgB := createOrg(t, env, 22)
+	orgC := createOrg(t, env, 33)
+
+	seedOrgMember(t, env, orgA.ID, orgA.OwnerID, consts.OrgMemberStatusActive)
+	seedOrgMember(t, env, orgB.ID, orgB.OwnerID, consts.OrgMemberStatusActive)
+	seedOrgMember(t, env, orgC.ID, orgC.OwnerID, consts.OrgMemberStatusActive)
+
+	items, total, err := env.orgService.GetOrgList(context.Background(), admin.ID, 1, 10, "")
+	if err != nil {
+		t.Fatalf("GetOrgList() error = %v", err)
+	}
+	if total != 3 {
+		t.Fatalf("total = %d, want 3", total)
+	}
+	if len(items) != 3 {
+		t.Fatalf("len(items) = %d, want 3", len(items))
 	}
 }
 
@@ -101,6 +141,22 @@ func TestOrgServiceGetOrgDetailRejectsUnauthorizedUser(t *testing.T) {
 
 	_, err := env.orgService.GetOrgDetail(context.Background(), 99, org.ID)
 	assertBizCode(t, err, bizerrors.CodePermissionDenied)
+}
+
+func TestOrgServiceGetOrgDetailAllowsSuperAdminWithoutMembership(t *testing.T) {
+	env := newAuthorizationTestEnv(t)
+	admin := createUser(t, env, "00000013")
+	grantGlobalRole(t, env, admin.ID, consts.RoleCodeSuperAdmin)
+	org := createOrg(t, env, 11)
+	seedOrgMember(t, env, org.ID, org.OwnerID, consts.OrgMemberStatusActive)
+
+	item, err := env.orgService.GetOrgDetail(context.Background(), admin.ID, org.ID)
+	if err != nil {
+		t.Fatalf("GetOrgDetail() error = %v", err)
+	}
+	if item.ID != org.ID {
+		t.Fatalf("org id = %d, want %d", item.ID, org.ID)
+	}
 }
 
 func seedOrgMember(

@@ -57,45 +57,32 @@ func NewOrgService(
 
 // ==================== 查询 ====================
 
-// GetOrgList 获取组织列表（支持分页与不分页、关键词搜索）
-// 如果 page <= 0，则返回所有数据
+// GetOrgList 获取组织列表（按当前用户可见范围过滤，支持分页与不分页、关键词搜索）。
+// 超级管理员可查看全部组织，普通用户仅可查看自己 active 成员的组织。
 func (s *OrgService) GetOrgList(
 	ctx context.Context,
+	userID uint,
 	page, pageSize int,
 	keyword string,
 ) ([]*readmodel.OrgWithMemberCount, int64, error) {
-	keyword = strings.TrimSpace(keyword)
-
 	var orgs []*entity.Org
 	var total int64
 
-	if page <= 0 {
-		// 不分页，获取所有
-		list, err := s.orgRepo.GetAllOrgs(ctx)
-		if err != nil {
-			return nil, 0, errors.Wrap(errors.CodeDBError, err)
-		}
-		// 简单内存过滤关键词（全量查询场景数据量小）
-		if keyword != "" {
-			filtered := make([]*entity.Org, 0, len(list))
-			for _, org := range list {
-				if strings.Contains(org.Name, keyword) {
-					filtered = append(filtered, org)
-				}
-			}
-			orgs = filtered
-			total = int64(len(filtered))
-		} else {
-			orgs = list
-			total = int64(len(list))
-		}
-	} else {
-		// 分页查询（支持关键词搜索）
-		var err error
+	if s.authorizationService == nil {
+		return nil, 0, errors.NewWithMsg(errors.CodeInternalError, "授权服务未初始化")
+	}
+	isSuperAdmin, err := s.authorizationService.IsSuperAdmin(ctx, userID)
+	if err != nil {
+		return nil, 0, errors.Wrap(errors.CodeDBError, err)
+	}
+
+	if isSuperAdmin {
 		orgs, total, err = s.orgRepo.GetOrgListWithKeyword(ctx, page, pageSize, keyword)
-		if err != nil {
-			return nil, 0, errors.Wrap(errors.CodeDBError, err)
-		}
+	} else {
+		orgs, total, err = s.orgRepo.GetVisibleOrgListByUserIDWithKeyword(ctx, userID, page, pageSize, keyword)
+	}
+	if err != nil {
+		return nil, 0, errors.Wrap(errors.CodeDBError, err)
 	}
 
 	items, err := s.buildOrgReadModels(ctx, orgs)
@@ -114,14 +101,14 @@ func (s *OrgService) GetOrgDetail(
 	userID uint,
 	orgID uint,
 ) (*readmodel.OrgWithMemberCount, error) {
+	if s.authorizationService == nil {
+		return nil, errors.NewWithMsg(errors.CodeInternalError, "授权服务未初始化")
+	}
+
 	// 1. 检查是否为超级管理员
-	isSuperAdmin := false
-	globalRoles, _ := s.roleRepo.GetUserGlobalRoles(ctx, userID)
-	for _, role := range globalRoles {
-		if role.Code == consts.RoleCodeSuperAdmin {
-			isSuperAdmin = true
-			break
-		}
+	isSuperAdmin, err := s.authorizationService.IsSuperAdmin(ctx, userID)
+	if err != nil {
+		return nil, errors.Wrap(errors.CodeDBError, err)
 	}
 
 	// 2. 如果不是超管，检查是否为组织成员

@@ -25,6 +25,8 @@ type JWTServiceContract interface {
 type AuthorizationServiceContract interface {
 	// GetUserRoles 获取用户角色
 	GetUserRoles(ctx context.Context, userID uint) ([]entity.Role, error)
+	// IsSuperAdmin 判断用户是否具备全局超级管理员角色
+	IsSuperAdmin(ctx context.Context, userID uint) (bool, error)
 	// CheckUserAPIPermission 检查用户API权限
 	CheckUserAPIPermission(ctx context.Context, userID uint, apiPath, method string) (bool, error)
 	// CheckUserCapabilityInOrg 检查用户在组织中的能力
@@ -84,7 +86,7 @@ type UserServiceContract interface {
 }
 
 type OrgServiceContract interface {
-	GetOrgList(ctx context.Context, page, pageSize int, keyword string) ([]*readmodel.OrgWithMemberCount, int64, error)
+	GetOrgList(ctx context.Context, userID uint, page, pageSize int, keyword string) ([]*readmodel.OrgWithMemberCount, int64, error)
 	GetOrgDetail(ctx context.Context, userID uint, orgID uint) (*readmodel.OrgWithMemberCount, error)
 	CreateOrg(ctx context.Context, userID uint, req *request.CreateOrgReq) error
 	UpdateOrg(ctx context.Context, userID, orgID uint, req *request.UpdateOrgReq) error
