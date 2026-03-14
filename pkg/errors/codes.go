@@ -82,6 +82,8 @@ const (
 	CodeOJIdentifierInvalid BizCode = 40004 // OJ账号标识无效
 	CodeOJBindCoolDown      BizCode = 40005 // 绑定冷却中
 	CodeOJSyncFailed        BizCode = 40006 // OJ数据同步失败
+	CodeOJCredentialInvalid BizCode = 40007 // OJ凭据无效
+	CodeOJSyncDisabled      BizCode = 40008 // OJ同步已被自动关闭
 )
 
 // codeMessages 错误码与默认消息的映射
@@ -149,6 +151,8 @@ var codeMessages = map[BizCode]string{
 	CodeOJIdentifierInvalid: "OJ账号标识无效",
 	CodeOJBindCoolDown:      "操作过于频繁，请稍后再试",
 	CodeOJSyncFailed:        "OJ数据同步失败",
+	CodeOJCredentialInvalid: "OJ账号凭据无效",
+	CodeOJSyncDisabled:      "该OJ账号同步已被自动关闭，请重新绑定后再试",
 }
 
 // Message 获取错误码对应的默认消息

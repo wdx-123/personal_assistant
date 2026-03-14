@@ -18,6 +18,7 @@ type OJRankingListItem struct {
 type OJRankingPlatformDetails struct {
 	Luogu    int `json:"luogu,omitempty"`
 	Leetcode int `json:"leetcode,omitempty"`
+	Lanqiao  int `json:"lanqiao,omitempty"`
 }
 
 type OJRankingMyRank struct {

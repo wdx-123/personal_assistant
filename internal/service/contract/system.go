@@ -107,11 +107,14 @@ type OrgServiceContract interface {
 
 type OJServiceContract interface {
 	BindOJAccount(ctx context.Context, userID uint, req *request.BindOJAccountReq) (*resp.BindOJAccountResp, error)
+	BindLanqiaoAccount(ctx context.Context, userID uint, req *request.BindLanqiaoAccountReq) (*resp.BindOJAccountResp, error)
 	GetRankingList(ctx context.Context, userID uint, req *request.OJRankingListReq) (*resp.OJRankingListResp, error)
 	GetUserStats(ctx context.Context, userID uint, req *request.OJStatsReq) (*resp.BindOJAccountResp, error)
 	GetCurve(ctx context.Context, userID uint, req *request.OJCurveReq) (*resp.OJCurveResp, error)
 	SyncAllLuoguUsers(ctx context.Context) error
 	SyncAllLeetcodeUsers(ctx context.Context) error
+	SyncAllLanqiaoUsers(ctx context.Context) error
+	RefreshAllLanqiaoSubmissionStats(ctx context.Context) error
 	RebuildRankingCaches(ctx context.Context) error
 	HandleLuoguBindPayload(ctx context.Context, userID uint, payload *eventdto.LuoguBindPayload) error
 	HandleLeetcodeBindSignal(ctx context.Context, userID uint) error

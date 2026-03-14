@@ -32,6 +32,7 @@ type User struct {
 
 	LeetcodeDetails []LeetcodeUserDetail `json:"leetcode_details,omitempty" gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 	LuoguDetails    []LuoguUserDetail    `json:"luogu_details,omitempty" gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	LanqiaoDetails  []LanqiaoUserDetail  `json:"lanqiao_details,omitempty" gorm:"foreignKey:UserID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 
 	CurrentOrgID *uint `json:"current_org_id" gorm:"index;comment:'当前组织ID（可空）'"`
 	CurrentOrg   *Org  `json:"current_org,omitempty" gorm:"foreignKey:CurrentOrgID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`

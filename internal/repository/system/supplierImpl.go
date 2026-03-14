@@ -22,10 +22,13 @@ type RepositorySupplier struct {
 
 	leetcodeUserDetailRepository   interfaces.LeetcodeUserDetailRepository
 	luoguUserDetailRepository      interfaces.LuoguUserDetailRepository
+	lanqiaoUserDetailRepository    interfaces.LanqiaoUserDetailRepository
 	leetcodeQuestionBankRepository interfaces.LeetcodeQuestionBankRepository
 	luoguQuestionBankRepository    interfaces.LuoguQuestionBankRepository
+	lanqiaoQuestionBankRepository  interfaces.LanqiaoQuestionBankRepository
 	leetcodeUserQuestionRepository interfaces.LeetcodeUserQuestionRepository
 	luoguUserQuestionRepository    interfaces.LuoguUserQuestionRepository
+	lanqiaoUserQuestionRepository  interfaces.LanqiaoUserQuestionRepository
 	ojDailyStatsRepository         interfaces.OJDailyStatsRepository
 	outboxRepository               interfaces.OutboxRepository
 	rankingReadModelRepository     interfaces.RankingReadModelRepository
@@ -75,6 +78,10 @@ func (r *RepositorySupplier) GetLuoguUserDetailRepository() interfaces.LuoguUser
 	return r.luoguUserDetailRepository
 }
 
+func (r *RepositorySupplier) GetLanqiaoUserDetailRepository() interfaces.LanqiaoUserDetailRepository {
+	return r.lanqiaoUserDetailRepository
+}
+
 func (r *RepositorySupplier) GetLeetcodeQuestionBankRepository() interfaces.LeetcodeQuestionBankRepository {
 	return r.leetcodeQuestionBankRepository
 }
@@ -87,8 +94,16 @@ func (r *RepositorySupplier) GetLuoguQuestionBankRepository() interfaces.LuoguQu
 	return r.luoguQuestionBankRepository
 }
 
+func (r *RepositorySupplier) GetLanqiaoQuestionBankRepository() interfaces.LanqiaoQuestionBankRepository {
+	return r.lanqiaoQuestionBankRepository
+}
+
 func (r *RepositorySupplier) GetLuoguUserQuestionRepository() interfaces.LuoguUserQuestionRepository {
 	return r.luoguUserQuestionRepository
+}
+
+func (r *RepositorySupplier) GetLanqiaoUserQuestionRepository() interfaces.LanqiaoUserQuestionRepository {
+	return r.lanqiaoUserQuestionRepository
 }
 
 func (r *RepositorySupplier) GetOutboxRepository() interfaces.OutboxRepository {

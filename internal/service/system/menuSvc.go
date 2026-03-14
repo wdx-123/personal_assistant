@@ -22,6 +22,7 @@ type MenuService struct {
 	apiRepo                 interfaces.APIRepository
 	roleRepo                interfaces.RoleRepository
 	orgRepo                 interfaces.OrgRepository
+	userRepo                interfaces.UserRepository
 	permissionProjectionSvc svccontract.PermissionProjectionServiceContract
 }
 
@@ -36,6 +37,7 @@ func NewMenuService(
 		apiRepo:                 repositoryGroup.SystemRepositorySupplier.GetAPIRepository(),
 		roleRepo:                repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
 		orgRepo:                 repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
+		userRepo:                repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
 		permissionProjectionSvc: permissionProjectionSvc,
 	}
 }
@@ -50,7 +52,7 @@ func (s *MenuService) GetMenuTree(ctx context.Context) ([]*response.MenuItem, er
 }
 
 // GetMyMenus 获取当前用户的菜单树（前端侧边栏）
-// orgID 为可选参数：超级管理员无需传入，普通用户必须指定组织
+// orgID 为可选参数：超级管理员无需传入，普通用户不传时回退到当前组织
 func (s *MenuService) GetMyMenus(ctx context.Context, userID uint, orgID *uint) ([]*response.MenuItem, error) {
 	// 1. 检查是否为超级管理员（全局角色，org_id = 0）
 	globalRoles, _ := s.roleRepo.GetUserGlobalRoles(ctx, userID)
@@ -65,19 +67,29 @@ func (s *MenuService) GetMyMenus(ctx context.Context, userID uint, orgID *uint) 
 		}
 	}
 
-	// 2. 非超管：必须指定组织ID
-	if orgID == nil || *orgID == 0 {
-		return nil, errors.NewWithMsg(errors.CodeInvalidParams, "请指定组织ID")
+	resolvedOrgID := orgID
+	if resolvedOrgID == nil || *resolvedOrgID == 0 {
+		user, err := s.userRepo.GetByID(ctx, userID)
+		if err != nil {
+			return nil, errors.Wrap(errors.CodeDBError, err)
+		}
+		if user == nil {
+			return nil, errors.New(errors.CodeUserNotFound)
+		}
+		if user.CurrentOrgID == nil || *user.CurrentOrgID == 0 {
+			return nil, errors.NewWithMsg(errors.CodeInvalidParams, "请先设置当前组织")
+		}
+		resolvedOrgID = user.CurrentOrgID
 	}
 
-	// 3. 校验组织是否存在
-	org, err := s.orgRepo.GetByID(ctx, *orgID)
+	// 2. 校验组织是否存在
+	org, err := s.orgRepo.GetByID(ctx, *resolvedOrgID)
 	if err != nil || org == nil {
 		return nil, errors.New(errors.CodeOrgNotFound)
 	}
 
-	// 4. 校验用户是否属于该组织
-	isMember, err := s.orgRepo.IsUserInOrg(ctx, userID, *orgID)
+	// 3. 校验用户是否属于该组织
+	isMember, err := s.orgRepo.IsUserInOrg(ctx, userID, *resolvedOrgID)
 	if err != nil {
 		return nil, errors.Wrap(errors.CodeDBError, err)
 	}
@@ -85,8 +97,8 @@ func (s *MenuService) GetMyMenus(ctx context.Context, userID uint, orgID *uint) 
 		return nil, errors.New(errors.CodeNotOrgMember)
 	}
 
-	// 5. 获取用户在该组织下的菜单
-	menus, err := s.menuRepo.GetMenusByUserID(ctx, userID, *orgID)
+	// 4. 获取用户在该组织下的菜单
+	menus, err := s.menuRepo.GetMenusByUserID(ctx, userID, *resolvedOrgID)
 	if err != nil {
 		return nil, errors.Wrap(errors.CodeDBError, err)
 	}

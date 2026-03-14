@@ -29,10 +29,13 @@ func SQL() error {
 		&entity.OrgMember{},              // 组织成员状态表 - 身份上的
 		&entity.LeetcodeUserDetail{},     // 力扣用户详情表
 		&entity.LuoguUserDetail{},        // 洛谷用户详情表
+		&entity.LanqiaoUserDetail{},      // 蓝桥用户详情表
 		&entity.LeetcodeQuestionBank{},   // 力扣题库题目表
 		&entity.LuoguQuestionBank{},      // 洛谷题库题目表
+		&entity.LanqiaoQuestionBank{},    // 蓝桥题库题目表
 		&entity.LeetcodeUserQuestion{},   // 力扣用户以做题目表
 		&entity.LuoguUserQuestion{},      // 洛谷用户以做题目表
+		&entity.LanqiaoUserQuestion{},    // 蓝桥用户已通过题目表
 		&entity.OJUserDailyStat{},        // OJ 刷题曲线日聚合读模型
 		&entity.Login{},                  // 登录日志表
 		&entity.UserToken{},              // 用户Token记录表

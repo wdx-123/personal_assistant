@@ -621,7 +621,7 @@ func (s *OrgService) SetCurrentOrg(ctx context.Context, userID, orgID uint) erro
 }
 
 // JoinOrgByInviteCode 用户通过邀请码加入组织。
-// 规则：left 可恢复为 active；removed 默认禁止自助加入；重新加入仅授予默认角色。
+// 规则：left/removed 可恢复为 active；重新加入仅授予默认角色，不恢复历史角色。
 func (s *OrgService) JoinOrgByInviteCode(ctx context.Context, userID uint, inviteCode string) error {
 	inviteCode = strings.TrimSpace(inviteCode)
 	if inviteCode == "" {
@@ -670,9 +670,7 @@ func (s *OrgService) JoinOrgByInviteCode(ctx context.Context, userID uint, invit
 			shouldResetDefaultRole = true
 		case member.MemberStatus == consts.OrgMemberStatusActive:
 			// 幂等：已加入
-		case member.MemberStatus == consts.OrgMemberStatusRemoved:
-			return errors.New(errors.CodeOrgMemberRemoved)
-		default:
+		case member.MemberStatus == consts.OrgMemberStatusLeft || member.MemberStatus == consts.OrgMemberStatusRemoved:
 			if err := txOrgMemberRepo.SetStatus(
 				ctx,
 				org.ID,
@@ -685,9 +683,11 @@ func (s *OrgService) JoinOrgByInviteCode(ctx context.Context, userID uint, invit
 				return errors.Wrap(errors.CodeDBError, err)
 			}
 			shouldResetDefaultRole = true
+		default:
+			return errors.New(errors.CodeInvalidParams)
 		}
 
-		// left->active / 首次加入时仅保留默认角色，不恢复历史角色。
+		// left/removed->active 或首次加入时仅保留默认角色，不恢复历史角色。
 		if shouldResetDefaultRole {
 			if err := txRoleRepo.DeleteUserOrgRoles(ctx, userID, org.ID); err != nil {
 				return errors.Wrap(errors.CodeDBError, err)

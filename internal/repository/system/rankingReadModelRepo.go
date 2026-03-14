@@ -74,10 +74,20 @@ func (r *rankingReadModelRepository) query(
 			COALESCE(luogu_user_details.passed_number, 0) AS luogu_score,
 			COALESCE(leetcode_user_details.user_slug, '') AS leetcode_identifier,
 			COALESCE(leetcode_user_details.user_avatar, '') AS leetcode_avatar,
-			COALESCE(leetcode_user_details.total_number, 0) AS leetcode_score`).
+			COALESCE(leetcode_user_details.total_number, 0) AS leetcode_score,
+			COALESCE(lanqiao_user_details.masked_phone, '') AS lanqiao_identifier,
+			'' AS lanqiao_avatar,
+			COALESCE(lanqiao_scores.lanqiao_score, 0) AS lanqiao_score`).
 		Joins("LEFT JOIN orgs current_orgs ON current_orgs.id = users.current_org_id").
 		Joins("LEFT JOIN luogu_user_details ON luogu_user_details.user_id = users.id").
 		Joins("LEFT JOIN leetcode_user_details ON leetcode_user_details.user_id = users.id").
+		Joins("LEFT JOIN lanqiao_user_details ON lanqiao_user_details.user_id = users.id").
+		Joins(`LEFT JOIN (
+			SELECT lud.user_id AS user_id, COUNT(luq.id) AS lanqiao_score
+			FROM lanqiao_user_details lud
+			LEFT JOIN lanqiao_user_questions luq ON luq.lanqiao_user_detail_id = lud.id
+			GROUP BY lud.user_id
+		) lanqiao_scores ON lanqiao_scores.user_id = users.id`).
 		Where("users.deleted_at IS NULL").
 		Order("users.id ASC")
 	if apply != nil {

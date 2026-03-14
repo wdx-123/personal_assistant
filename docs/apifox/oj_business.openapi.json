@@ -1,0 +1,1512 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "personal_assistant - OJ 业务接口",
+    "version": "1.0.0",
+    "description": "覆盖业务路由中的 5 个 OJ 相关接口，可直接导入 Apifox。\n\n接口范围：\n- POST /oj/bind\n- POST /oj/lanqiao/bind\n- POST /oj/stats\n- POST /oj/ranking_list\n- POST /oj/curve\n\n统一约束：\n- 以上接口都注册在 BusinessGroup，下游统一经过 JWTAuth 和 ActiveUserMW。\n- 当前 JWT 中间件支持两种 header 取 token：Authorization: Bearer <access_token> 或 x-access-token: <access_token>；同时也兼容 Cookie 中的 x-access-token。\n- JWT 缺失、Token 无效、Token 过期时，中间件返回旧版响应壳，HTTP 状态码仍为 200。\n- 账号被禁用或非 active 时，ActiveUserMW 返回 HTTP 401 的 BizResponse。\n\n实现现状说明：\n- /oj/bind、/oj/stats、/oj/ranking_list 使用旧版响应壳：code + data + messages/error。\n- /oj/lanqiao/bind、/oj/curve 使用新版 BizResponse：code + success + message + data + timestamp。\n- 本文件按仓库当前真实实现生成，方便直接导入 Apifox 联调。"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:9000",
+      "description": "本地开发环境，请按实际地址修改"
+    }
+  ],
+  "tags": [
+    {
+      "name": "用户基础信息",
+      "description": "当前登录用户的 OJ 账号绑定接口，包含洛谷/力扣通用绑定和蓝桥专用绑定。"
+    },
+    {
+      "name": "OJ业务",
+      "description": "当前登录用户的 OJ 统计、排行榜和刷题曲线查询接口。"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    },
+    {
+      "AccessTokenHeader": []
+    }
+  ],
+  "paths": {
+    "/oj/bind": {
+      "post": {
+        "tags": [
+          "用户基础信息"
+        ],
+        "summary": "绑定洛谷或力扣账号",
+        "description": "绑定当前登录用户的洛谷或力扣公开账号。\n\n平台规则：\n- platform=luogu：identifier 必须传洛谷用户 UID 字符串，例如 \"123456\"；不是用户名，也不是题号。\n- platform=leetcode：identifier 必须传 LeetCode 用户公开 slug，例如 \"alice-cn\"。\n- 蓝桥不走这个接口，必须使用 /oj/lanqiao/bind。\n\n换绑和冷却规则：\n- 已绑定同平台账号时，服务端会检查绑定冷却期，默认按 global.Config.System.BindCoolDownHours 控制；配置缺失时默认 24 小时。\n- 冷却期内重复绑定会返回 40005。\n- 冷却期结束后，如果改绑为新的 identifier，旧的题目关系和缓存会被清理后重建。\n\n响应规则：\n- 成功返回旧版响应壳：code/data/messages。\n- 参数绑定失败、业务失败、JWT 缺失或 Token 无效同样可能返回 HTTP 200，请以前端业务码为准。\n- 账号被禁用时返回 HTTP 401 的 BizResponse。",
+        "operationId": "BindOJAccount",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindOJAccountReq"
+              },
+              "examples": {
+                "绑定力扣账号": {
+                  "value": {
+                    "platform": "leetcode",
+                    "identifier": "alice-cn"
+                  }
+                },
+                "绑定洛谷账号": {
+                  "value": {
+                    "platform": "luogu",
+                    "identifier": "123456"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功、参数绑定失败、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与返回壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/LegacySuccessResponseBindOJ"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "绑定成功-力扣": {
+                    "value": {
+                      "code": 0,
+                      "data": {
+                        "platform": "leetcode",
+                        "identifier": "alice-cn",
+                        "real_name": "Alice",
+                        "user_avatar": "https://cdn.example.com/avatar/alice.png",
+                        "passed_number": 428,
+                        "submit_success_count": 0,
+                        "submit_failed_count": 0
+                      },
+                      "messages": "绑定成功"
+                    }
+                  },
+                  "绑定成功-洛谷": {
+                    "value": {
+                      "code": 0,
+                      "data": {
+                        "platform": "luogu",
+                        "identifier": "123456",
+                        "real_name": "洛谷用户A",
+                        "user_avatar": "https://cdn.example.com/avatar/luogu-a.png",
+                        "passed_number": 213,
+                        "submit_success_count": 0,
+                        "submit_failed_count": 0
+                      },
+                      "messages": "绑定成功"
+                    }
+                  },
+                  "参数绑定失败": {
+                    "value": {
+                      "code": 10002,
+                      "data": null,
+                      "error": "绑定数据错误: Key: 'BindOJAccountReq.Platform' Error:Field validation for 'Platform' failed on the 'oneof' tag"
+                    }
+                  },
+                  "标识为空白": {
+                    "value": {
+                      "code": 40004,
+                      "data": null,
+                      "error": "绑定OJ账号失败: invalid identifier"
+                    }
+                  },
+                  "冷却期内重复绑定": {
+                    "value": {
+                      "code": 40005,
+                      "data": null,
+                      "error": "绑定OJ账号失败: bind operation is in cooldown"
+                    }
+                  },
+                  "洛谷账户受保护或远程抓取失败": {
+                    "value": {
+                      "code": 10004,
+                      "data": null,
+                      "error": "绑定OJ账号失败: 由于您的洛谷账户受到官方保护，暂时无法爬取，请联系管理员"
+                    }
+                  },
+                  "未登录-缺少AccessToken": {
+                    "value": {
+                      "code": 11005,
+                      "data": {
+                        "message": "Access token is required",
+                        "reload": true
+                      },
+                      "error": "Access token is required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "example": {
+                  "code": 11000,
+                  "success": false,
+                  "message": "账号已禁用",
+                  "data": null,
+                  "timestamp": 1773399170123
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oj/lanqiao/bind": {
+      "post": {
+        "tags": [
+          "用户基础信息"
+        ],
+        "summary": "绑定蓝桥账号",
+        "description": "绑定当前登录用户的蓝桥账号。\n\n请求规则：\n- 需要传手机号和密码。\n- phone 支持常见输入形式，服务端会归一化为 11 位手机号；例如 \"+86 13800138000\"、\"86 13800138000\"、\"138-0013-8000\" 都会被清洗。\n- password 不能为空。\n\n安全与数据语义：\n- 服务端不会明文存储手机号和密码，会转为哈希和密文存储。\n- 返回的 identifier 是脱敏手机号，例如 \"138****8000\"。\n- passed_number 表示蓝桥去重后的通过题总数，是业务真相。\n- submit_success_count 和 submit_failed_count 表示蓝桥远端提交统计，不等于通过题总数。\n\n冲突与错误：\n- 同一组蓝桥账号凭据只能绑定到一个系统用户；若已被其他用户绑定，返回 40002。\n- 远端鉴权失败时返回 40007。\n- 远端同步失败时返回 40006。\n\n响应规则：\n- 成功和大多数业务失败返回新版 BizResponse。\n- JWT 缺失或 Token 无效时仍可能收到旧版认证失败响应壳，HTTP 状态码为 200。",
+        "operationId": "BindLanqiaoAccount",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BindLanqiaoAccountReq"
+              },
+              "examples": {
+                "标准写法": {
+                  "value": {
+                    "phone": "13800138000",
+                    "password": "LanQiao@2026"
+                  }
+                },
+                "带国家码写法": {
+                  "value": {
+                    "phone": "+86 13800138000",
+                    "password": "LanQiao@2026"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与返回壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizSuccessResponseBindLanqiao"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "绑定成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "platform": "lanqiao",
+                        "identifier": "138****8000",
+                        "real_name": "",
+                        "user_avatar": "",
+                        "passed_number": 56,
+                        "submit_success_count": 132,
+                        "submit_failed_count": 17
+                      },
+                      "timestamp": 1773399180123
+                    }
+                  },
+                  "手机号格式非法": {
+                    "value": {
+                      "code": 40007,
+                      "success": false,
+                      "message": "蓝桥手机号格式不合法",
+                      "data": null,
+                      "timestamp": 1773399181123
+                    }
+                  },
+                  "密码为空": {
+                    "value": {
+                      "code": 40007,
+                      "success": false,
+                      "message": "蓝桥密码不能为空",
+                      "data": null,
+                      "timestamp": 1773399182123
+                    }
+                  },
+                  "账号已被其他用户绑定": {
+                    "value": {
+                      "code": 40002,
+                      "success": false,
+                      "message": "OJ账号已绑定",
+                      "data": null,
+                      "timestamp": 1773399183123
+                    }
+                  },
+                  "账号或密码错误": {
+                    "value": {
+                      "code": 40007,
+                      "success": false,
+                      "message": "蓝桥账号或密码不正确",
+                      "data": null,
+                      "timestamp": 1773399184123
+                    }
+                  },
+                  "蓝桥远端同步失败": {
+                    "value": {
+                      "code": 40006,
+                      "success": false,
+                      "message": "OJ数据同步失败",
+                      "data": null,
+                      "timestamp": 1773399185123
+                    }
+                  },
+                  "未登录-缺少AccessToken": {
+                    "value": {
+                      "code": 11005,
+                      "data": {
+                        "message": "Access token is required",
+                        "reload": true
+                      },
+                      "error": "Access token is required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "example": {
+                  "code": 11000,
+                  "success": false,
+                  "message": "账号已禁用",
+                  "data": null,
+                  "timestamp": 1773399186123
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oj/stats": {
+      "post": {
+        "tags": [
+          "OJ业务"
+        ],
+        "summary": "获取当前用户 OJ 统计信息",
+        "description": "查询当前登录用户在指定 OJ 平台上的基础统计卡片。\n\n平台规则：\n- platform=leetcode：返回用户 slug、昵称、头像、总通过题数。\n- platform=luogu：返回洛谷 UID、昵称、头像、通过题数。\n- platform=lanqiao：返回脱敏手机号、去重通过题总数，以及蓝桥提交成功和失败统计。\n\n字段语义：\n- passed_number 是统一的通过题总数字段。\n- submit_success_count 和 submit_failed_count 只有蓝桥有业务含义，其他平台固定返回 0。\n- 蓝桥的 passed_number 来源于题目事实表去重统计，不等于 submit_success_count。\n\n响应规则：\n- 当前接口成功返回旧版响应壳：code/data/messages。\n- 未绑定目标平台账号时返回 40001，但仍是旧版失败响应壳。\n- 参数缺失或非法会在 Controller 绑定阶段返回 10002。",
+        "operationId": "GetOJStats",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OJStatsReq"
+              },
+              "examples": {
+                "查询力扣统计": {
+                  "value": {
+                    "platform": "leetcode"
+                  }
+                },
+                "查询洛谷统计": {
+                  "value": {
+                    "platform": "luogu"
+                  }
+                },
+                "查询蓝桥统计": {
+                  "value": {
+                    "platform": "lanqiao"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功、参数绑定失败、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与返回壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/LegacySuccessResponseStats"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "查询成功-力扣": {
+                    "value": {
+                      "code": 0,
+                      "data": {
+                        "platform": "leetcode",
+                        "identifier": "alice-cn",
+                        "real_name": "Alice",
+                        "user_avatar": "https://cdn.example.com/avatar/alice.png",
+                        "passed_number": 428,
+                        "submit_success_count": 0,
+                        "submit_failed_count": 0
+                      },
+                      "messages": "获取成功"
+                    }
+                  },
+                  "查询成功-洛谷": {
+                    "value": {
+                      "code": 0,
+                      "data": {
+                        "platform": "luogu",
+                        "identifier": "123456",
+                        "real_name": "洛谷用户A",
+                        "user_avatar": "https://cdn.example.com/avatar/luogu-a.png",
+                        "passed_number": 213,
+                        "submit_success_count": 0,
+                        "submit_failed_count": 0
+                      },
+                      "messages": "获取成功"
+                    }
+                  },
+                  "查询成功-蓝桥": {
+                    "value": {
+                      "code": 0,
+                      "data": {
+                        "platform": "lanqiao",
+                        "identifier": "138****8000",
+                        "real_name": "",
+                        "user_avatar": "",
+                        "passed_number": 56,
+                        "submit_success_count": 132,
+                        "submit_failed_count": 17
+                      },
+                      "messages": "获取成功"
+                    }
+                  },
+                  "目标平台未绑定": {
+                    "value": {
+                      "code": 40001,
+                      "data": null,
+                      "error": "获取用户卡片信息失败: oj account not bound"
+                    }
+                  },
+                  "参数绑定失败": {
+                    "value": {
+                      "code": 10002,
+                      "data": null,
+                      "error": "参数错误: Key: 'OJStatsReq.Platform' Error:Field validation for 'Platform' failed on the 'oneof' tag"
+                    }
+                  },
+                  "未登录-缺少AccessToken": {
+                    "value": {
+                      "code": 11005,
+                      "data": {
+                        "message": "Access token is required",
+                        "reload": true
+                      },
+                      "error": "Access token is required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "example": {
+                  "code": 11000,
+                  "success": false,
+                  "message": "账号已禁用",
+                  "data": null,
+                  "timestamp": 1773399190123
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oj/ranking_list": {
+      "post": {
+        "tags": [
+          "OJ业务"
+        ],
+        "summary": "查询 OJ 排行榜",
+        "description": "查询指定平台的排行榜。\n\n请求参数：\n- platform：必填，支持 luogu / leetcode / lanqiao。\n- page：页码，默认 1。\n- page_size：每页条数，默认 20，最大 100。\n- scope：榜单范围，支持 current_org / all_members / org；默认 current_org。\n- org_id：仅当 scope=org 时需要传入。\n\n权限语义：\n- all_members：查询全体成员总榜。\n- current_org：查询当前组织榜；若当前组织本身就是内置全体成员组织，服务端会自动映射到总榜。\n- org：查询指定组织榜；普通用户只能查询自己仍为 active 成员的组织，super_admin 可以查询任意组织。\n\n排名语义：\n- 排行榜基于 Redis ZSet 倒序查询，分数越高越靠前。\n- total_passed 是该平台的排行榜分值。\n- platform_details 只会填充当前 platform 对应的一个字段。\n\n响应规则：\n- 当前接口使用旧版响应壳。\n- scope、org_id 等大多数业务校验失败目前会落到 10004，并把具体原因拼在 error 字段中。",
+        "operationId": "GetOJRankingList",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OJRankingListReq"
+              },
+              "examples": {
+                "当前组织-蓝桥榜": {
+                  "value": {
+                    "page": 1,
+                    "page_size": 20,
+                    "platform": "lanqiao",
+                    "scope": "current_org"
+                  }
+                },
+                "全体成员-力扣总榜": {
+                  "value": {
+                    "page": 1,
+                    "page_size": 20,
+                    "platform": "leetcode",
+                    "scope": "all_members"
+                  }
+                },
+                "指定组织-洛谷榜": {
+                  "value": {
+                    "page": 1,
+                    "page_size": 20,
+                    "platform": "luogu",
+                    "scope": "org",
+                    "org_id": 39
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功、参数绑定失败、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与返回壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/LegacySuccessResponseRanking"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "查询成功-蓝桥当前组织榜": {
+                    "value": {
+                      "code": 0,
+                      "data": {
+                        "list": [
+                          {
+                            "rank": 1,
+                            "user_id": 12,
+                            "real_name": "alice",
+                            "avatar": "https://cdn.example.com/avatar/alice.png",
+                            "total_passed": 56,
+                            "platform_details": {
+                              "lanqiao": 56
+                            }
+                          },
+                          {
+                            "rank": 2,
+                            "user_id": 18,
+                            "real_name": "bob",
+                            "avatar": "https://cdn.example.com/avatar/bob.png",
+                            "total_passed": 48,
+                            "platform_details": {
+                              "lanqiao": 48
+                            }
+                          }
+                        ],
+                        "my_rank": {
+                          "rank": 7,
+                          "total_passed": 31
+                        },
+                        "total": 86
+                      },
+                      "messages": "获取成功"
+                    }
+                  },
+                  "查询成功-力扣总榜": {
+                    "value": {
+                      "code": 0,
+                      "data": {
+                        "list": [
+                          {
+                            "rank": 1,
+                            "user_id": 3,
+                            "real_name": "charlie",
+                            "avatar": "https://cdn.example.com/avatar/charlie.png",
+                            "total_passed": 428,
+                            "platform_details": {
+                              "leetcode": 428
+                            }
+                          }
+                        ],
+                        "my_rank": {
+                          "rank": 19,
+                          "total_passed": 211
+                        },
+                        "total": 120
+                      },
+                      "messages": "获取成功"
+                    }
+                  },
+                  "缺少platform": {
+                    "value": {
+                      "code": 40003,
+                      "data": null,
+                      "error": "获取排行榜失败: invalid platform"
+                    }
+                  },
+                  "scope为org但缺少org_id": {
+                    "value": {
+                      "code": 10004,
+                      "data": null,
+                      "error": "获取排行榜失败: org_id is required for org scope"
+                    }
+                  },
+                  "无权查询指定组织": {
+                    "value": {
+                      "code": 10004,
+                      "data": null,
+                      "error": "获取排行榜失败: user organization not active"
+                    }
+                  },
+                  "未登录-缺少AccessToken": {
+                    "value": {
+                      "code": 11005,
+                      "data": {
+                        "message": "Access token is required",
+                        "reload": true
+                      },
+                      "error": "Access token is required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "example": {
+                  "code": 11000,
+                  "success": false,
+                  "message": "账号已禁用",
+                  "data": null,
+                  "timestamp": 1773399195123
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oj/curve": {
+      "post": {
+        "tags": [
+          "OJ业务"
+        ],
+        "summary": "获取 OJ 成绩曲线",
+        "description": "返回当前登录用户在指定 OJ 平台最近 30 天的刷题曲线。\n\n平台规则：\n- 支持 leetcode / luogu / lanqiao。\n- 只能查询当前登录用户自己的曲线，不支持传 user_id。\n\n数据语义：\n- points 按日期升序排列，date 固定为 YYYY-MM-DD。\n- 已绑定平台账号时，通常返回 30 个点；缺失日期会补零。\n- 未绑定目标平台账号时，不返回业务失败，而是返回成功响应，data.bound=false，points=[]。\n- current_total 表示当前平台累计通过题总数。\n- last_sync_at 表示最近一次参与构建曲线的详情更新时间或投影更新时间。\n\n修复机制：\n- 如果最近 30 天投影数据缺失、不连续，或落后于平台详情更新时间，Service 会尝试自动重建最近窗口。\n- 自动重建失败时返回 40006。\n- 日期窗口按 Asia/Shanghai 时区构建。",
+        "operationId": "GetOJCurve",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OJCurveReq"
+              },
+              "examples": {
+                "查询力扣曲线": {
+                  "value": {
+                    "platform": "leetcode"
+                  }
+                },
+                "查询洛谷曲线": {
+                  "value": {
+                    "platform": "luogu"
+                  }
+                },
+                "查询蓝桥曲线": {
+                  "value": {
+                    "platform": "lanqiao"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与返回壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizSuccessResponseCurve"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "查询成功-力扣已绑定": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "platform": "leetcode",
+                        "bound": true,
+                        "current_total": 428,
+                        "last_sync_at": "2026-03-13T08:12:45+08:00",
+                        "points": [
+                          {
+                            "date": "2026-02-12",
+                            "solved_count": 0,
+                            "solved_total": 381
+                          },
+                          {
+                            "date": "2026-02-13",
+                            "solved_count": 2,
+                            "solved_total": 383
+                          },
+                          {
+                            "date": "2026-02-14",
+                            "solved_count": 1,
+                            "solved_total": 384
+                          },
+                          {
+                            "date": "2026-03-13",
+                            "solved_count": 3,
+                            "solved_total": 428
+                          }
+                        ]
+                      },
+                      "timestamp": 1773399200123
+                    }
+                  },
+                  "查询成功-蓝桥已绑定": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "platform": "lanqiao",
+                        "bound": true,
+                        "current_total": 56,
+                        "last_sync_at": "2026-03-13T06:32:10+08:00",
+                        "points": [
+                          {
+                            "date": "2026-03-10",
+                            "solved_count": 1,
+                            "solved_total": 52
+                          },
+                          {
+                            "date": "2026-03-11",
+                            "solved_count": 0,
+                            "solved_total": 52
+                          },
+                          {
+                            "date": "2026-03-12",
+                            "solved_count": 2,
+                            "solved_total": 54
+                          },
+                          {
+                            "date": "2026-03-13",
+                            "solved_count": 2,
+                            "solved_total": 56
+                          }
+                        ]
+                      },
+                      "timestamp": 1773399201123
+                    }
+                  },
+                  "查询成功-未绑定": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "platform": "luogu",
+                        "bound": false,
+                        "current_total": 0,
+                        "points": []
+                      },
+                      "timestamp": 1773399202123
+                    }
+                  },
+                  "参数绑定失败": {
+                    "value": {
+                      "code": 10002,
+                      "success": false,
+                      "message": "参数错误: Key: 'OJCurveReq.Platform' Error:Field validation for 'Platform' failed on the 'oneof' tag",
+                      "data": null,
+                      "timestamp": 1773399203123
+                    }
+                  },
+                  "OJ最近窗口重建失败": {
+                    "value": {
+                      "code": 40006,
+                      "success": false,
+                      "message": "OJ数据同步失败",
+                      "data": null,
+                      "timestamp": 1773399204123
+                    }
+                  },
+                  "数据库错误": {
+                    "value": {
+                      "code": 10005,
+                      "success": false,
+                      "message": "数据库错误",
+                      "data": null,
+                      "timestamp": 1773399205123
+                    }
+                  },
+                  "未登录-缺少AccessToken": {
+                    "value": {
+                      "code": 11005,
+                      "data": {
+                        "message": "Access token is required",
+                        "reload": true
+                      },
+                      "error": "Access token is required"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "example": {
+                  "code": 11000,
+                  "success": false,
+                  "message": "账号已禁用",
+                  "data": null,
+                  "timestamp": 1773399206123
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "标准 Bearer Token 方式：Authorization: Bearer <access_token>"
+      },
+      "AccessTokenHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-access-token",
+        "description": "当前 JWT 中间件同样支持通过 x-access-token 请求头传递 access token。"
+      }
+    },
+    "schemas": {
+      "BindOJAccountReq": {
+        "type": "object",
+        "description": "洛谷和力扣通用绑定请求体。蓝桥不适用。",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "leetcode",
+              "luogu"
+            ],
+            "description": "绑定平台。\n- leetcode：力扣\n- luogu：洛谷"
+          },
+          "identifier": {
+            "type": "string",
+            "description": "平台账户标识。\n- leetcode：用户 slug，例如 alice-cn\n- luogu：数值型 UID 字符串，例如 123456\n注意：仅空白字符串会在 Service 中被判为 40004。"
+          }
+        },
+        "required": [
+          "platform",
+          "identifier"
+        ]
+      },
+      "BindLanqiaoAccountReq": {
+        "type": "object",
+        "description": "蓝桥绑定请求体。",
+        "properties": {
+          "phone": {
+            "type": "string",
+            "description": "蓝桥登录手机号。服务端会自动去掉空格、短横线、括号和 +86/86 前缀，并归一化为 11 位手机号。",
+            "example": "13800138000"
+          },
+          "password": {
+            "type": "string",
+            "description": "蓝桥登录密码。仅通过 HTTPS 传输，服务端不会明文存储。",
+            "example": "LanQiao@2026"
+          }
+        },
+        "required": [
+          "phone",
+          "password"
+        ]
+      },
+      "OJStatsReq": {
+        "type": "object",
+        "description": "当前用户 OJ 统计查询请求体。",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "leetcode",
+              "luogu",
+              "lanqiao"
+            ],
+            "description": "目标 OJ 平台。"
+          }
+        },
+        "required": [
+          "platform"
+        ]
+      },
+      "OJRankingListReq": {
+        "type": "object",
+        "description": "排行榜查询请求体。",
+        "properties": {
+          "page": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 1,
+            "description": "页码。缺省时服务端按 1 处理。"
+          },
+          "page_size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 20,
+            "description": "每页条数。缺省时服务端按 20 处理，超过 100 会被截断到 100。"
+          },
+          "platform": {
+            "type": "string",
+            "enum": [
+              "leetcode",
+              "luogu",
+              "lanqiao"
+            ],
+            "description": "排行榜平台。虽然当前 DTO 标签允许缺省，但 Service 实际要求该字段必须有值。"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "current_org",
+              "all_members",
+              "org"
+            ],
+            "default": "current_org",
+            "description": "榜单范围。\n- current_org：当前组织榜\n- all_members：全体成员总榜\n- org：指定组织榜"
+          },
+          "org_id": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 1,
+            "nullable": true,
+            "description": "组织 ID。仅当 scope=org 时必填。"
+          }
+        },
+        "required": [
+          "platform"
+        ]
+      },
+      "OJCurveReq": {
+        "type": "object",
+        "description": "当前用户 OJ 曲线查询请求体。",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "leetcode",
+              "luogu",
+              "lanqiao"
+            ],
+            "description": "目标 OJ 平台，必须使用小写。"
+          }
+        },
+        "required": [
+          "platform"
+        ]
+      },
+      "BindOJAccountData": {
+        "type": "object",
+        "description": "绑定成功或统计查询成功时返回的平台信息结构。",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "leetcode",
+              "luogu",
+              "lanqiao"
+            ],
+            "description": "当前返回的平台标识。"
+          },
+          "identifier": {
+            "type": "string",
+            "description": "平台展示标识。\n- leetcode：用户 slug\n- luogu：UID 字符串\n- lanqiao：脱敏手机号"
+          },
+          "real_name": {
+            "type": "string",
+            "description": "平台昵称或真实名。\n- leetcode：公开昵称\n- luogu：用户名称\n- lanqiao：当前无该字段，返回空字符串"
+          },
+          "user_avatar": {
+            "type": "string",
+            "description": "平台头像 URL。\n- leetcode 和 luogu 有业务含义\n- lanqiao 当前返回空字符串"
+          },
+          "passed_number": {
+            "type": "integer",
+            "description": "统一的通过题总数。\n- leetcode：TotalNumber\n- luogu：PassedNumber\n- lanqiao：题目事实表去重后的通过题总数"
+          },
+          "submit_success_count": {
+            "type": "integer",
+            "description": "蓝桥提交成功次数统计，仅 lanqiao 有业务含义；其他平台固定为 0。"
+          },
+          "submit_failed_count": {
+            "type": "integer",
+            "description": "蓝桥提交失败次数统计，仅 lanqiao 有业务含义；其他平台固定为 0。"
+          }
+        },
+        "required": [
+          "platform",
+          "identifier",
+          "real_name",
+          "user_avatar",
+          "passed_number",
+          "submit_success_count",
+          "submit_failed_count"
+        ]
+      },
+      "OJRankingListRespData": {
+        "type": "object",
+        "description": "排行榜响应数据。",
+        "properties": {
+          "list": {
+            "type": "array",
+            "description": "当前页榜单列表。",
+            "items": {
+              "$ref": "#/components/schemas/OJRankingListItem"
+            }
+          },
+          "my_rank": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OJRankingMyRank"
+              }
+            ],
+            "nullable": true,
+            "description": "当前登录用户在目标榜单中的名次信息。未上榜时可能为 null。"
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "榜单总人数。"
+          }
+        },
+        "required": [
+          "list",
+          "total"
+        ]
+      },
+      "OJRankingListItem": {
+        "type": "object",
+        "description": "排行榜单条记录。",
+        "properties": {
+          "rank": {
+            "type": "integer",
+            "description": "真实排名，从 1 开始。"
+          },
+          "user_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "系统用户 ID。"
+          },
+          "real_name": {
+            "type": "string",
+            "description": "展示名称。当前实现实际使用系统用户名，而不是平台昵称。"
+          },
+          "avatar": {
+            "type": "string",
+            "description": "展示头像。优先取平台头像，缺失时回退到系统头像。"
+          },
+          "total_passed": {
+            "type": "integer",
+            "description": "当前平台排行榜分值，即榜单排序分数。"
+          },
+          "platform_details": {
+            "$ref": "#/components/schemas/OJRankingPlatformDetails"
+          }
+        },
+        "required": [
+          "rank",
+          "user_id",
+          "real_name",
+          "avatar",
+          "total_passed"
+        ]
+      },
+      "OJRankingPlatformDetails": {
+        "type": "object",
+        "description": "平台维度详情。当前只会填充与 platform 对应的一个字段。",
+        "properties": {
+          "luogu": {
+            "type": "integer",
+            "description": "洛谷通过题数。"
+          },
+          "leetcode": {
+            "type": "integer",
+            "description": "力扣总通过题数。"
+          },
+          "lanqiao": {
+            "type": "integer",
+            "description": "蓝桥通过题总数。"
+          }
+        }
+      },
+      "OJRankingMyRank": {
+        "type": "object",
+        "description": "当前登录用户的榜单名次。",
+        "properties": {
+          "rank": {
+            "type": "integer",
+            "description": "名次，从 1 开始。"
+          },
+          "total_passed": {
+            "type": "integer",
+            "description": "当前用户在该平台榜单上的分值。"
+          }
+        },
+        "required": [
+          "rank",
+          "total_passed"
+        ]
+      },
+      "OJCurveRespData": {
+        "type": "object",
+        "description": "最近 30 天的 OJ 成绩曲线数据。未绑定时 bound=false 且 points 为空数组。",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "leetcode",
+              "luogu",
+              "lanqiao"
+            ],
+            "description": "实际返回的平台标识。"
+          },
+          "bound": {
+            "type": "boolean",
+            "description": "当前用户是否已绑定该平台账号。"
+          },
+          "current_total": {
+            "type": "integer",
+            "description": "当前平台累计通过题总数。"
+          },
+          "last_sync_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "最近一次用于构建曲线的数据同步时间，RFC3339 格式。未绑定或暂无可用时间时可能省略。"
+          },
+          "points": {
+            "type": "array",
+            "description": "最近 30 天的曲线点，按日期升序排列。",
+            "items": {
+              "$ref": "#/components/schemas/OJCurvePoint"
+            }
+          }
+        },
+        "required": [
+          "platform",
+          "bound",
+          "current_total",
+          "points"
+        ]
+      },
+      "OJCurvePoint": {
+        "type": "object",
+        "description": "单日曲线点。",
+        "properties": {
+          "date": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "description": "统计日期，格式 YYYY-MM-DD。",
+            "example": "2026-03-13"
+          },
+          "solved_count": {
+            "type": "integer",
+            "description": "该自然日新增通过题数。没有新增则为 0。"
+          },
+          "solved_total": {
+            "type": "integer",
+            "description": "截至该自然日结束时的累计通过题数。"
+          }
+        },
+        "required": [
+          "date",
+          "solved_count",
+          "solved_total"
+        ]
+      },
+      "LegacySuccessResponseBindOJ": {
+        "type": "object",
+        "description": "旧版成功响应壳，适用于 /oj/bind。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0
+            ],
+            "description": "业务码。0 表示成功。"
+          },
+          "data": {
+            "$ref": "#/components/schemas/BindOJAccountData"
+          },
+          "messages": {
+            "type": "string",
+            "description": "成功消息。当前实现固定为绑定成功。"
+          }
+        },
+        "required": [
+          "code",
+          "data",
+          "messages"
+        ]
+      },
+      "LegacySuccessResponseStats": {
+        "type": "object",
+        "description": "旧版成功响应壳，适用于 /oj/stats。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0
+            ],
+            "description": "业务码。0 表示成功。"
+          },
+          "data": {
+            "$ref": "#/components/schemas/BindOJAccountData"
+          },
+          "messages": {
+            "type": "string",
+            "description": "成功消息。当前实现固定为获取成功。"
+          }
+        },
+        "required": [
+          "code",
+          "data",
+          "messages"
+        ]
+      },
+      "LegacySuccessResponseRanking": {
+        "type": "object",
+        "description": "旧版成功响应壳，适用于 /oj/ranking_list。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0
+            ],
+            "description": "业务码。0 表示成功。"
+          },
+          "data": {
+            "$ref": "#/components/schemas/OJRankingListRespData"
+          },
+          "messages": {
+            "type": "string",
+            "description": "成功消息。当前实现固定为获取成功。"
+          }
+        },
+        "required": [
+          "code",
+          "data",
+          "messages"
+        ]
+      },
+      "LegacyErrorResponse": {
+        "type": "object",
+        "description": "旧版失败响应壳，适用于仍使用 response.NewResponse 的接口。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "业务错误码。常见值：10002=参数绑定失败，10004=内部错误，40001=OJ账号未绑定，40003=平台非法，40004=标识非法，40005=绑定冷却中。"
+          },
+          "data": {
+            "nullable": true,
+            "description": "失败时通常为 null。"
+          },
+          "error": {
+            "type": "string",
+            "description": "错误描述。当前实现通常会带上接口语义前缀，例如获取排行榜失败。"
+          }
+        },
+        "required": [
+          "code",
+          "data",
+          "error"
+        ]
+      },
+      "BizSuccessResponseBindLanqiao": {
+        "type": "object",
+        "description": "新版 BizResponse 成功壳，适用于 /oj/lanqiao/bind。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0
+            ],
+            "description": "业务码。0 表示成功。"
+          },
+          "success": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "固定为 true。"
+          },
+          "message": {
+            "type": "string",
+            "description": "成功消息。当前实现固定为操作成功。"
+          },
+          "data": {
+            "$ref": "#/components/schemas/BindOJAccountData"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "服务端响应时间戳，毫秒。"
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizSuccessResponseCurve": {
+        "type": "object",
+        "description": "新版 BizResponse 成功壳，适用于 /oj/curve。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              0
+            ],
+            "description": "业务码。0 表示成功。"
+          },
+          "success": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "固定为 true。"
+          },
+          "message": {
+            "type": "string",
+            "description": "成功消息。当前实现固定为操作成功。"
+          },
+          "data": {
+            "$ref": "#/components/schemas/OJCurveRespData"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "服务端响应时间戳，毫秒。"
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizErrorResponse": {
+        "type": "object",
+        "description": "新版 BizResponse 失败壳。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "description": "业务错误码。常见值：10002=参数绑定失败，10005=数据库错误，40002=账号已绑定，40006=OJ数据同步失败，40007=OJ凭据无效。"
+          },
+          "success": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "description": "固定为 false。"
+          },
+          "message": {
+            "type": "string",
+            "description": "业务错误消息。Service 返回 BizError 时通常使用错误码默认文案或自定义业务提示。"
+          },
+          "data": {
+            "nullable": true,
+            "description": "失败时通常为 null。"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "服务端响应时间戳，毫秒。"
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "AuthResponseData": {
+        "type": "object",
+        "description": "JWTAuth 旧版认证失败响应中的 data 结构。",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "认证失败原因。"
+          },
+          "reload": {
+            "type": "boolean",
+            "description": "提示前端应重置状态并重新登录。"
+          }
+        },
+        "required": [
+          "message",
+          "reload"
+        ]
+      },
+      "LegacyTokenErrorResponse": {
+        "type": "object",
+        "description": "JWTAuth 中间件返回的旧版认证失败响应壳。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              11001,
+              11003,
+              11005
+            ],
+            "description": "认证相关业务码。11005=需要登录，11001=Token 已过期，11003=Token 无效。"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AuthResponseData"
+          },
+          "error": {
+            "type": "string",
+            "description": "认证失败原因。"
+          }
+        },
+        "required": [
+          "code",
+          "data",
+          "error"
+        ]
+      },
+      "BizUnauthorizedResponse": {
+        "type": "object",
+        "description": "ActiveUserMW 拦截时返回的 HTTP 401 响应。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "enum": [
+              11000
+            ],
+            "description": "未授权业务码。"
+          },
+          "success": {
+            "type": "boolean",
+            "enum": [
+              false
+            ],
+            "description": "固定为 false。"
+          },
+          "message": {
+            "type": "string",
+            "description": "未授权说明，例如账号已禁用。"
+          },
+          "data": {
+            "nullable": true,
+            "description": "当前中间件返回为 null。"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "服务端响应时间戳，毫秒。"
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      }
+    }
+  }
+}

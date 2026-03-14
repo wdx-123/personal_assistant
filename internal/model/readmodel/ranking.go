@@ -19,6 +19,10 @@ type Ranking struct {
 	LeetcodeIdentifier string `gorm:"column:leetcode_identifier"`
 	LeetcodeAvatar     string `gorm:"column:leetcode_avatar"`
 	LeetcodeScore      int    `gorm:"column:leetcode_score"`
+
+	LanqiaoIdentifier string `gorm:"column:lanqiao_identifier"`
+	LanqiaoAvatar     string `gorm:"column:lanqiao_avatar"`
+	LanqiaoScore      int    `gorm:"column:lanqiao_score"`
 }
 
 func (m *Ranking) IsActive() bool {

@@ -47,6 +47,56 @@ func TestOrgServiceJoinOrgByInviteCodeAssignsConfiguredDefaultRole(t *testing.T)
 	}
 }
 
+func TestOrgServiceJoinOrgByInviteCodeReactivatesRemovedMemberWithDefaultRole(t *testing.T) {
+	ctx := context.Background()
+	env := newAuthorizationTestEnv(t)
+
+	user := createUser(t, env, "2003")
+	org := createOrg(t, env, 92)
+	defaultRole := createRole(t, env, "observer_rejoin")
+	legacyRole := createRole(t, env, "legacy_rejoin")
+
+	seedOrgMember(t, env, org.ID, user.ID, consts.OrgMemberStatusRemoved)
+	assignUserRole(t, env, user.ID, org.ID, legacyRole.ID)
+
+	oldDefaultRoleCode := global.Config.System.DefaultRoleCode
+	global.Config.System.DefaultRoleCode = defaultRole.Code
+	t.Cleanup(func() {
+		global.Config.System.DefaultRoleCode = oldDefaultRoleCode
+	})
+
+	if err := env.orgService.JoinOrgByInviteCode(ctx, user.ID, org.Code); err != nil {
+		t.Fatalf("JoinOrgByInviteCode() error = %v", err)
+	}
+
+	var member entity.OrgMember
+	if err := env.db.Where("org_id = ? AND user_id = ?", org.ID, user.ID).First(&member).Error; err != nil {
+		t.Fatalf("reload org member: %v", err)
+	}
+	if member.MemberStatus != consts.OrgMemberStatusActive {
+		t.Fatalf("member status = %d, want %d", member.MemberStatus, consts.OrgMemberStatusActive)
+	}
+
+	roles, err := env.userService.GetUserRoles(ctx, user.ID, org.ID)
+	if err != nil {
+		t.Fatalf("GetUserRoles() error = %v", err)
+	}
+	if len(roles) != 1 {
+		t.Fatalf("roles len = %d, want 1", len(roles))
+	}
+	if roles[0].Code != defaultRole.Code {
+		t.Fatalf("role code = %s, want %s", roles[0].Code, defaultRole.Code)
+	}
+
+	var refreshed entity.User
+	if err := env.db.First(&refreshed, user.ID).Error; err != nil {
+		t.Fatalf("reload user: %v", err)
+	}
+	if refreshed.CurrentOrgID == nil || *refreshed.CurrentOrgID != org.ID {
+		t.Fatalf("current_org_id = %v, want %d", refreshed.CurrentOrgID, org.ID)
+	}
+}
+
 func TestOrgServiceRecoverMemberFallsBackToBuiltinMemberRole(t *testing.T) {
 	ctx := context.Background()
 	env := newAuthorizationTestEnv(t)
