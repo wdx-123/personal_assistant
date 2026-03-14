@@ -326,7 +326,7 @@
           "OJ业务"
         ],
         "summary": "获取当前用户 OJ 统计信息",
-        "description": "查询当前登录用户在指定 OJ 平台上的基础统计卡片。\n\n平台规则：\n- platform=leetcode：返回用户 slug、昵称、头像、总通过题数。\n- platform=luogu：返回洛谷 UID、昵称、头像、通过题数。\n- platform=lanqiao：返回脱敏手机号、去重通过题总数，以及蓝桥提交成功和失败统计。\n\n字段语义：\n- passed_number 是统一的通过题总数字段。\n- submit_success_count 和 submit_failed_count 只有蓝桥有业务含义，其他平台固定返回 0。\n- 蓝桥的 passed_number 来源于题目事实表去重统计，不等于 submit_success_count。\n\n响应规则：\n- 当前接口成功返回旧版响应壳：code/data/messages。\n- 未绑定目标平台账号时返回 40001，但仍是旧版失败响应壳。\n- 参数缺失或非法会在 Controller 绑定阶段返回 10002。",
+        "description": "查询当前登录用户在指定 OJ 平台上的基础统计卡片。\n\n平台规则：\n- platform=leetcode：返回用户 slug、昵称、头像、总通过题数。\n- platform=luogu：返回洛谷 UID、昵称、头像、通过题数。\n- platform=lanqiao：返回脱敏手机号、去重通过题总数，以及蓝桥提交成功和失败统计。\n\n字段语义：\n- passed_number 是统一的通过题总数字段。\n- submit_success_count 和 submit_failed_count 只有蓝桥有业务含义，其他平台固定返回 0。\n- 蓝桥的 passed_number 来源于题目事实表去重统计，不等于 submit_success_count。\n- lanqiao_sync_alert 仅在 lanqiao 有业务含义；当蓝桥同步达到失败阈值、已被自动关闭，或后端状态检测失败时返回，前端可据此提醒用户更换账号或检查后端同步状态。\n\n响应规则：\n- 当前接口成功返回旧版响应壳：code/data/messages。\n- 未绑定目标平台账号时返回 40001，但仍是旧版失败响应壳。\n- 参数缺失或非法会在 Controller 绑定阶段返回 10002。",
         "operationId": "GetOJStats",
         "requestBody": {
           "required": true,
@@ -414,7 +414,14 @@
                         "user_avatar": "",
                         "passed_number": 56,
                         "submit_success_count": 132,
-                        "submit_failed_count": 17
+                        "submit_failed_count": 17,
+                        "lanqiao_sync_alert": {
+                          "danger": true,
+                          "reason": "sync_disabled",
+                          "message": "蓝桥同步已达到失败阈值，请更换账号或检查后端同步状态",
+                          "failure_threshold": 3,
+                          "sync_disabled": true
+                        }
                       },
                       "messages": "获取成功"
                     }
@@ -992,7 +999,7 @@
       },
       "BindOJAccountData": {
         "type": "object",
-        "description": "绑定成功或统计查询成功时返回的平台信息结构。",
+        "description": "绑定成功时返回的平台信息结构。",
         "properties": {
           "platform": {
             "type": "string",
@@ -1026,6 +1033,100 @@
           "submit_failed_count": {
             "type": "integer",
             "description": "蓝桥提交失败次数统计，仅 lanqiao 有业务含义；其他平台固定为 0。"
+          }
+        },
+        "required": [
+          "platform",
+          "identifier",
+          "real_name",
+          "user_avatar",
+          "passed_number",
+          "submit_success_count",
+          "submit_failed_count"
+        ]
+      },
+      "LanqiaoSyncAlertData": {
+        "type": "object",
+        "description": "蓝桥同步危险信号，仅在 /oj/stats 且 platform=lanqiao 时有业务含义。",
+        "properties": {
+          "danger": {
+            "type": "boolean",
+            "description": "是否需要前端展示危险提醒。"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "sync_disabled",
+              "status_check_failed"
+            ],
+            "description": "危险原因。\n- sync_disabled：蓝桥同步达到失败阈值或已被自动关闭\n- status_check_failed：后端无法完成蓝桥同步状态检测"
+          },
+          "message": {
+            "type": "string",
+            "description": "可直接展示给前端用户的提醒文案。"
+          },
+          "failure_threshold": {
+            "type": "integer",
+            "description": "当前蓝桥失败阈值配置。"
+          },
+          "sync_disabled": {
+            "type": "boolean",
+            "description": "后端是否将该蓝桥同步视为已关闭。"
+          }
+        },
+        "required": [
+          "danger",
+          "reason",
+          "message",
+          "failure_threshold",
+          "sync_disabled"
+        ]
+      },
+      "OJStatsData": {
+        "type": "object",
+        "description": "统计查询成功时返回的平台信息结构。",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": [
+              "leetcode",
+              "luogu",
+              "lanqiao"
+            ],
+            "description": "当前返回的平台标识。"
+          },
+          "identifier": {
+            "type": "string",
+            "description": "平台展示标识。\n- leetcode：用户 slug\n- luogu：UID 字符串\n- lanqiao：脱敏手机号"
+          },
+          "real_name": {
+            "type": "string",
+            "description": "平台昵称或真实名。\n- leetcode：公开昵称\n- luogu：用户名称\n- lanqiao：当前无该字段，返回空字符串"
+          },
+          "user_avatar": {
+            "type": "string",
+            "description": "平台头像 URL。\n- leetcode 和 luogu 有业务含义\n- lanqiao 当前返回空字符串"
+          },
+          "passed_number": {
+            "type": "integer",
+            "description": "统一的通过题总数。\n- leetcode：TotalNumber\n- luogu：PassedNumber\n- lanqiao：题目事实表去重后的通过题总数"
+          },
+          "submit_success_count": {
+            "type": "integer",
+            "description": "蓝桥提交成功次数统计，仅 lanqiao 有业务含义；其他平台固定为 0。"
+          },
+          "submit_failed_count": {
+            "type": "integer",
+            "description": "蓝桥提交失败次数统计，仅 lanqiao 有业务含义；其他平台固定为 0。"
+          },
+          "lanqiao_sync_alert": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/LanqiaoSyncAlertData"
+              }
+            ],
+            "nullable": true,
+            "description": "蓝桥同步危险信号。仅 lanqiao 平台可能返回，其他平台固定缺省。"
           }
         },
         "required": [
@@ -1246,7 +1347,7 @@
             "description": "业务码。0 表示成功。"
           },
           "data": {
-            "$ref": "#/components/schemas/BindOJAccountData"
+            "$ref": "#/components/schemas/OJStatsData"
           },
           "messages": {
             "type": "string",

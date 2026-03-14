@@ -54,8 +54,8 @@ func (t *tracedOJService) GetUserStats(
 	ctx context.Context,
 	userID uint,
 	req *request.OJStatsReq,
-) (*resp.BindOJAccountResp, error) {
-	return runTraced(ctx, "oj", "GetUserStats", func(inner context.Context) (*resp.BindOJAccountResp, error) {
+) (*resp.OJStatsResp, error) {
+	return runTraced(ctx, "oj", "GetUserStats", func(inner context.Context) (*resp.OJStatsResp, error) {
 		return t.next.GetUserStats(inner, userID, req)
 	})
 }

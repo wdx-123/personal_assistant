@@ -195,7 +195,7 @@ func (ctrl *OJCtrl) GetStats(c *gin.Context) {
 		return
 	}
 
-	response.NewResponse[resp.BindOJAccountResp, resp.BindOJAccountResp](c).
+	response.NewResponse[resp.OJStatsResp, resp.OJStatsResp](c).
 		SetCode(bizerrors.CodeSuccess).
 		Success("获取成功", out)
 }

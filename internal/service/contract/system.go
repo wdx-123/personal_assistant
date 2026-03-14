@@ -109,7 +109,7 @@ type OJServiceContract interface {
 	BindOJAccount(ctx context.Context, userID uint, req *request.BindOJAccountReq) (*resp.BindOJAccountResp, error)
 	BindLanqiaoAccount(ctx context.Context, userID uint, req *request.BindLanqiaoAccountReq) (*resp.BindOJAccountResp, error)
 	GetRankingList(ctx context.Context, userID uint, req *request.OJRankingListReq) (*resp.OJRankingListResp, error)
-	GetUserStats(ctx context.Context, userID uint, req *request.OJStatsReq) (*resp.BindOJAccountResp, error)
+	GetUserStats(ctx context.Context, userID uint, req *request.OJStatsReq) (*resp.OJStatsResp, error)
 	GetCurve(ctx context.Context, userID uint, req *request.OJCurveReq) (*resp.OJCurveResp, error)
 	SyncAllLuoguUsers(ctx context.Context) error
 	SyncAllLeetcodeUsers(ctx context.Context) error

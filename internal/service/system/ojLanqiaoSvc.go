@@ -19,6 +19,7 @@ import (
 	"personal_assistant/pkg/redislock"
 	"personal_assistant/pkg/util"
 
+	"github.com/go-redis/redis/v8"
 	"go.uber.org/zap"
 )
 
@@ -34,6 +35,11 @@ const (
 	defaultLanqiaoDisableTTL          = 48 * time.Hour
 	defaultLanqiaoSubmissionDedupTTL  = 7 * 24 * time.Hour
 	defaultLanqiaoStatsRefreshCron    = "@daily"
+
+	lanqiaoSyncAlertReasonSyncDisabled      = "sync_disabled"
+	lanqiaoSyncAlertReasonStatusCheckFailed = "status_check_failed"
+	lanqiaoSyncAlertDisabledMessage         = "蓝桥同步已达到失败阈值，请更换账号或检查后端同步状态"
+	lanqiaoSyncAlertStatusCheckMessage      = "蓝桥同步状态检测失败，请检查后端同步状态"
 )
 
 func (s *OJService) BindLanqiaoAccount(
@@ -598,6 +604,66 @@ func (s *OJService) recordLanqiaoSyncFailure(ctx context.Context, userID uint, e
 	}
 	_ = global.Redis.Del(ctx, failKey).Err()
 	global.Log.Warn("lanqiao sync auto-disabled", zap.Uint("user_id", userID), zap.Error(err))
+}
+
+func (s *OJService) buildLanqiaoSyncAlert(ctx context.Context, userID uint) *resp.LanqiaoSyncAlertResp {
+	if userID == 0 {
+		return nil
+	}
+
+	threshold := resolveLanqiaoFailureThreshold()
+	if global.Redis == nil {
+		return buildLanqiaoStatusCheckFailedAlert(threshold)
+	}
+
+	syncDisabled, err := global.Redis.Exists(ctx, rediskey.LanqiaoSyncDisableKey(userID)).Result()
+	if err != nil {
+		s.logLanqiaoSyncAlertCheckError(userID, err)
+		return buildLanqiaoStatusCheckFailedAlert(threshold)
+	}
+	if syncDisabled > 0 {
+		return buildLanqiaoSyncDisabledAlert(threshold)
+	}
+
+	failCount, err := global.Redis.Get(ctx, rediskey.LanqiaoSyncFailKey(userID)).Int()
+	if err != nil {
+		if stderrors.Is(err, redis.Nil) {
+			return nil
+		}
+		s.logLanqiaoSyncAlertCheckError(userID, err)
+		return buildLanqiaoStatusCheckFailedAlert(threshold)
+	}
+	if failCount >= threshold {
+		return buildLanqiaoSyncDisabledAlert(threshold)
+	}
+	return nil
+}
+
+func (s *OJService) logLanqiaoSyncAlertCheckError(userID uint, err error) {
+	if err == nil || global.Log == nil {
+		return
+	}
+	global.Log.Error("failed to check lanqiao sync alert state", zap.Uint("user_id", userID), zap.Error(err))
+}
+
+func buildLanqiaoSyncDisabledAlert(threshold int) *resp.LanqiaoSyncAlertResp {
+	return &resp.LanqiaoSyncAlertResp{
+		Danger:           true,
+		Reason:           lanqiaoSyncAlertReasonSyncDisabled,
+		Message:          lanqiaoSyncAlertDisabledMessage,
+		FailureThreshold: threshold,
+		SyncDisabled:     true,
+	}
+}
+
+func buildLanqiaoStatusCheckFailedAlert(threshold int) *resp.LanqiaoSyncAlertResp {
+	return &resp.LanqiaoSyncAlertResp{
+		Danger:           true,
+		Reason:           lanqiaoSyncAlertReasonStatusCheckFailed,
+		Message:          lanqiaoSyncAlertStatusCheckMessage,
+		FailureThreshold: threshold,
+		SyncDisabled:     false,
+	}
 }
 
 func extractLanqiaoSubmitStats(out *lq.SolveStatsResponse) (int, int) {

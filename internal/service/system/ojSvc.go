@@ -121,7 +121,7 @@ func (s *OJService) GetUserStats(
 	ctx context.Context,
 	userID uint,
 	req *request.OJStatsReq,
-) (*resp.BindOJAccountResp, error) {
+) (*resp.OJStatsResp, error) {
 	if req == nil {
 		return nil, errors.New("invalid request")
 	}
@@ -144,7 +144,7 @@ func (s *OJService) GetUserStats(
 		if detail == nil {
 			return nil, svccontract.ErrOJAccountNotBound
 		}
-		return &resp.BindOJAccountResp{
+		return &resp.OJStatsResp{
 			Platform:     "luogu",
 			Identifier:   detail.Identification,
 			RealName:     detail.RealName,
@@ -165,12 +165,13 @@ func (s *OJService) GetUserStats(
 		if err != nil {
 			return nil, err
 		}
-		return &resp.BindOJAccountResp{
+		return &resp.OJStatsResp{
 			Platform:           "lanqiao",
 			Identifier:         detail.MaskedPhone,
 			PassedNumber:       int(passedCount),
 			SubmitSuccessCount: detail.SubmitSuccessCount,
 			SubmitFailedCount:  detail.SubmitFailedCount,
+			LanqiaoSyncAlert:   s.buildLanqiaoSyncAlert(ctx, userID),
 		}, nil
 	}
 
@@ -181,7 +182,7 @@ func (s *OJService) GetUserStats(
 	if detail == nil {
 		return nil, svccontract.ErrOJAccountNotBound
 	}
-	return &resp.BindOJAccountResp{
+	return &resp.OJStatsResp{
 		Platform:     "leetcode",
 		Identifier:   detail.UserSlug,
 		RealName:     detail.RealName,
