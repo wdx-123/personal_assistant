@@ -11,6 +11,7 @@ type Supplier interface {
 	GetUserCtrl() *UserCtrl
 	GetOrgCtrl() *OrgCtrl
 	GetOJCtrl() *OJCtrl
+	GetOJTaskCtrl() *OJTaskCtrl
 	GetApiCtrl() *ApiCtrl
 	GetMenuCtrl() *MenuCtrl
 	GetRoleCtrl() *RoleCtrl
@@ -39,6 +40,9 @@ func SetUp(service *service.Group) Supplier {
 	}
 	cs.ojCtrl = &OJCtrl{
 		ojService: service.SystemServiceSupplier.GetOJSvc(),
+	}
+	cs.ojTaskCtrl = &OJTaskCtrl{
+		ojTaskService: service.SystemServiceSupplier.GetOJTaskSvc(),
 	}
 	cs.apiCtrl = &ApiCtrl{
 		apiService: service.SystemServiceSupplier.GetApiSvc(),

@@ -39,6 +39,36 @@ func (r *leetcodeUserQuestionRepository) GetSolvedProblemIDs(
 	return idSet, nil
 }
 
+func (r *leetcodeUserQuestionRepository) GetSolvedProblemIDsByDetailIDs(
+	ctx context.Context,
+	leetcodeUserDetailIDs []uint,
+) (map[uint]map[uint]struct{}, error) {
+	result := make(map[uint]map[uint]struct{}, len(leetcodeUserDetailIDs))
+	if len(leetcodeUserDetailIDs) == 0 {
+		return result, nil
+	}
+	type row struct {
+		LeetcodeUserDetailID uint `gorm:"column:leetcode_user_detail_id"`
+		LeetcodeQuestionID   uint `gorm:"column:leetcode_question_id"`
+	}
+	var rows []row
+	err := r.db.WithContext(ctx).
+		Model(&entity.LeetcodeUserQuestion{}).
+		Select("leetcode_user_detail_id, leetcode_question_id").
+		Where("leetcode_user_detail_id IN ?", leetcodeUserDetailIDs).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if _, ok := result[row.LeetcodeUserDetailID]; !ok {
+			result[row.LeetcodeUserDetailID] = make(map[uint]struct{})
+		}
+		result[row.LeetcodeUserDetailID][row.LeetcodeQuestionID] = struct{}{}
+	}
+	return result, nil
+}
+
 func (r *leetcodeUserQuestionRepository) BatchCreate(
 	ctx context.Context,
 	records []*entity.LeetcodeUserQuestion,

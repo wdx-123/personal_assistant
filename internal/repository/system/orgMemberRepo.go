@@ -9,6 +9,7 @@ import (
 	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository/interfaces"
+	readmodel "personal_assistant/internal/model/readmodel"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -188,6 +189,26 @@ func (r *orgMemberRepository) ListActiveOrgIDsByUser(ctx context.Context, userID
 		Order("org_id ASC").
 		Pluck("org_id", &orgIDs).Error
 	return orgIDs, err
+}
+
+func (r *orgMemberRepository) ListActiveUserOrgPairsByOrgIDs(
+	ctx context.Context,
+	orgIDs []uint,
+) ([]*readmodel.UserOrgPair, error) {
+	if len(orgIDs) == 0 {
+		return nil, nil
+	}
+	var rows []*readmodel.UserOrgPair
+	err := r.db.WithContext(ctx).
+		Model(&entity.OrgMember{}).
+		Select("user_id, org_id").
+		Where("org_id IN ? AND member_status = ?", orgIDs, consts.OrgMemberStatusActive).
+		Order("user_id ASC, org_id ASC").
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 func (r *orgMemberRepository) ListUserIDsByOrg(ctx context.Context, orgID uint) ([]uint, error) {

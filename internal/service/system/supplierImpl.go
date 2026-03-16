@@ -12,6 +12,7 @@ type serviceSupplier struct {
 	userService                   contract.UserServiceContract
 	orgService                    contract.OrgServiceContract
 	ojService                     contract.OJServiceContract
+	ojTaskService                 contract.OJTaskServiceContract
 	apiService                    contract.ApiServiceContract
 	menuService                   contract.MenuServiceContract
 	roleService                   contract.RoleServiceContract
@@ -46,6 +47,10 @@ func (s *serviceSupplier) GetOrgSvc() contract.OrgServiceContract {
 
 func (s *serviceSupplier) GetOJSvc() contract.OJServiceContract {
 	return s.ojService
+}
+
+func (s *serviceSupplier) GetOJTaskSvc() contract.OJTaskServiceContract {
+	return s.ojTaskService
 }
 
 func (s *serviceSupplier) GetApiSvc() contract.ApiServiceContract {

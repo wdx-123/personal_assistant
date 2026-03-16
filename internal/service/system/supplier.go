@@ -32,6 +32,7 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 	rawUser := NewUserService(repositoryGroup, rawAuthorization, rawPermissionProjection)
 	rawOrg := NewOrgService(repositoryGroup, rawAuthorization, rawPermissionProjection)
 	rawOJ := NewOJService(repositoryGroup, rawCacheProjection, rawOJDailyStatsProjection)
+	rawOJTask := NewOJTaskService(repositoryGroup, rawAuthorization)
 	rawAPI := NewApiService(repositoryGroup, rawPermissionProjection)
 	rawMenu := NewMenuService(repositoryGroup, rawPermissionProjection)
 	rawRole := NewRoleService(repositoryGroup, rawPermissionProjection)
@@ -51,6 +52,7 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 	userSvc := contract.UserServiceContract(rawUser)
 	orgSvc := contract.OrgServiceContract(rawOrg)
 	ojSvc := contract.OJServiceContract(rawOJ)
+	ojTaskSvc := contract.OJTaskServiceContract(rawOJTask)
 	apiSvc := contract.ApiServiceContract(rawAPI)
 	menuSvc := contract.MenuServiceContract(rawMenu)
 	roleSvc := contract.RoleServiceContract(rawRole)
@@ -83,6 +85,7 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 	ss.userService = userSvc
 	ss.orgService = orgSvc
 	ss.ojService = ojSvc
+	ss.ojTaskService = ojTaskSvc
 	ss.apiService = apiSvc
 	ss.menuService = menuSvc
 	ss.roleService = roleSvc

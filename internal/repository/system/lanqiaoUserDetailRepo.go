@@ -40,6 +40,23 @@ func (r *lanqiaoUserDetailRepository) GetByUserID(
 	return &detail, nil
 }
 
+func (r *lanqiaoUserDetailRepository) GetByUserIDs(
+	ctx context.Context,
+	userIDs []uint,
+) ([]*entity.LanqiaoUserDetail, error) {
+	if len(userIDs) == 0 {
+		return nil, nil
+	}
+	var details []*entity.LanqiaoUserDetail
+	err := r.db.WithContext(ctx).
+		Where("user_id IN ?", userIDs).
+		Find(&details).Error
+	if err != nil {
+		return nil, err
+	}
+	return details, nil
+}
+
 func (r *lanqiaoUserDetailRepository) GetByCredentialHash(
 	ctx context.Context,
 	credentialHash string,

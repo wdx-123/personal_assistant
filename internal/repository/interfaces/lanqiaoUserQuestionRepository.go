@@ -11,6 +11,7 @@ import (
 type LanqiaoUserQuestionRepository interface {
 	WithTx(tx any) LanqiaoUserQuestionRepository
 	GetSolvedProblemIDs(ctx context.Context, lanqiaoUserDetailID uint) (map[uint]struct{}, error)
+	GetSolvedProblemIDsByDetailIDs(ctx context.Context, lanqiaoUserDetailIDs []uint) (map[uint]map[uint]struct{}, error)
 	BatchCreate(ctx context.Context, records []*entity.LanqiaoUserQuestion) error
 	CountSolvedByDateRange(
 		ctx context.Context,

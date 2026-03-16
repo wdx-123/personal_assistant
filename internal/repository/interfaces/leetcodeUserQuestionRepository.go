@@ -10,6 +10,7 @@ import (
 
 type LeetcodeUserQuestionRepository interface {
 	GetSolvedProblemIDs(ctx context.Context, leetcodeUserDetailID uint) (map[uint]struct{}, error)
+	GetSolvedProblemIDsByDetailIDs(ctx context.Context, leetcodeUserDetailIDs []uint) (map[uint]map[uint]struct{}, error)
 	BatchCreate(ctx context.Context, records []*entity.LeetcodeUserQuestion) error
 	CountSolvedByDateRange(
 		ctx context.Context,

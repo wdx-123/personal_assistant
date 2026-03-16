@@ -12,6 +12,7 @@ var (
 	_ contract.UserServiceContract                   = (*UserService)(nil)
 	_ contract.OrgServiceContract                    = (*OrgService)(nil)
 	_ contract.OJServiceContract                     = (*OJService)(nil)
+	_ contract.OJTaskServiceContract                 = (*OJTaskService)(nil)
 	_ contract.OJDailyStatsProjectionServiceContract = (*OJDailyStatsProjectionService)(nil)
 	_ contract.CacheProjectionServiceContract        = (*CacheProjectionService)(nil)
 	_ contract.ApiServiceContract                    = (*ApiService)(nil)

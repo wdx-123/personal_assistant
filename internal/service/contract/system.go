@@ -122,6 +122,22 @@ type OJServiceContract interface {
 	HandleLeetcodeBindSignal(ctx context.Context, userID uint) error
 }
 
+type OJTaskServiceContract interface {
+	CreateTask(ctx context.Context, operatorID uint, req *request.CreateOJTaskReq) (*resp.OJTaskCreateResp, error)
+	UpdateTask(ctx context.Context, operatorID, taskID uint, req *request.UpdateOJTaskReq) error
+	DeleteTask(ctx context.Context, operatorID, taskID uint) error
+	ExecuteTaskNow(ctx context.Context, operatorID, taskID uint) (*resp.OJTaskCreateResp, error)
+	ReviseTask(ctx context.Context, operatorID, taskID uint, req *request.ReviseOJTaskReq) (*resp.OJTaskCreateResp, error)
+	RetryTask(ctx context.Context, operatorID, taskID uint) (*resp.OJTaskCreateResp, error)
+	GetVisibleTaskList(ctx context.Context, userID uint, req *request.OJTaskListReq) ([]*resp.OJTaskListItemResp, int64, error)
+	GetTaskDetail(ctx context.Context, userID, taskID uint) (*resp.OJTaskDetailResp, error)
+	GetTaskVersions(ctx context.Context, userID, taskID uint) (*resp.OJTaskVersionListResp, error)
+	GetTaskExecutionDetail(ctx context.Context, userID, taskID, executionID uint) (*resp.OJTaskExecutionResp, error)
+	GetTaskExecutionUsers(ctx context.Context, userID, taskID, executionID uint, req *request.OJTaskExecutionUserListReq) (*resp.OJTaskExecutionUserListResp, error)
+	GetTaskExecutionUserDetail(ctx context.Context, userID, taskID, executionID, targetUserID uint) (*resp.OJTaskExecutionUserDetailResp, error)
+	DispatchPendingExecutions(ctx context.Context) error
+}
+
 type OJDailyStatsProjectionServiceContract interface {
 	PublishOJDailyStatsProjectionEvent(ctx context.Context, event *eventdto.OJDailyStatsProjectionEvent) error
 	HandleOJDailyStatsProjectionEvent(ctx context.Context, event *eventdto.OJDailyStatsProjectionEvent) error
@@ -197,6 +213,7 @@ type Supplier interface {
 	GetUserSvc() UserServiceContract
 	GetOrgSvc() OrgServiceContract
 	GetOJSvc() OJServiceContract
+	GetOJTaskSvc() OJTaskServiceContract
 	GetApiSvc() ApiServiceContract
 	GetMenuSvc() MenuServiceContract
 	GetRoleSvc() RoleServiceContract

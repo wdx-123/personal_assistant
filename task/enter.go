@@ -135,6 +135,13 @@ func OJDailyStatsRepairTask() {
 	})
 }
 
+// OJTaskDispatchTask OJ 任务执行扫描器。
+func OJTaskDispatchTask() {
+	runServiceTask("OJTaskDispatchTask", func(ctx context.Context) error {
+		return service.GroupApp.SystemServiceSupplier.GetOJTaskSvc().DispatchPendingExecutions(ctx)
+	})
+}
+
 // ImageOrphanCleanupTask 孤儿图片定时清理。
 // 查找已软删除且无活跃引用的存储 key，删除对应物理文件后清除 DB 记录。
 func ImageOrphanCleanupTask() {
@@ -203,6 +210,16 @@ func RegisterScheduledTasks(c *cron.Cron) error {
 	}
 	if _, err := c.AddFunc(curveRepairCron, OJDailyStatsRepairTask); err != nil {
 		return fmt.Errorf("注册 OJDailyStatsRepairTask 失败: %w", err)
+	}
+
+	if global.Config.Task.OJTaskDispatchEnabled {
+		dispatchInterval := global.Config.Task.OJTaskDispatchIntervalSeconds
+		if dispatchInterval <= 0 {
+			dispatchInterval = 10
+		}
+		if _, err := c.AddFunc(fmt.Sprintf("@every %ds", dispatchInterval), OJTaskDispatchTask); err != nil {
+			return fmt.Errorf("注册 OJTaskDispatchTask 失败: %w", err)
+		}
 	}
 
 	// 孤儿图片清理 — cron 表达式由配置驱动

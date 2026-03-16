@@ -25,6 +25,8 @@ type Supplier interface {
 	GetLeetcodeUserQuestionRepository() interfaces.LeetcodeUserQuestionRepository
 	GetLuoguUserQuestionRepository() interfaces.LuoguUserQuestionRepository
 	GetLanqiaoUserQuestionRepository() interfaces.LanqiaoUserQuestionRepository
+	GetOJTaskRepository() interfaces.OJTaskRepository
+	GetOJTaskExecutionRepository() interfaces.OJTaskExecutionRepository
 	GetOJDailyStatsRepository() interfaces.OJDailyStatsRepository
 	GetOutboxRepository() interfaces.OutboxRepository
 	GetRankingReadModelRepository() interfaces.RankingReadModelRepository
@@ -54,6 +56,8 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 	var leetcodeUserQuestionRepo interfaces.LeetcodeUserQuestionRepository
 	var luoguUserQuestionRepo interfaces.LuoguUserQuestionRepository
 	var lanqiaoUserQuestionRepo interfaces.LanqiaoUserQuestionRepository
+	var ojTaskRepo interfaces.OJTaskRepository
+	var ojTaskExecutionRepo interfaces.OJTaskExecutionRepository
 	var ojDailyStatsRepo interfaces.OJDailyStatsRepository
 	var outboxRepo interfaces.OutboxRepository
 	var rankingReadModelRepo interfaces.RankingReadModelRepository
@@ -83,6 +87,8 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			leetcodeUserQuestionRepo = NewLeetcodeUserQuestionRepository(db)
 			luoguUserQuestionRepo = NewLuoguUserQuestionRepository(db)
 			lanqiaoUserQuestionRepo = NewLanqiaoUserQuestionRepository(db)
+			ojTaskRepo = NewOJTaskRepository(db)
+			ojTaskExecutionRepo = NewOJTaskExecutionRepository(db)
 			ojDailyStatsRepo = NewOJDailyStatsRepository(db)
 			outboxRepo = NewOutboxRepository(db)
 			rankingReadModelRepo = NewRankingReadModelRepository(db)
@@ -118,6 +124,8 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			leetcodeUserQuestionRepo = NewLeetcodeUserQuestionRepository(db)
 			luoguUserQuestionRepo = NewLuoguUserQuestionRepository(db)
 			lanqiaoUserQuestionRepo = NewLanqiaoUserQuestionRepository(db)
+			ojTaskRepo = NewOJTaskRepository(db)
+			ojTaskExecutionRepo = NewOJTaskExecutionRepository(db)
 			ojDailyStatsRepo = NewOJDailyStatsRepository(db)
 			outboxRepo = NewOutboxRepository(db)
 			rankingReadModelRepo = NewRankingReadModelRepository(db)
@@ -146,6 +154,8 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 		leetcodeUserQuestionRepository: leetcodeUserQuestionRepo,
 		luoguUserQuestionRepository:    luoguUserQuestionRepo,
 		lanqiaoUserQuestionRepository:  lanqiaoUserQuestionRepo,
+		ojTaskRepository:               ojTaskRepo,
+		ojTaskExecutionRepository:      ojTaskExecutionRepo,
 		ojDailyStatsRepository:         ojDailyStatsRepo,
 		outboxRepository:               outboxRepo,
 		rankingReadModelRepository:     rankingReadModelRepo,

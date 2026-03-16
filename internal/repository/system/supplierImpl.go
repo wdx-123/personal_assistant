@@ -29,6 +29,8 @@ type RepositorySupplier struct {
 	leetcodeUserQuestionRepository interfaces.LeetcodeUserQuestionRepository
 	luoguUserQuestionRepository    interfaces.LuoguUserQuestionRepository
 	lanqiaoUserQuestionRepository  interfaces.LanqiaoUserQuestionRepository
+	ojTaskRepository               interfaces.OJTaskRepository
+	ojTaskExecutionRepository      interfaces.OJTaskExecutionRepository
 	ojDailyStatsRepository         interfaces.OJDailyStatsRepository
 	outboxRepository               interfaces.OutboxRepository
 	rankingReadModelRepository     interfaces.RankingReadModelRepository
@@ -104,6 +106,14 @@ func (r *RepositorySupplier) GetLuoguUserQuestionRepository() interfaces.LuoguUs
 
 func (r *RepositorySupplier) GetLanqiaoUserQuestionRepository() interfaces.LanqiaoUserQuestionRepository {
 	return r.lanqiaoUserQuestionRepository
+}
+
+func (r *RepositorySupplier) GetOJTaskRepository() interfaces.OJTaskRepository {
+	return r.ojTaskRepository
+}
+
+func (r *RepositorySupplier) GetOJTaskExecutionRepository() interfaces.OJTaskExecutionRepository {
+	return r.ojTaskExecutionRepository
 }
 
 func (r *RepositorySupplier) GetOutboxRepository() interfaces.OutboxRepository {

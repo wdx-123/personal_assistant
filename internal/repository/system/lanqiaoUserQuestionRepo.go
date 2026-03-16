@@ -47,6 +47,36 @@ func (r *lanqiaoUserQuestionRepository) GetSolvedProblemIDs(
 	return idSet, nil
 }
 
+func (r *lanqiaoUserQuestionRepository) GetSolvedProblemIDsByDetailIDs(
+	ctx context.Context,
+	lanqiaoUserDetailIDs []uint,
+) (map[uint]map[uint]struct{}, error) {
+	result := make(map[uint]map[uint]struct{}, len(lanqiaoUserDetailIDs))
+	if len(lanqiaoUserDetailIDs) == 0 {
+		return result, nil
+	}
+	type row struct {
+		LanqiaoUserDetailID uint `gorm:"column:lanqiao_user_detail_id"`
+		LanqiaoQuestionID   uint `gorm:"column:lanqiao_question_id"`
+	}
+	var rows []row
+	err := r.db.WithContext(ctx).
+		Model(&entity.LanqiaoUserQuestion{}).
+		Select("lanqiao_user_detail_id, lanqiao_question_id").
+		Where("lanqiao_user_detail_id IN ?", lanqiaoUserDetailIDs).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if _, ok := result[row.LanqiaoUserDetailID]; !ok {
+			result[row.LanqiaoUserDetailID] = make(map[uint]struct{})
+		}
+		result[row.LanqiaoUserDetailID][row.LanqiaoQuestionID] = struct{}{}
+	}
+	return result, nil
+}
+
 func (r *lanqiaoUserQuestionRepository) BatchCreate(
 	ctx context.Context,
 	records []*entity.LanqiaoUserQuestion,

@@ -185,6 +185,12 @@ task:
   oj_daily_stats_repair_cron: "@daily"
   oj_daily_stats_repair_batch_size: 100
   oj_daily_stats_repair_window_days: 35
+  oj_task_dispatch_enabled: true
+  oj_task_dispatch_interval_seconds: 10
+  oj_task_dispatch_batch_size: 10
+  oj_task_dispatch_worker_count: 1
+  oj_task_snapshot_insert_batch_size: 500
+  oj_task_execution_lock_ttl_seconds: 60
   disabled_user_cleanup_enabled: true
   disabled_user_retention_days: 30
   disabled_user_cleanup_cron: "@daily"

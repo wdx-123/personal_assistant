@@ -32,6 +32,12 @@ type Task struct {
 	OJDailyStatsRepairCron                   string `json:"oj_daily_stats_repair_cron" yaml:"oj_daily_stats_repair_cron"`                     // 刷题曲线聚合修复 cron
 	OJDailyStatsRepairBatchSize              int    `json:"oj_daily_stats_repair_batch_size" yaml:"oj_daily_stats_repair_batch_size"`         // 每轮修复批次大小
 	OJDailyStatsRepairWindowDays             int    `json:"oj_daily_stats_repair_window_days" yaml:"oj_daily_stats_repair_window_days"`       // 重建最近窗口天数
+	OJTaskDispatchEnabled                    bool   `json:"oj_task_dispatch_enabled" yaml:"oj_task_dispatch_enabled"`                           // OJ 任务扫描器开关
+	OJTaskDispatchIntervalSeconds            int    `json:"oj_task_dispatch_interval_seconds" yaml:"oj_task_dispatch_interval_seconds"`         // OJ 任务扫描周期
+	OJTaskDispatchBatchSize                  int    `json:"oj_task_dispatch_batch_size" yaml:"oj_task_dispatch_batch_size"`                     // 每轮扫描批次大小
+	OJTaskDispatchWorkerCount                int    `json:"oj_task_dispatch_worker_count" yaml:"oj_task_dispatch_worker_count"`                 // 执行 worker 数
+	OJTaskSnapshotInsertBatchSize            int    `json:"oj_task_snapshot_insert_batch_size" yaml:"oj_task_snapshot_insert_batch_size"`       // 快照批量写入大小
+	OJTaskExecutionLockTTLSeconds            int    `json:"oj_task_execution_lock_ttl_seconds" yaml:"oj_task_execution_lock_ttl_seconds"`       // 执行级锁 TTL
 	ImageOrphanCleanupCron                   string `json:"image_orphan_cleanup_cron" yaml:"image_orphan_cleanup_cron"`                       // 孤儿图片清理 cron 表达式，默认 @daily
 
 	// DisabledUserCleanupEnabled 是否启用禁用账号清理任务
