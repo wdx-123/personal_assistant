@@ -374,9 +374,12 @@ func (r *ojTaskExecutionRepository) ListExecutionUserItems(
 			oj_task_execution_user_items.task_item_id,
 			oj_task_items.sort_no,
 			oj_task_items.platform,
-			oj_task_items.question_code,
-			oj_task_items.platform_question_id,
-			oj_task_items.question_title_snapshot,
+			oj_task_items.input_title,
+			oj_task_items.resolution_status,
+			oj_task_items.resolution_note,
+			oj_task_items.resolved_question_id,
+			oj_task_items.resolved_question_code,
+			oj_task_items.resolved_title_snapshot,
 			oj_task_execution_user_items.result_status,
 			oj_task_execution_user_items.reason`).
 		Joins("JOIN oj_task_items ON oj_task_items.id = oj_task_execution_user_items.task_item_id").

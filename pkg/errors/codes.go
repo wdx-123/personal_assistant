@@ -76,21 +76,23 @@ const (
 
 	// ==================== OJ模块 4xxxx ====================
 
-	CodeOJAccountNotBound       BizCode = 40001 // OJ账号未绑定
-	CodeOJAccountBound          BizCode = 40002 // OJ账号已绑定
-	CodeOJPlatformInvalid       BizCode = 40003 // OJ平台无效
-	CodeOJIdentifierInvalid     BizCode = 40004 // OJ账号标识无效
-	CodeOJBindCoolDown          BizCode = 40005 // 绑定冷却中
-	CodeOJSyncFailed            BizCode = 40006 // OJ数据同步失败
-	CodeOJCredentialInvalid     BizCode = 40007 // OJ凭据无效
-	CodeOJSyncDisabled          BizCode = 40008 // OJ同步已被自动关闭
-	CodeOJTaskNotFound          BizCode = 40101 // OJ任务不存在
-	CodeOJTaskNotEditable       BizCode = 40102 // OJ任务不可修改
-	CodeOJTaskExecuteAtInvalid  BizCode = 40103 // OJ任务执行时间非法
-	CodeOJTaskQuestionNotFound  BizCode = 40104 // OJ任务题目不存在
-	CodeOJTaskVisibleDenied     BizCode = 40105 // OJ任务无可见权限
-	CodeOJTaskDeleted           BizCode = 40106 // OJ任务已删除
-	CodeOJTaskExecutionNotFound BizCode = 40107 // OJ任务执行记录不存在
+	CodeOJAccountNotBound         BizCode = 40001 // OJ账号未绑定
+	CodeOJAccountBound            BizCode = 40002 // OJ账号已绑定
+	CodeOJPlatformInvalid         BizCode = 40003 // OJ平台无效
+	CodeOJIdentifierInvalid       BizCode = 40004 // OJ账号标识无效
+	CodeOJBindCoolDown            BizCode = 40005 // 绑定冷却中
+	CodeOJSyncFailed              BizCode = 40006 // OJ数据同步失败
+	CodeOJCredentialInvalid       BizCode = 40007 // OJ凭据无效
+	CodeOJSyncDisabled            BizCode = 40008 // OJ同步已被自动关闭
+	CodeOJTaskNotFound            BizCode = 40101 // OJ任务不存在
+	CodeOJTaskNotEditable         BizCode = 40102 // OJ任务不可修改
+	CodeOJTaskExecuteAtInvalid    BizCode = 40103 // OJ任务执行时间非法
+	CodeOJTaskQuestionNotFound    BizCode = 40104 // OJ任务题目不存在
+	CodeOJTaskVisibleDenied       BizCode = 40105 // OJ任务无可见权限
+	CodeOJTaskDeleted             BizCode = 40106 // OJ任务已删除
+	CodeOJTaskExecutionNotFound   BizCode = 40107 // OJ任务执行记录不存在
+	CodeOJTaskPendingConfirmation BizCode = 40108 // OJ任务存在未确认的新题
+	CodeOJTaskQuestionAmbiguous   BizCode = 40109 // OJ任务题目存在多个候选
 )
 
 // codeMessages 错误码与默认消息的映射
@@ -152,21 +154,23 @@ var codeMessages = map[BizCode]string{
 	CodeAPIAlreadyExists:         "API已存在（路径与方法组合重复）",
 
 	// OJ模块
-	CodeOJAccountNotBound:       "OJ账号未绑定",
-	CodeOJAccountBound:          "OJ账号已绑定",
-	CodeOJPlatformInvalid:       "不支持的OJ平台",
-	CodeOJIdentifierInvalid:     "OJ账号标识无效",
-	CodeOJBindCoolDown:          "操作过于频繁，请稍后再试",
-	CodeOJSyncFailed:            "OJ数据同步失败",
-	CodeOJCredentialInvalid:     "OJ账号凭据无效",
-	CodeOJSyncDisabled:          "该OJ账号同步已被自动关闭，请重新绑定后再试",
-	CodeOJTaskNotFound:          "OJ任务不存在",
-	CodeOJTaskNotEditable:       "该 OJ 任务版本当前不可修改",
-	CodeOJTaskExecuteAtInvalid:  "执行时间不合法",
-	CodeOJTaskQuestionNotFound:  "任务题目不存在",
-	CodeOJTaskVisibleDenied:     "无权查看该 OJ 任务",
-	CodeOJTaskDeleted:           "该 OJ 任务已删除",
-	CodeOJTaskExecutionNotFound: "OJ任务执行记录不存在",
+	CodeOJAccountNotBound:         "OJ账号未绑定",
+	CodeOJAccountBound:            "OJ账号已绑定",
+	CodeOJPlatformInvalid:         "不支持的OJ平台",
+	CodeOJIdentifierInvalid:       "OJ账号标识无效",
+	CodeOJBindCoolDown:            "操作过于频繁，请稍后再试",
+	CodeOJSyncFailed:              "OJ数据同步失败",
+	CodeOJCredentialInvalid:       "OJ账号凭据无效",
+	CodeOJSyncDisabled:            "该OJ账号同步已被自动关闭，请重新绑定后再试",
+	CodeOJTaskNotFound:            "OJ任务不存在",
+	CodeOJTaskNotEditable:         "该 OJ 任务版本当前不可修改",
+	CodeOJTaskExecuteAtInvalid:    "执行时间不合法",
+	CodeOJTaskQuestionNotFound:    "任务题目不存在",
+	CodeOJTaskVisibleDenied:       "无权查看该 OJ 任务",
+	CodeOJTaskDeleted:             "该 OJ 任务已删除",
+	CodeOJTaskExecutionNotFound:   "OJ任务执行记录不存在",
+	CodeOJTaskPendingConfirmation: "存在未确认的新题目，请确认后再创建任务",
+	CodeOJTaskQuestionAmbiguous:   "任务题目存在多个候选，请先确认具体题目",
 }
 
 // Message 获取错误码对应的默认消息

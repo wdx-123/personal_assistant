@@ -36,6 +36,9 @@ type Task struct {
 	OJTaskDispatchIntervalSeconds            int    `json:"oj_task_dispatch_interval_seconds" yaml:"oj_task_dispatch_interval_seconds"`       // OJ 任务扫描周期
 	OJTaskDispatchBatchSize                  int    `json:"oj_task_dispatch_batch_size" yaml:"oj_task_dispatch_batch_size"`                   // 每轮扫描批次大小
 	OJTaskDispatchWorkerCount                int    `json:"oj_task_dispatch_worker_count" yaml:"oj_task_dispatch_worker_count"`               // 执行 worker 数
+	OJTaskAnalyzeFuzzyLimit                  int    `json:"oj_task_analyze_fuzzy_limit" yaml:"oj_task_analyze_fuzzy_limit"`                   // Analyze 模糊候选上限
+	OJTaskPreflightEnabled                   bool   `json:"oj_task_preflight_enabled" yaml:"oj_task_preflight_enabled"`                       // 是否启用执行前题目预检
+	OJTaskPreflightFailOpen                  bool   `json:"oj_task_preflight_fail_open" yaml:"oj_task_preflight_fail_open"`                   // 预检失败是否保留 pending 而非转 invalid
 	OJTaskSnapshotInsertBatchSize            int    `json:"oj_task_snapshot_insert_batch_size" yaml:"oj_task_snapshot_insert_batch_size"`     // 快照批量写入大小
 	OJTaskExecutionLockTTLSeconds            int    `json:"oj_task_execution_lock_ttl_seconds" yaml:"oj_task_execution_lock_ttl_seconds"`     // 执行级锁 TTL
 	ImageOrphanCleanupCron                   string `json:"image_orphan_cleanup_cron" yaml:"image_orphan_cleanup_cron"`                       // 孤儿图片清理 cron 表达式，默认 @daily

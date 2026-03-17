@@ -78,6 +78,50 @@ const (
 	OJTaskExecutionUserItemReasonAccountUnbound OJTaskExecutionUserItemPendingReason = "account_unbound"
 	// OJTaskExecutionUserItemReasonUnsolved 表示用户已具备判题条件，但当前题目尚未完成。
 	OJTaskExecutionUserItemReasonUnsolved OJTaskExecutionUserItemPendingReason = "unsolved"
+	// OJTaskExecutionUserItemReasonQuestionNotFound 表示题目在执行前未能转正为有效真题。
+	OJTaskExecutionUserItemReasonQuestionNotFound OJTaskExecutionUserItemPendingReason = "question_not_found"
+)
+
+// OJQuestionSourceStatus 题库来源状态。
+type OJQuestionSourceStatus int8
+
+const (
+	// OJQuestionSourceStatusVerified 表示题目已验证。
+	OJQuestionSourceStatusVerified OJQuestionSourceStatus = 1
+	// OJQuestionSourceStatusPending 表示题目为影子题，待后续校验。
+	OJQuestionSourceStatusPending OJQuestionSourceStatus = 2
+	// OJQuestionSourceStatusInvalid 表示题目经预检后确认为无效。
+	OJQuestionSourceStatusInvalid OJQuestionSourceStatus = 3
+)
+
+// OJQuestionSourceType 题库来源类型。
+type OJQuestionSourceType string
+
+const (
+	// OJQuestionSourceTypeSync 表示题目来自同步链路。
+	OJQuestionSourceTypeSync OJQuestionSourceType = "sync"
+	// OJQuestionSourceTypeManual 表示题目来自手工录入。
+	OJQuestionSourceTypeManual OJQuestionSourceType = "manual"
+)
+
+// OJTaskItemResolutionStatus 任务题目的解析状态。
+type OJTaskItemResolutionStatus string
+
+const (
+	// OJTaskItemResolutionStatusResolved 表示任务项已绑定到已验证真题。
+	OJTaskItemResolutionStatusResolved OJTaskItemResolutionStatus = "resolved"
+	// OJTaskItemResolutionStatusPendingResolution 表示任务项仍待题库解析。
+	OJTaskItemResolutionStatusPendingResolution OJTaskItemResolutionStatus = "pending_resolution"
+	// OJTaskItemResolutionStatusInvalid 表示任务项已确认无法解析为有效题目。
+	OJTaskItemResolutionStatusInvalid OJTaskItemResolutionStatus = "invalid"
+)
+
+// OJTaskItemInputMode 任务题目输入模式。
+type OJTaskItemInputMode string
+
+const (
+	// OJTaskItemInputModeTitle 表示任务项通过 platform + title 输入。
+	OJTaskItemInputModeTitle OJTaskItemInputMode = "title"
 )
 
 const (
@@ -156,5 +200,19 @@ func IsValidOJTaskExecutionStatus(status string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// OJQuestionSourceStatusLabel 将题库来源状态转换成接口侧可读标签。
+func OJQuestionSourceStatusLabel(status int8) string {
+	switch OJQuestionSourceStatus(status) {
+	case OJQuestionSourceStatusVerified:
+		return "verified"
+	case OJQuestionSourceStatusPending:
+		return "pending"
+	case OJQuestionSourceStatusInvalid:
+		return "invalid"
+	default:
+		return "unknown"
 	}
 }

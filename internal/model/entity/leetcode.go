@@ -33,6 +33,10 @@ type LeetcodeUserQuestion struct {
 
 type LeetcodeQuestionBank struct {
 	MODEL
-	TitleSlug string `json:"title_slug" gorm:"type:varchar(255);uniqueIndex;comment:'题目英文唯一标识(Slug)'"`
-	Title     string `json:"title" gorm:"type:varchar(255);not null"`
+	TitleSlug        string     `json:"title_slug" gorm:"type:varchar(255);uniqueIndex;comment:'题目英文唯一标识(Slug)'"`
+	Title            string     `json:"title" gorm:"type:varchar(255);not null"`
+	SourceStatus     int8       `json:"source_status" gorm:"type:tinyint;not null;default:1;index;comment:'来源状态:1 verified,2 pending,3 invalid'"`
+	SourceType       string     `json:"source_type" gorm:"type:varchar(16);not null;default:'sync';comment:'来源类型 sync|manual'"`
+	LastVerifiedAt   *time.Time `json:"last_verified_at,omitempty" gorm:"type:datetime;comment:'最近一次校验时间'"`
+	VerifyFailReason string     `json:"verify_fail_reason" gorm:"type:varchar(255);not null;default:'';comment:'最近一次校验失败原因'"`
 }

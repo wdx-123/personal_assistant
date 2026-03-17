@@ -55,6 +55,7 @@ type OJService struct {
 	rankingReadModelRepo      interfaces.RankingReadModelRepository
 	outboxRepo                interfaces.OutboxRepository
 	cacheProjectionPublisher  cacheProjectionEventPublisher
+	questionUpsertPublisher   ojQuestionUpsertEventPublisher
 	cacheProjectionSvc        svccontract.CacheProjectionServiceContract
 	ojDailyStatsProjectionSvc svccontract.OJDailyStatsProjectionServiceContract
 }
@@ -83,6 +84,9 @@ func NewOJService(
 		rankingReadModelRepo:     repositoryGroup.SystemRepositorySupplier.GetRankingReadModelRepository(),
 		outboxRepo:               repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
 		cacheProjectionPublisher: newCacheProjectionOutboxPublisher(
+			repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
+		),
+		questionUpsertPublisher: newOJQuestionUpsertOutboxPublisher(
 			repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
 		),
 		cacheProjectionSvc:        cacheProjectionSvc,
@@ -927,8 +931,42 @@ func (s *OJService) upsertLuoguProblems(
 		return nil
 	}
 
-	// 批量插入 (Repository 层会自动回填 Redis)
-	if err := s.luoguQuestionBankRepo.BatchCreate(ctx, newProblems); err != nil {
+	if s.txRunner == nil {
+		return errors.New("transaction runner is nil")
+	}
+	if s.questionUpsertPublisher == nil {
+		return errors.New("oj question upsert publisher is nil")
+	}
+	if err := s.txRunner.InTx(ctx, func(tx any) error {
+		repo := s.luoguQuestionBankRepo.WithTx(tx)
+		if err := repo.BatchCreate(ctx, newProblems); err != nil {
+			return err
+		}
+		for _, problem := range newProblems {
+			if problem == nil {
+				continue
+			}
+			if problem.ID == 0 {
+				existing, err := repo.GetByPID(ctx, strings.TrimSpace(problem.Pid))
+				if err != nil {
+					return err
+				}
+				problem = existing
+			}
+			if problem == nil || problem.ID == 0 {
+				continue
+			}
+			if err := s.questionUpsertPublisher.PublishInTx(ctx, tx, &eventdto.QuestionUpsertedEvent{
+				Platform:     consts.OJPlatformLuogu,
+				QuestionID:   problem.ID,
+				QuestionCode: strings.TrimSpace(problem.Pid),
+				Title:        strings.TrimSpace(problem.Title),
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 
@@ -974,8 +1012,43 @@ func (s *OJService) upsertLeetcodeProblems( // 写入 LeetCode 题库（去重 +
 	if len(newProblems) == 0 { // 无新增题目
 		return nil // 直接返回
 	}
-	if err := s.leetcodeQuestionBankRepo.BatchCreate(ctx, newProblems); err != nil { // 批量插入
-		return err // 向上返回错误
+	if s.txRunner == nil {
+		return errors.New("transaction runner is nil")
+	}
+	if s.questionUpsertPublisher == nil {
+		return errors.New("oj question upsert publisher is nil")
+	}
+	if err := s.txRunner.InTx(ctx, func(tx any) error {
+		repo := s.leetcodeQuestionBankRepo.WithTx(tx)
+		if err := repo.BatchCreate(ctx, newProblems); err != nil {
+			return err
+		}
+		for _, problem := range newProblems {
+			if problem == nil {
+				continue
+			}
+			if problem.ID == 0 {
+				existing, err := repo.GetByTitleSlug(ctx, strings.TrimSpace(problem.TitleSlug))
+				if err != nil {
+					return err
+				}
+				problem = existing
+			}
+			if problem == nil || problem.ID == 0 {
+				continue
+			}
+			if err := s.questionUpsertPublisher.PublishInTx(ctx, tx, &eventdto.QuestionUpsertedEvent{
+				Platform:     consts.OJPlatformLeetcode,
+				QuestionID:   problem.ID,
+				QuestionCode: strings.TrimSpace(problem.TitleSlug),
+				Title:        strings.TrimSpace(problem.Title),
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 	global.Log.Info("added new leetcode problems", zap.Int("count", len(newProblems))) // 记录新增数量
 	return nil                                                                         // 正常结束

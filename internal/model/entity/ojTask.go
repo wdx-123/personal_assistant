@@ -51,12 +51,41 @@ type OJTaskItem struct {
 	SortNo int `json:"sort_no" gorm:"not null;default:1;comment:'题目顺序'"`
 	// Platform 是 OJ 平台标识，取值来自 OJ 平台常量。
 	Platform string `json:"platform" gorm:"type:varchar(16);not null;index;comment:'OJ 平台'"`
-	// QuestionCode 是平台侧题目编码，便于展示和跨平台定位。
-	QuestionCode string `json:"question_code" gorm:"type:varchar(64);not null;comment:'平台题目编码'"`
-	// PlatformQuestionID 是系统本地题库中的题目主键 ID。
-	PlatformQuestionID uint `json:"platform_question_id" gorm:"not null;index;comment:'本地题库主键ID'"`
-	// QuestionTitleSnapshot 是创建或派生任务时冻结的题目标题。
-	QuestionTitleSnapshot string `json:"question_title_snapshot" gorm:"type:varchar(255);not null;default:'';comment:'题目标题快照'"`
+	// InputTitle 是用户为该任务项输入的原始题目标题。
+	InputTitle string `json:"input_title" gorm:"type:varchar(255);not null;default:'';comment:'用户输入题目标题'"`
+	// InputMode 是该任务项的输入模式，目前固定为 title。
+	InputMode string `json:"input_mode" gorm:"type:varchar(32);not null;default:'title';comment:'任务题目输入模式'"`
+	// ResolvedQuestionID 是当前绑定的本地权威题目 ID，未解析时为 0。
+	ResolvedQuestionID uint `json:"resolved_question_id" gorm:"default:0;index;comment:'已解析本地题库ID'"`
+	// ResolvedQuestionCode 是当前绑定的题目编码快照，未解析时为空。
+	ResolvedQuestionCode string `json:"resolved_question_code" gorm:"type:varchar(64);not null;default:'';comment:'已解析题目编码快照'"`
+	// ResolvedTitleSnapshot 是创建或回填时冻结的权威题目标题。
+	ResolvedTitleSnapshot string `json:"resolved_title_snapshot" gorm:"type:varchar(255);not null;default:'';comment:'已解析题目标题快照'"`
+	// ResolutionStatus 表示题目在任务侧的解析状态。
+	ResolutionStatus string `json:"resolution_status" gorm:"type:varchar(32);not null;default:'pending_resolution';index;comment:'任务题目解析状态'"`
+	// ResolutionNote 记录题目解析或预检备注。
+	ResolutionNote string `json:"resolution_note" gorm:"type:varchar(255);not null;default:'';comment:'任务题目解析备注'"`
+}
+
+// OJQuestionIntake 表示任务项待解析/待确认事实。
+// 该表只承接任务侧 pending_resolution 状态，不反向污染题库真相。
+type OJQuestionIntake struct {
+	// MODEL 提供主键、时间戳和软删除字段。
+	MODEL
+	// TaskID 是所属任务版本 ID。
+	TaskID uint `json:"task_id" gorm:"not null;index;comment:'任务ID'"`
+	// TaskItemID 是所属任务题目 ID，一对一承接待解析状态。
+	TaskItemID uint `json:"task_item_id" gorm:"not null;uniqueIndex;comment:'任务题目ID'"`
+	// Platform 是 OJ 平台标识。
+	Platform string `json:"platform" gorm:"type:varchar(16);not null;index;comment:'OJ 平台'"`
+	// InputTitle 是待解析时冻结的原始输入标题。
+	InputTitle string `json:"input_title" gorm:"type:varchar(255);not null;default:'';comment:'待解析输入标题'"`
+	// Status 表示当前 intake 的解析状态。
+	Status string `json:"status" gorm:"type:varchar(32);not null;default:'pending_resolution';index;comment:'待解析状态'"`
+	// ResolvedQuestionID 是已回填的本地权威题目 ID，未解析时为 0。
+	ResolvedQuestionID uint `json:"resolved_question_id" gorm:"default:0;index;comment:'已回填本地题库ID'"`
+	// ResolutionNote 记录 intake 的解析备注。
+	ResolutionNote string `json:"resolution_note" gorm:"type:varchar(255);not null;default:'';comment:'待解析备注'"`
 }
 
 // OJTaskExecution 表示任务版本对应的唯一执行记录实体。

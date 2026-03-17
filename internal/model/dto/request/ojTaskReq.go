@@ -4,8 +4,20 @@ import "time"
 
 // OJTaskItemReq 单个题目请求项。
 type OJTaskItemReq struct {
-	Platform     string `json:"platform" binding:"required,oneof=luogu leetcode lanqiao"`
-	QuestionCode string `json:"question_code" binding:"required,max=64"`
+	Platform      string `json:"platform" binding:"required,oneof=luogu leetcode lanqiao"`
+	Title         string `json:"title" binding:"required,max=255"`
+	AnalysisToken string `json:"analysis_token" binding:"omitempty,max=1024"`
+}
+
+// AnalyzeOJTaskTitleItemReq 单个题目分析请求项。
+type AnalyzeOJTaskTitleItemReq struct {
+	Platform string `json:"platform" binding:"required,oneof=luogu leetcode lanqiao"`
+	Title    string `json:"title" binding:"required,max=255"`
+}
+
+// AnalyzeOJTaskTitlesReq 题目分析请求。
+type AnalyzeOJTaskTitlesReq struct {
+	Items []AnalyzeOJTaskTitleItemReq `json:"items" binding:"required,min=1,dive"`
 }
 
 // CreateOJTaskReq 创建任务请求。

@@ -163,6 +163,27 @@ func initOJTaskSubscribers(
 			global.Log.Error("oj task trigger subscriber stopped", zap.Error(err))
 		}
 	}()
+
+	questionTopic := strings.TrimSpace(cfg.OJQuestionUpsertTopic)
+	questionGroup := strings.TrimSpace(cfg.OJQuestionUpsertGroup)
+	questionConsumer := strings.TrimSpace(cfg.OJQuestionUpsertConsumer)
+	if questionTopic == "" || questionGroup == "" || questionConsumer == "" {
+		return errors.New("oj question upsert messaging config missing")
+	}
+
+	questionSubscriber := messaging.NewRedisStreamSubscriber(global.Redis, global.Log, questionGroup, questionConsumer)
+	go func() {
+		err := questionSubscriber.Subscribe(ctx, questionTopic, func(ctx context.Context, msg *messaging.Message) error {
+			var payload eventdto.QuestionUpsertedEvent
+			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+				return err
+			}
+			return ojTaskSvc.HandleQuestionUpserted(ctx, &payload)
+		})
+		if err != nil && !errors.Is(err, context.Canceled) {
+			global.Log.Error("oj question upsert subscriber stopped", zap.Error(err))
+		}
+	}()
 	return nil
 }
 

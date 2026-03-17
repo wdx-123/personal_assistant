@@ -4,8 +4,6 @@ import (
 	"context"
 	stderrors "errors"
 	"sort"
-	"strconv"
-	"strings"
 	"time"
 
 	"personal_assistant/internal/model/consts"
@@ -25,9 +23,13 @@ import (
 type validatedOJTaskItem struct {
 	SortNo                int
 	Platform              string
-	QuestionCode          string
-	PlatformQuestionID    uint
-	QuestionTitleSnapshot string
+	InputTitle            string
+	InputMode             string
+	ResolvedQuestionID    uint
+	ResolvedQuestionCode  string
+	ResolvedTitleSnapshot string
+	ResolutionStatus      string
+	ResolutionNote        string
 }
 
 type validatedOJTaskDraft struct {
@@ -58,6 +60,7 @@ type OJTaskService struct {
 	lanqiaoUserQuestionRepo  interfaces.LanqiaoUserQuestionRepository
 	triggerPublisher         ojTaskExecutionTriggerEventPublisher
 	authorizationService     svccontract.AuthorizationServiceContract
+	analysisTokenCodec       *ojTaskAnalysisTokenCodec
 }
 
 func NewOJTaskService(
@@ -84,6 +87,7 @@ func NewOJTaskService(
 			repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
 		),
 		authorizationService: authorizationService,
+		analysisTokenCodec:   newOJTaskAnalysisTokenCodec(),
 	}
 }
 
@@ -92,16 +96,26 @@ func (s *OJTaskService) CreateTask(
 	operatorID uint,
 	req *request.CreateOJTaskReq,
 ) (*dtoresp.OJTaskCreateResp, error) {
+	// 预检任务草稿
 	draft, err := s.validateDraft(ctx, req.Title, req.Description, req.Mode, req.ExecuteAt, req.OrgIDs, req.Items)
 	if err != nil {
 		return nil, err
 	}
+
+	// 权限校验：确保操作者对涉及的所有组织都有管理权限
 	if err := s.authorizeManageOrgIDs(ctx, operatorID, draft.OrgIDs); err != nil {
 		return nil, err
 	}
 
+	// 创建任务版本
 	var out *dtoresp.OJTaskCreateResp
 	err = s.txRunner.InTx(ctx, func(tx any) error {
+		// 在事务内再次物化草稿，确保数据一致性和正确的错误处理
+		materializedDraft, innerErr := s.materializeDraftTx(ctx, tx, draft)
+		if innerErr != nil {
+			return innerErr
+		}
+		// 创建新版本时 rootTaskID 和 parentTaskID 均为 nil，versionNo 从 1 开始
 		created, innerErr := s.createTaskVersionTx(
 			ctx,
 			tx,
@@ -109,7 +123,7 @@ func (s *OJTaskService) CreateTask(
 			nil,
 			1,
 			operatorID,
-			draft,
+			materializedDraft,
 			resolveExecutionTrigger(draft.Mode),
 		)
 		if innerErr != nil {
@@ -148,22 +162,30 @@ func (s *OJTaskService) UpdateTask(
 		if draft.ExecuteAt == nil {
 			return bizerrors.New(bizerrors.CodeOJTaskExecuteAtInvalid)
 		}
+		materializedDraft, err := s.materializeDraftTx(ctx, tx, draft)
+		if err != nil {
+			return err
+		}
 
-		task.Title = draft.Title
-		task.Description = draft.Description
-		task.ExecuteAt = draft.ExecuteAt
+		task.Title = materializedDraft.Title
+		task.Description = materializedDraft.Description
+		task.ExecuteAt = materializedDraft.ExecuteAt
 		task.UpdatedBy = operatorID
 		if err := txTaskRepo.Update(ctx, task); err != nil {
 			return bizerrors.Wrap(bizerrors.CodeDBError, err)
 		}
-		if err := txTaskRepo.ReplaceOrgs(ctx, task.ID, buildTaskOrgRows(task.ID, draft.OrgIDs)); err != nil {
+		if err := txTaskRepo.ReplaceOrgs(ctx, task.ID, buildTaskOrgRows(task.ID, materializedDraft.OrgIDs)); err != nil {
 			return bizerrors.Wrap(bizerrors.CodeDBError, err)
 		}
-		if err := txTaskRepo.ReplaceItems(ctx, task.ID, buildTaskItemRows(task.ID, draft.Items)); err != nil {
+		itemRows := buildTaskItemRows(task.ID, materializedDraft.Items)
+		if err := txTaskRepo.ReplaceItems(ctx, task.ID, itemRows); err != nil {
+			return bizerrors.Wrap(bizerrors.CodeDBError, err)
+		}
+		if err := txTaskRepo.ReplaceIntakes(ctx, task.ID, buildTaskIntakeRows(task.ID, itemRows)); err != nil {
 			return bizerrors.Wrap(bizerrors.CodeDBError, err)
 		}
 
-		execution.PlannedAt = *draft.ExecuteAt
+		execution.PlannedAt = *materializedDraft.ExecuteAt
 		execution.RequestedBy = operatorID
 		if err := txExecutionRepo.Update(ctx, execution); err != nil {
 			return bizerrors.Wrap(bizerrors.CodeDBError, err)
@@ -282,6 +304,10 @@ func (s *OJTaskService) ReviseTask(
 
 	var out *dtoresp.OJTaskCreateResp
 	err = s.txRunner.InTx(ctx, func(tx any) error {
+		materializedDraft, innerErr := s.materializeDraftTx(ctx, tx, draft)
+		if innerErr != nil {
+			return innerErr
+		}
 		rootID := effectiveRootTaskID(sourceTask)
 		versionNo, innerErr := s.nextVersionNoTx(ctx, tx, rootID)
 		if innerErr != nil {
@@ -294,8 +320,8 @@ func (s *OJTaskService) ReviseTask(
 			&sourceTask.ID,
 			versionNo,
 			operatorID,
-			draft,
-			resolveExecutionTrigger(draft.Mode),
+			materializedDraft,
+			resolveExecutionTrigger(materializedDraft.Mode),
 		)
 		if innerErr != nil {
 			return innerErr
@@ -511,69 +537,6 @@ func (s *OJTaskService) GetTaskExecutionUserDetail(
 	return mapExecutionUserDetail(row, orgs, items), nil
 }
 
-func (s *OJTaskService) validateDraft(
-	ctx context.Context,
-	title, description, mode string,
-	executeAt *time.Time,
-	orgIDs []uint,
-	items []request.OJTaskItemReq,
-) (validatedOJTaskDraft, error) {
-	trimmedTitle := strings.TrimSpace(title)
-	if trimmedTitle == "" {
-		return validatedOJTaskDraft{}, bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "任务标题不能为空")
-	}
-
-	normalizedMode := strings.TrimSpace(mode)
-	if !consts.IsValidOJTaskMode(normalizedMode) {
-		return validatedOJTaskDraft{}, bizerrors.New(bizerrors.CodeInvalidParams)
-	}
-
-	now := time.Now()
-	var normalizedExecuteAt *time.Time
-	switch normalizedMode {
-	case string(consts.OJTaskModeImmediate):
-		if executeAt != nil {
-			return validatedOJTaskDraft{}, bizerrors.NewWithMsg(
-				bizerrors.CodeOJTaskExecuteAtInvalid,
-				"立即任务不允许传 execute_at",
-			)
-		}
-	case string(consts.OJTaskModeScheduled):
-		if executeAt == nil {
-			return validatedOJTaskDraft{}, bizerrors.NewWithMsg(
-				bizerrors.CodeOJTaskExecuteAtInvalid,
-				"定时任务必须传 execute_at",
-			)
-		}
-		if !executeAt.After(now) {
-			return validatedOJTaskDraft{}, bizerrors.NewWithMsg(
-				bizerrors.CodeOJTaskExecuteAtInvalid,
-				"execute_at 必须是未来时间",
-			)
-		}
-		value := executeAt.UTC()
-		normalizedExecuteAt = &value
-	}
-
-	validatedOrgIDs, err := s.validateOrgIDs(ctx, orgIDs)
-	if err != nil {
-		return validatedOJTaskDraft{}, err
-	}
-	validatedItems, err := s.validateItems(ctx, items)
-	if err != nil {
-		return validatedOJTaskDraft{}, err
-	}
-
-	return validatedOJTaskDraft{
-		Title:       trimmedTitle,
-		Description: strings.TrimSpace(description),
-		Mode:        normalizedMode,
-		ExecuteAt:   normalizedExecuteAt,
-		OrgIDs:      validatedOrgIDs,
-		Items:       validatedItems,
-	}, nil
-}
-
 func (s *OJTaskService) validateOrgIDs(ctx context.Context, orgIDs []uint) ([]uint, error) {
 	if len(orgIDs) == 0 {
 		return nil, bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "org_ids 不能为空")
@@ -605,109 +568,6 @@ func (s *OJTaskService) validateOrgIDs(ctx context.Context, orgIDs []uint) ([]ui
 		return nil, bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "org_ids 不能为空")
 	}
 	return normalized, nil
-}
-
-func (s *OJTaskService) validateItems(
-	ctx context.Context,
-	items []request.OJTaskItemReq,
-) ([]validatedOJTaskItem, error) {
-	if len(items) == 0 {
-		return nil, bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "items 不能为空")
-	}
-
-	seen := make(map[string]struct{}, len(items))
-	normalized := make([]validatedOJTaskItem, 0, len(items))
-	for _, item := range items {
-		platform := strings.TrimSpace(item.Platform)
-		questionCode := strings.TrimSpace(item.QuestionCode)
-		if platform == "" || questionCode == "" {
-			return nil, bizerrors.New(bizerrors.CodeInvalidParams)
-		}
-		key := platform + ":" + questionCode
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		validated, err := s.validateQuestion(ctx, platform, questionCode)
-		if err != nil {
-			return nil, err
-		}
-		validated.SortNo = len(normalized) + 1
-		normalized = append(normalized, validated)
-		seen[key] = struct{}{}
-	}
-
-	if len(normalized) == 0 {
-		return nil, bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "items 不能为空")
-	}
-	return normalized, nil
-}
-
-func (s *OJTaskService) validateQuestion(
-	ctx context.Context,
-	platform, questionCode string,
-) (validatedOJTaskItem, error) {
-	switch platform {
-	case consts.OJPlatformLuogu:
-		question, err := s.luoguQuestionRepo.GetByPID(ctx, questionCode)
-		if err != nil {
-			if stderrors.Is(err, gorm.ErrRecordNotFound) {
-				return validatedOJTaskItem{}, bizerrors.New(bizerrors.CodeOJTaskQuestionNotFound)
-			}
-			return validatedOJTaskItem{}, bizerrors.Wrap(bizerrors.CodeDBError, err)
-		}
-		if question == nil || question.ID == 0 {
-			return validatedOJTaskItem{}, bizerrors.New(bizerrors.CodeOJTaskQuestionNotFound)
-		}
-		return validatedOJTaskItem{
-			Platform:              platform,
-			QuestionCode:          questionCode,
-			PlatformQuestionID:    question.ID,
-			QuestionTitleSnapshot: question.Title,
-		}, nil
-	case consts.OJPlatformLeetcode:
-		question, err := s.leetcodeQuestionRepo.GetByTitleSlug(ctx, questionCode)
-		if err != nil {
-			if stderrors.Is(err, gorm.ErrRecordNotFound) {
-				return validatedOJTaskItem{}, bizerrors.New(bizerrors.CodeOJTaskQuestionNotFound)
-			}
-			return validatedOJTaskItem{}, bizerrors.Wrap(bizerrors.CodeDBError, err)
-		}
-		if question == nil || question.ID == 0 {
-			return validatedOJTaskItem{}, bizerrors.New(bizerrors.CodeOJTaskQuestionNotFound)
-		}
-		return validatedOJTaskItem{
-			Platform:              platform,
-			QuestionCode:          questionCode,
-			PlatformQuestionID:    question.ID,
-			QuestionTitleSnapshot: question.Title,
-		}, nil
-	case consts.OJPlatformLanqiao:
-		problemID, err := strconv.Atoi(questionCode)
-		if err != nil || problemID <= 0 {
-			return validatedOJTaskItem{}, bizerrors.NewWithMsg(
-				bizerrors.CodeOJTaskQuestionNotFound,
-				"蓝桥题目编码非法",
-			)
-		}
-		question, err := s.lanqiaoQuestionRepo.GetByProblemID(ctx, problemID)
-		if err != nil {
-			if stderrors.Is(err, gorm.ErrRecordNotFound) {
-				return validatedOJTaskItem{}, bizerrors.New(bizerrors.CodeOJTaskQuestionNotFound)
-			}
-			return validatedOJTaskItem{}, bizerrors.Wrap(bizerrors.CodeDBError, err)
-		}
-		if question == nil || question.ID == 0 {
-			return validatedOJTaskItem{}, bizerrors.New(bizerrors.CodeOJTaskQuestionNotFound)
-		}
-		return validatedOJTaskItem{
-			Platform:              platform,
-			QuestionCode:          questionCode,
-			PlatformQuestionID:    question.ID,
-			QuestionTitleSnapshot: question.Title,
-		}, nil
-	default:
-		return validatedOJTaskItem{}, bizerrors.New(bizerrors.CodeInvalidParams)
-	}
 }
 
 func (s *OJTaskService) authorizeManageOrgIDs(
@@ -776,7 +636,11 @@ func (s *OJTaskService) createTaskVersionTx(
 	if err := txTaskRepo.CreateOrgs(ctx, buildTaskOrgRows(task.ID, draft.OrgIDs)); err != nil {
 		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
 	}
-	if err := txTaskRepo.CreateItems(ctx, buildTaskItemRows(task.ID, draft.Items)); err != nil {
+	itemRows := buildTaskItemRows(task.ID, draft.Items)
+	if err := txTaskRepo.CreateItems(ctx, itemRows); err != nil {
+		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	if err := txTaskRepo.CreateIntakes(ctx, buildTaskIntakeRows(task.ID, itemRows)); err != nil {
 		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
 	}
 
@@ -1080,9 +944,35 @@ func buildTaskItemRows(taskID uint, items []validatedOJTaskItem) []*entity.OJTas
 			TaskID:                taskID,
 			SortNo:                item.SortNo,
 			Platform:              item.Platform,
-			QuestionCode:          item.QuestionCode,
-			PlatformQuestionID:    item.PlatformQuestionID,
-			QuestionTitleSnapshot: item.QuestionTitleSnapshot,
+			InputTitle:            item.InputTitle,
+			InputMode:             item.InputMode,
+			ResolvedQuestionID:    item.ResolvedQuestionID,
+			ResolvedQuestionCode:  item.ResolvedQuestionCode,
+			ResolvedTitleSnapshot: item.ResolvedTitleSnapshot,
+			ResolutionStatus:      item.ResolutionStatus,
+			ResolutionNote:        item.ResolutionNote,
+		})
+	}
+	return rows
+}
+
+func buildTaskIntakeRows(taskID uint, items []*entity.OJTaskItem) []*entity.OJQuestionIntake {
+	rows := make([]*entity.OJQuestionIntake, 0)
+	for _, item := range items {
+		if item == nil || item.ID == 0 {
+			continue
+		}
+		if item.ResolutionStatus != string(consts.OJTaskItemResolutionStatusPendingResolution) {
+			continue
+		}
+		rows = append(rows, &entity.OJQuestionIntake{
+			TaskID:             taskID,
+			TaskItemID:         item.ID,
+			Platform:           item.Platform,
+			InputTitle:         item.InputTitle,
+			Status:             item.ResolutionStatus,
+			ResolvedQuestionID: item.ResolvedQuestionID,
+			ResolutionNote:     item.ResolutionNote,
 		})
 	}
 	return rows
@@ -1097,14 +987,24 @@ func taskItemsToValidated(items []*entity.OJTaskItem) []validatedOJTaskItem {
 		out = append(out, validatedOJTaskItem{
 			SortNo:                item.SortNo,
 			Platform:              item.Platform,
-			QuestionCode:          item.QuestionCode,
-			PlatformQuestionID:    item.PlatformQuestionID,
-			QuestionTitleSnapshot: item.QuestionTitleSnapshot,
+			InputTitle:            item.InputTitle,
+			InputMode:             item.InputMode,
+			ResolvedQuestionID:    item.ResolvedQuestionID,
+			ResolvedQuestionCode:  item.ResolvedQuestionCode,
+			ResolvedTitleSnapshot: item.ResolvedTitleSnapshot,
+			ResolutionStatus:      item.ResolutionStatus,
+			ResolutionNote:        item.ResolutionNote,
 		})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].SortNo == out[j].SortNo {
-			return out[i].QuestionCode < out[j].QuestionCode
+			if out[i].Platform == out[j].Platform {
+				if out[i].InputTitle == out[j].InputTitle {
+					return out[i].ResolvedQuestionID < out[j].ResolvedQuestionID
+				}
+				return out[i].InputTitle < out[j].InputTitle
+			}
+			return out[i].Platform < out[j].Platform
 		}
 		return out[i].SortNo < out[j].SortNo
 	})
@@ -1211,9 +1111,13 @@ func mapTaskDetail(
 			ID:                    item.ID,
 			SortNo:                item.SortNo,
 			Platform:              item.Platform,
-			QuestionCode:          item.QuestionCode,
-			PlatformQuestionID:    item.PlatformQuestionID,
-			QuestionTitleSnapshot: item.QuestionTitleSnapshot,
+			InputTitle:            item.InputTitle,
+			InputMode:             item.InputMode,
+			ResolutionStatus:      item.ResolutionStatus,
+			ResolutionNote:        item.ResolutionNote,
+			ResolvedQuestionID:    uintPtrOrNil(item.ResolvedQuestionID),
+			ResolvedQuestionCode:  item.ResolvedQuestionCode,
+			ResolvedTitleSnapshot: item.ResolvedTitleSnapshot,
 		})
 	}
 	if row.ExecutionID > 0 {
@@ -1338,10 +1242,21 @@ func mapExecutionUserItem(item *readmodel.OJTaskExecutionUserItemDetail) *dtores
 		TaskItemID:            item.TaskItemID,
 		SortNo:                item.SortNo,
 		Platform:              item.Platform,
-		QuestionCode:          item.QuestionCode,
-		PlatformQuestionID:    item.PlatformQuestionID,
-		QuestionTitleSnapshot: item.QuestionTitleSnapshot,
+		InputTitle:            item.InputTitle,
+		ResolutionStatus:      item.ResolutionStatus,
+		ResolutionNote:        item.ResolutionNote,
+		ResolvedQuestionID:    uintPtrOrNil(item.ResolvedQuestionID),
+		ResolvedQuestionCode:  item.ResolvedQuestionCode,
+		ResolvedTitleSnapshot: item.ResolvedTitleSnapshot,
 		ResultStatus:          item.ResultStatus,
 		Reason:                item.Reason,
 	}
+}
+
+func uintPtrOrNil(value uint) *uint {
+	if value == 0 {
+		return nil
+	}
+	copied := value
+	return &copied
 }

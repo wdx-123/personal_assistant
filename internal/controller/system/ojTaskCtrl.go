@@ -17,6 +17,24 @@ type OJTaskCtrl struct {
 	ojTaskService serviceContract.OJTaskServiceContract
 }
 
+// AnalyzeTaskTitles 分析 OJTask 题目标题。
+func (ctrl *OJTaskCtrl) AnalyzeTaskTitles(c *gin.Context) {
+	var req request.AnalyzeOJTaskTitlesReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		global.Log.Error("分析 OJTask 题目参数错误", zap.Error(err))
+		response.BizFailWithCodeMsg(bizerrors.CodeBindFailed, err.Error(), c)
+		return
+	}
+
+	out, err := ctrl.ojTaskService.AnalyzeTaskTitles(c.Request.Context(), &req)
+	if err != nil {
+		global.Log.Error("分析 OJTask 题目失败", zap.Error(err))
+		response.BizFailWithError(err, c)
+		return
+	}
+	response.BizOkWithData(out, c)
+}
+
 // CreateTask 创建 OJTask
 func (ctrl *OJTaskCtrl) CreateTask(c *gin.Context) {
 	var req request.CreateOJTaskReq

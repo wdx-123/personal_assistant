@@ -123,6 +123,7 @@ type OJServiceContract interface {
 }
 
 type OJTaskServiceContract interface {
+	AnalyzeTaskTitles(ctx context.Context, req *request.AnalyzeOJTaskTitlesReq) (*resp.OJTaskAnalyzeResp, error)
 	CreateTask(ctx context.Context, operatorID uint, req *request.CreateOJTaskReq) (*resp.OJTaskCreateResp, error)
 	UpdateTask(ctx context.Context, operatorID, taskID uint, req *request.UpdateOJTaskReq) error
 	DeleteTask(ctx context.Context, operatorID, taskID uint) error
@@ -137,6 +138,7 @@ type OJTaskServiceContract interface {
 	GetTaskExecutionUsers(ctx context.Context, userID, taskID, executionID uint, req *request.OJTaskExecutionUserListReq) (*resp.OJTaskExecutionUserListResp, error)
 	GetTaskExecutionUserDetail(ctx context.Context, userID, taskID, executionID, targetUserID uint) (*resp.OJTaskExecutionUserDetailResp, error)
 	DispatchPendingExecutions(ctx context.Context) error
+	HandleQuestionUpserted(ctx context.Context, event *eventdto.QuestionUpsertedEvent) error
 }
 
 type OJDailyStatsProjectionServiceContract interface {

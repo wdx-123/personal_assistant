@@ -189,6 +189,9 @@ task:
   oj_task_dispatch_interval_seconds: 10
   oj_task_dispatch_batch_size: 10
   oj_task_dispatch_worker_count: 1
+  oj_task_analyze_fuzzy_limit: 5
+  oj_task_preflight_enabled: true
+  oj_task_preflight_fail_open: false
   oj_task_snapshot_insert_batch_size: 500
   oj_task_execution_lock_ttl_seconds: 60
   disabled_user_cleanup_enabled: true

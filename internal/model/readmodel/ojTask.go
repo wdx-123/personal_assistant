@@ -183,12 +183,18 @@ type OJTaskExecutionUserItemDetail struct {
 	SortNo int `gorm:"column:sort_no"`
 	// Platform 是题目所属 OJ 平台标识。
 	Platform string `gorm:"column:platform"`
-	// QuestionCode 是平台题目编码。
-	QuestionCode string `gorm:"column:question_code"`
-	// PlatformQuestionID 是本地题库中的题目主键 ID。
-	PlatformQuestionID uint `gorm:"column:platform_question_id"`
-	// QuestionTitleSnapshot 是执行时冻结的题目标题。
-	QuestionTitleSnapshot string `gorm:"column:question_title_snapshot"`
+	// InputTitle 是任务项保存的原始输入标题。
+	InputTitle string `gorm:"column:input_title"`
+	// ResolutionStatus 是任务项当前解析状态。
+	ResolutionStatus string `gorm:"column:resolution_status"`
+	// ResolutionNote 是任务项当前解析备注。
+	ResolutionNote string `gorm:"column:resolution_note"`
+	// ResolvedQuestionID 是当前绑定的本地题库主键 ID。
+	ResolvedQuestionID uint `gorm:"column:resolved_question_id"`
+	// ResolvedQuestionCode 是已解析题目编码快照。
+	ResolvedQuestionCode string `gorm:"column:resolved_question_code"`
+	// ResolvedTitleSnapshot 是已解析题目标题快照。
+	ResolvedTitleSnapshot string `gorm:"column:resolved_title_snapshot"`
 	// ResultStatus 是该用户题目结果状态，取值来自 consts.OJTaskExecutionUserItemResultStatus。
 	ResultStatus string `gorm:"column:result_status"`
 	// Reason 是 pending 状态下的原因编码；completed 状态通常为空字符串。

@@ -146,6 +146,22 @@ func (r *ojTaskRepository) CreateItems(ctx context.Context, items []*entity.OJTa
 	return r.db.WithContext(ctx).CreateInBatches(items, 100).Error
 }
 
+func (r *ojTaskRepository) GetItemByID(ctx context.Context, itemID uint) (*entity.OJTaskItem, error) {
+	var item entity.OJTaskItem
+	err := r.db.WithContext(ctx).First(&item, itemID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &item, nil
+}
+
+func (r *ojTaskRepository) UpdateItem(ctx context.Context, item *entity.OJTaskItem) error {
+	return r.db.WithContext(ctx).Save(item).Error
+}
+
 func (r *ojTaskRepository) ReplaceItems(ctx context.Context, taskID uint, items []*entity.OJTaskItem) error {
 	if err := r.db.WithContext(ctx).
 		Unscoped().
@@ -166,6 +182,54 @@ func (r *ojTaskRepository) ListItemsByTaskID(ctx context.Context, taskID uint) (
 		return nil, err
 	}
 	return items, nil
+}
+
+func (r *ojTaskRepository) CreateIntakes(ctx context.Context, rows []*entity.OJQuestionIntake) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	return r.db.WithContext(ctx).CreateInBatches(rows, 100).Error
+}
+
+func (r *ojTaskRepository) UpdateIntake(ctx context.Context, intake *entity.OJQuestionIntake) error {
+	return r.db.WithContext(ctx).Save(intake).Error
+}
+
+func (r *ojTaskRepository) ReplaceIntakes(ctx context.Context, taskID uint, rows []*entity.OJQuestionIntake) error {
+	if err := r.db.WithContext(ctx).
+		Unscoped().
+		Where("task_id = ?", taskID).
+		Delete(&entity.OJQuestionIntake{}).Error; err != nil {
+		return err
+	}
+	return r.CreateIntakes(ctx, rows)
+}
+
+func (r *ojTaskRepository) ListIntakesByTaskID(ctx context.Context, taskID uint) ([]*entity.OJQuestionIntake, error) {
+	var rows []*entity.OJQuestionIntake
+	err := r.db.WithContext(ctx).
+		Where("task_id = ?", taskID).
+		Order("task_item_id ASC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+func (r *ojTaskRepository) ListPendingIntakesByTitle(
+	ctx context.Context,
+	platform, title string,
+) ([]*entity.OJQuestionIntake, error) {
+	var rows []*entity.OJQuestionIntake
+	err := r.db.WithContext(ctx).
+		Where("platform = ? AND input_title = ? AND status = ?", platform, title, string(consts.OJTaskItemResolutionStatusPendingResolution)).
+		Order("task_item_id ASC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
 func (r *ojTaskRepository) ListVisibleTasks(

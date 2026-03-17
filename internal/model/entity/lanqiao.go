@@ -35,6 +35,10 @@ type LanqiaoUserQuestion struct {
 // LanqiaoQuestionBank 保存蓝桥题目元信息。
 type LanqiaoQuestionBank struct {
 	MODEL
-	ProblemID int    `json:"problem_id" gorm:"not null;uniqueIndex;comment:'蓝桥题目唯一ID'"` // 蓝桥题目ID
-	Title     string `json:"title" gorm:"type:varchar(255);not null;comment:'题目标题'"`    // 蓝桥题目标题
+	ProblemID        int        `json:"problem_id" gorm:"not null;uniqueIndex;comment:'蓝桥题目唯一ID'"` // 蓝桥题目ID
+	Title            string     `json:"title" gorm:"type:varchar(255);not null;comment:'题目标题'"`    // 蓝桥题目标题
+	SourceStatus     int8       `json:"source_status" gorm:"type:tinyint;not null;default:1;index;comment:'来源状态:1 verified,2 pending,3 invalid'"`
+	SourceType       string     `json:"source_type" gorm:"type:varchar(16);not null;default:'sync';comment:'来源类型 sync|manual'"`
+	LastVerifiedAt   *time.Time `json:"last_verified_at,omitempty" gorm:"type:datetime;comment:'最近一次校验时间'"`
+	VerifyFailReason string     `json:"verify_fail_reason" gorm:"type:varchar(255);not null;default:'';comment:'最近一次校验失败原因'"`
 }

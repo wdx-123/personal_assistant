@@ -255,6 +255,9 @@ func NewConfig() *Config {
 		LeetcodeBindTopic:           viper.GetString("messaging.leetcode_bind_topic"),
 		LeetcodeBindGroup:           viper.GetString("messaging.leetcode_bind_group"),
 		LeetcodeBindConsumer:        viper.GetString("messaging.leetcode_bind_consumer"),
+		OJQuestionUpsertTopic:       viper.GetString("messaging.oj_question_upsert_topic"),
+		OJQuestionUpsertGroup:       viper.GetString("messaging.oj_question_upsert_group"),
+		OJQuestionUpsertConsumer:    viper.GetString("messaging.oj_question_upsert_consumer"),
 		OJTaskExecutionTriggerTopic: viper.GetString("messaging.oj_task_execution_trigger_topic"),
 		OJTaskExecutionTriggerGroup: viper.GetString("messaging.oj_task_execution_trigger_group"),
 		OJTaskExecutionTriggerConsumer: viper.GetString(

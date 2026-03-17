@@ -10,6 +10,8 @@ import (
 	"personal_assistant/global"
 	"personal_assistant/internal/infrastructure"
 	lq "personal_assistant/internal/infrastructure/lanqiao"
+	"personal_assistant/internal/model/consts"
+	eventdto "personal_assistant/internal/model/dto/event"
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
@@ -128,6 +130,7 @@ func (s *OJService) BindLanqiaoAccount(
 
 		_, passedCount, err = s.persistLanqiaoPassedFacts(
 			ctx,
+			tx,
 			questionBankRepo,
 			userQuestionRepo,
 			saved.ID,
@@ -323,6 +326,7 @@ func (s *OJService) syncSingleLanqiaoUser(
 
 		newRecords, passedCount, err = s.persistLanqiaoPassedFacts(
 			ctx,
+			tx,
 			questionBankRepo,
 			userQuestionRepo,
 			detail.ID,
@@ -379,6 +383,7 @@ func (s *OJService) refreshSingleLanqiaoSubmissionStats(
 
 func (s *OJService) persistLanqiaoPassedFacts(
 	ctx context.Context,
+	tx any,
 	questionBankRepo interfaces.LanqiaoQuestionBankRepository,
 	userQuestionRepo interfaces.LanqiaoUserQuestionRepository,
 	lanqiaoUserDetailID uint,
@@ -416,12 +421,23 @@ func (s *OJService) persistLanqiaoPassedFacts(
 
 	newRelations := make([]*entity.LanqiaoUserQuestion, 0, len(passedByProblem))
 	for problemID, problem := range passedByProblem {
-		questionID, err := questionBankRepo.EnsureQuestionID(ctx, &entity.LanqiaoQuestionBank{
+		question := &entity.LanqiaoQuestionBank{
 			ProblemID: problemID,
 			Title:     strings.TrimSpace(problem.ProblemName),
-		})
+		}
+		questionID, err := questionBankRepo.EnsureQuestionID(ctx, question)
 		if err != nil {
 			return 0, 0, err
+		}
+		if questionID > 0 && s.questionUpsertPublisher != nil {
+			if err := s.questionUpsertPublisher.PublishInTx(ctx, tx, &eventdto.QuestionUpsertedEvent{
+				Platform:     consts.OJPlatformLanqiao,
+				QuestionID:   questionID,
+				QuestionCode: fmt.Sprintf("%d", problemID),
+				Title:        strings.TrimSpace(question.Title),
+			}); err != nil {
+				return 0, 0, err
+			}
 		}
 		if _, ok := existingSolved[questionID]; ok {
 			continue

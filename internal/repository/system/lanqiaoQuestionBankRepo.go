@@ -30,6 +30,35 @@ func (r *lanqiaoQuestionBankRepository) WithTx(tx any) interfaces.LanqiaoQuestio
 	return r
 }
 
+func (r *lanqiaoQuestionBankRepository) Create(
+	ctx context.Context,
+	question *entity.LanqiaoQuestionBank,
+) error {
+	return r.db.WithContext(ctx).Create(question).Error
+}
+
+func (r *lanqiaoQuestionBankRepository) Update(
+	ctx context.Context,
+	question *entity.LanqiaoQuestionBank,
+) error {
+	return r.db.WithContext(ctx).Save(question).Error
+}
+
+func (r *lanqiaoQuestionBankRepository) GetByID(
+	ctx context.Context,
+	id uint,
+) (*entity.LanqiaoQuestionBank, error) {
+	var q entity.LanqiaoQuestionBank
+	err := r.db.WithContext(ctx).First(&q, id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &q, nil
+}
+
 func (r *lanqiaoQuestionBankRepository) GetByProblemID(
 	ctx context.Context,
 	problemID int,
@@ -40,6 +69,39 @@ func (r *lanqiaoQuestionBankRepository) GetByProblemID(
 		return nil, err
 	}
 	return &q, nil
+}
+
+func (r *lanqiaoQuestionBankRepository) ListByExactTitle(
+	ctx context.Context,
+	title string,
+) ([]*entity.LanqiaoQuestionBank, error) {
+	var questions []*entity.LanqiaoQuestionBank
+	err := r.db.WithContext(ctx).
+		Where("title = ?", title).
+		Order("source_status ASC, id ASC").
+		Find(&questions).Error
+	if err != nil {
+		return nil, err
+	}
+	return questions, nil
+}
+
+func (r *lanqiaoQuestionBankRepository) SearchByTitle(
+	ctx context.Context,
+	keyword string,
+	limit int,
+) ([]*entity.LanqiaoQuestionBank, error) {
+	query := r.db.WithContext(ctx).
+		Where("title LIKE ?", "%"+keyword+"%").
+		Order("source_status ASC, id ASC")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	var questions []*entity.LanqiaoQuestionBank
+	if err := query.Find(&questions).Error; err != nil {
+		return nil, err
+	}
+	return questions, nil
 }
 
 func (r *lanqiaoQuestionBankRepository) GetCachedID(

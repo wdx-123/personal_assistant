@@ -209,6 +209,9 @@ func (s *OJTaskService) dispatchSingleExecution(
 			bizerrors.Wrap(bizerrors.CodeDBError, err),
 		)
 	}
+	if err := s.preFlightCheck(ctx, task.ID); err != nil {
+		return s.failExecutionAttempt(ctx, task.ID, execution.ID, err)
+	}
 
 	// 先在内存中冻结执行事实，再统一事务落库，减少查询侧读到中间态的概率。
 	snapshot, err := s.buildExecutionSnapshot(ctx, task, execution)
@@ -532,13 +535,20 @@ func resolveOJTaskItemResult(
 	lanqiaoDetailMap map[uint]*entity.LanqiaoUserDetail,
 	lanqiaoSolvedMap map[uint]map[uint]struct{},
 ) (string, string) {
+	if item == nil {
+		return string(consts.OJTaskExecutionUserItemResultPending), string(consts.OJTaskExecutionUserItemReasonQuestionNotFound)
+	}
+	if item.ResolutionStatus != string(consts.OJTaskItemResolutionStatusResolved) || item.ResolvedQuestionID == 0 {
+		return string(consts.OJTaskExecutionUserItemResultPending), string(consts.OJTaskExecutionUserItemReasonQuestionNotFound)
+	}
+
 	switch item.Platform {
 	case consts.OJPlatformLuogu:
 		detail := luoguDetailMap[userID]
 		if detail == nil {
 			return string(consts.OJTaskExecutionUserItemResultPending), string(consts.OJTaskExecutionUserItemReasonAccountUnbound)
 		}
-		if _, ok := luoguSolvedMap[detail.ID][item.PlatformQuestionID]; ok {
+		if _, ok := luoguSolvedMap[detail.ID][item.ResolvedQuestionID]; ok {
 			return string(consts.OJTaskExecutionUserItemResultCompleted), ""
 		}
 	case consts.OJPlatformLeetcode:
@@ -546,7 +556,7 @@ func resolveOJTaskItemResult(
 		if detail == nil {
 			return string(consts.OJTaskExecutionUserItemResultPending), string(consts.OJTaskExecutionUserItemReasonAccountUnbound)
 		}
-		if _, ok := leetcodeSolvedMap[detail.ID][item.PlatformQuestionID]; ok {
+		if _, ok := leetcodeSolvedMap[detail.ID][item.ResolvedQuestionID]; ok {
 			return string(consts.OJTaskExecutionUserItemResultCompleted), ""
 		}
 	case consts.OJPlatformLanqiao:
@@ -554,7 +564,7 @@ func resolveOJTaskItemResult(
 		if detail == nil {
 			return string(consts.OJTaskExecutionUserItemResultPending), string(consts.OJTaskExecutionUserItemReasonAccountUnbound)
 		}
-		if _, ok := lanqiaoSolvedMap[detail.ID][item.PlatformQuestionID]; ok {
+		if _, ok := lanqiaoSolvedMap[detail.ID][item.ResolvedQuestionID]; ok {
 			return string(consts.OJTaskExecutionUserItemResultCompleted), ""
 		}
 	}

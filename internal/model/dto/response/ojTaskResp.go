@@ -11,9 +11,13 @@ type OJTaskItemResp struct {
 	ID                    uint   `json:"id"`
 	SortNo                int    `json:"sort_no"`
 	Platform              string `json:"platform"`
-	QuestionCode          string `json:"question_code"`
-	PlatformQuestionID    uint   `json:"platform_question_id"`
-	QuestionTitleSnapshot string `json:"question_title_snapshot"`
+	InputTitle            string `json:"input_title"`
+	InputMode             string `json:"input_mode"`
+	ResolutionStatus      string `json:"resolution_status"`
+	ResolutionNote        string `json:"resolution_note,omitempty"`
+	ResolvedQuestionID    *uint  `json:"resolved_question_id,omitempty"`
+	ResolvedQuestionCode  string `json:"resolved_question_code,omitempty"`
+	ResolvedTitleSnapshot string `json:"resolved_title_snapshot,omitempty"`
 }
 
 // OJTaskListItemResp 任务列表项。
@@ -48,6 +52,47 @@ type OJTaskCreateResp struct {
 	TaskID      uint   `json:"task_id"`
 	ExecutionID uint   `json:"execution_id"`
 	Status      string `json:"status"`
+}
+
+// OJTaskAnalyzeResolvedItemResp 分析后可直接落任务的题目。
+type OJTaskAnalyzeResolvedItemResp struct {
+	InputIndex            int    `json:"input_index"`
+	Platform              string `json:"platform"`
+	Title                 string `json:"title"`
+	AnalysisToken         string `json:"analysis_token"`
+	ResolvedQuestionID    uint   `json:"resolved_question_id"`
+	ResolvedQuestionCode  string `json:"resolved_question_code"`
+	ResolvedTitleSnapshot string `json:"resolved_title"`
+}
+
+// OJTaskAnalyzeCandidateResp 分析候选项。
+type OJTaskAnalyzeCandidateResp struct {
+	AnalysisToken         string `json:"analysis_token"`
+	ResolvedQuestionID    uint   `json:"resolved_question_id"`
+	ResolvedQuestionCode  string `json:"resolved_question_code"`
+	ResolvedTitleSnapshot string `json:"resolved_title"`
+}
+
+// OJTaskAnalyzeAmbiguousItemResp 分析歧义项。
+type OJTaskAnalyzeAmbiguousItemResp struct {
+	InputIndex int                           `json:"input_index"`
+	Platform   string                        `json:"platform"`
+	Title      string                        `json:"title"`
+	Options    []*OJTaskAnalyzeCandidateResp `json:"options"`
+}
+
+// OJTaskAnalyzeMissingItemResp 分析缺失项。
+type OJTaskAnalyzeMissingItemResp struct {
+	InputIndex int    `json:"input_index"`
+	Platform   string `json:"platform"`
+	Title      string `json:"title"`
+}
+
+// OJTaskAnalyzeResp 题目分析响应。
+type OJTaskAnalyzeResp struct {
+	Resolved  []*OJTaskAnalyzeResolvedItemResp  `json:"resolved"`
+	Ambiguous []*OJTaskAnalyzeAmbiguousItemResp `json:"ambiguous"`
+	Missing   []*OJTaskAnalyzeMissingItemResp   `json:"missing"`
 }
 
 // OJTaskExecutionResp 执行详情响应。
@@ -121,9 +166,12 @@ type OJTaskExecutionUserItemResp struct {
 	TaskItemID            uint   `json:"task_item_id"`
 	SortNo                int    `json:"sort_no"`
 	Platform              string `json:"platform"`
-	QuestionCode          string `json:"question_code"`
-	PlatformQuestionID    uint   `json:"platform_question_id"`
-	QuestionTitleSnapshot string `json:"question_title_snapshot"`
+	InputTitle            string `json:"input_title"`
+	ResolutionStatus      string `json:"resolution_status"`
+	ResolutionNote        string `json:"resolution_note,omitempty"`
+	ResolvedQuestionID    *uint  `json:"resolved_question_id,omitempty"`
+	ResolvedQuestionCode  string `json:"resolved_question_code,omitempty"`
+	ResolvedTitleSnapshot string `json:"resolved_title_snapshot,omitempty"`
 	ResultStatus          string `json:"result_status"`
 	Reason                string `json:"reason,omitempty"`
 }

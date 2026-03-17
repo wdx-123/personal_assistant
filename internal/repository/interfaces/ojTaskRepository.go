@@ -22,8 +22,15 @@ type OJTaskRepository interface {
 	ListOrgsByTaskID(ctx context.Context, taskID uint) ([]*entity.OJTaskOrg, error)
 	ListTaskOrgsWithNames(ctx context.Context, taskID uint) ([]*readmodel.OJTaskOrgInfo, error)
 	CreateItems(ctx context.Context, items []*entity.OJTaskItem) error
+	GetItemByID(ctx context.Context, itemID uint) (*entity.OJTaskItem, error)
+	UpdateItem(ctx context.Context, item *entity.OJTaskItem) error
 	ReplaceItems(ctx context.Context, taskID uint, items []*entity.OJTaskItem) error
 	ListItemsByTaskID(ctx context.Context, taskID uint) ([]*entity.OJTaskItem, error)
+	CreateIntakes(ctx context.Context, rows []*entity.OJQuestionIntake) error
+	UpdateIntake(ctx context.Context, intake *entity.OJQuestionIntake) error
+	ReplaceIntakes(ctx context.Context, taskID uint, rows []*entity.OJQuestionIntake) error
+	ListIntakesByTaskID(ctx context.Context, taskID uint) ([]*entity.OJQuestionIntake, error)
+	ListPendingIntakesByTitle(ctx context.Context, platform, title string) ([]*entity.OJQuestionIntake, error)
 	ListVisibleTasks(ctx context.Context, userID uint, isSuperAdmin bool, req *request.OJTaskListReq) ([]*readmodel.OJTaskListItem, int64, error)
 	GetVisibleTask(ctx context.Context, userID uint, isSuperAdmin bool, taskID uint) (*readmodel.OJTaskVisibleTask, error)
 	ListVisibleVersions(ctx context.Context, userID uint, isSuperAdmin bool, rootTaskID uint) ([]*readmodel.OJTaskVersionItem, error)
