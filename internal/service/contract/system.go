@@ -127,6 +127,7 @@ type OJTaskServiceContract interface {
 	UpdateTask(ctx context.Context, operatorID, taskID uint, req *request.UpdateOJTaskReq) error
 	DeleteTask(ctx context.Context, operatorID, taskID uint) error
 	ExecuteTaskNow(ctx context.Context, operatorID, taskID uint) (*resp.OJTaskCreateResp, error)
+	ExecuteExecutionByID(ctx context.Context, executionID uint) error
 	ReviseTask(ctx context.Context, operatorID, taskID uint, req *request.ReviseOJTaskReq) (*resp.OJTaskCreateResp, error)
 	RetryTask(ctx context.Context, operatorID, taskID uint) (*resp.OJTaskCreateResp, error)
 	GetVisibleTaskList(ctx context.Context, userID uint, req *request.OJTaskListReq) ([]*resp.OJTaskListItemResp, int64, error)

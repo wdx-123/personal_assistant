@@ -1,9 +1,13 @@
 package system
 
 import (
+	"context"
 	"testing"
 
+	"personal_assistant/global"
+	"personal_assistant/internal/model/config"
 	"personal_assistant/internal/model/consts"
+	eventdto "personal_assistant/internal/model/dto/event"
 	"personal_assistant/internal/model/entity"
 )
 
@@ -85,4 +89,57 @@ func TestTaskItemsToValidated(t *testing.T) {
 	if got[1].QuestionCode != "two-sum" || got[1].SortNo != 2 {
 		t.Fatalf("unexpected second item: %+v", got[1])
 	}
+}
+
+func TestBuildOJTaskExecutionTriggerOutboxEvent(t *testing.T) {
+	oldCfg := global.Config
+	global.Config = &config.Config{
+		Messaging: config.Messaging{
+			OJTaskExecutionTriggerTopic: "oj_task_execution_trigger",
+		},
+	}
+	defer func() {
+		global.Config = oldCfg
+	}()
+
+	event, err := buildOJTaskExecutionTriggerOutboxEvent(context.Background(), &eventdto.OJTaskExecutionTriggerEvent{
+		ExecutionID: 11,
+		TaskID:      22,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if event.EventType != "oj_task_execution_trigger" {
+		t.Fatalf("unexpected topic: %s", event.EventType)
+	}
+	if event.AggregateID != "11" {
+		t.Fatalf("unexpected aggregate id: %s", event.AggregateID)
+	}
+	if event.AggregateType != "oj_task_execution" {
+		t.Fatalf("unexpected aggregate type: %s", event.AggregateType)
+	}
+}
+
+func TestTriggerAttemptResultError(t *testing.T) {
+	terminalErr := triggerAttemptResultError(ojTaskExecutionAttemptResult{
+		State: ojTaskExecutionAttemptStateTerminalFailed,
+		Err:   assertErr("terminal"),
+	})
+	if terminalErr != nil {
+		t.Fatalf("terminal failed should ack, got err: %v", terminalErr)
+	}
+
+	retryErr := triggerAttemptResultError(ojTaskExecutionAttemptResult{
+		State: ojTaskExecutionAttemptStateRetryableError,
+		Err:   assertErr("retryable"),
+	})
+	if retryErr == nil || retryErr.Error() != "retryable" {
+		t.Fatalf("unexpected retryable error: %v", retryErr)
+	}
+}
+
+type assertErr string
+
+func (e assertErr) Error() string {
+	return string(e)
 }

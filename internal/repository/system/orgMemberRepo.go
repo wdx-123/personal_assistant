@@ -8,8 +8,8 @@ import (
 
 	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/entity"
-	"personal_assistant/internal/repository/interfaces"
 	readmodel "personal_assistant/internal/model/readmodel"
+	"personal_assistant/internal/repository/interfaces"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"

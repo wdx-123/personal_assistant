@@ -49,6 +49,20 @@ type ojTaskExecutionUserItemDraft struct {
 	Reason       string
 }
 
+type ojTaskExecutionAttemptState string
+
+const (
+	ojTaskExecutionAttemptStateExecuted       ojTaskExecutionAttemptState = "executed"        // 执行成功
+	ojTaskExecutionAttemptStateNoop           ojTaskExecutionAttemptState = "noop"            // 无操作，如状态不符或锁竞争失败
+	ojTaskExecutionAttemptStateTerminalFailed ojTaskExecutionAttemptState = "terminal_failed" // 执行失败且不可重试，如数据不一致导致的失败
+	ojTaskExecutionAttemptStateRetryableError ojTaskExecutionAttemptState = "retryable_error" // 执行失败但可重试，如数据库错误
+)
+
+type ojTaskExecutionAttemptResult struct {
+	State ojTaskExecutionAttemptState
+	Err   error
+}
+
 // DispatchPendingExecutions 扫描到期执行并按配置并发度触发本轮调度。
 // 调度器只消费 scheduled / queued 且到达 planned_at 的执行记录。
 func (s *OJTaskService) DispatchPendingExecutions(ctx context.Context) error {
@@ -69,7 +83,7 @@ func (s *OJTaskService) DispatchPendingExecutions(ctx context.Context) error {
 	if workerCount <= 1 || len(rows) == 1 {
 		var joined error
 		for _, row := range rows {
-			if err := s.dispatchSingleExecution(ctx, row); err != nil {
+			if err := dispatchAttemptResultError(s.dispatchSingleExecution(ctx, row)); err != nil {
 				joined = stderrors.Join(joined, err)
 			}
 		}
@@ -89,7 +103,7 @@ func (s *OJTaskService) DispatchPendingExecutions(ctx context.Context) error {
 		go func(item *readmodel.OJTaskExecutionDispatch) {
 			defer wg.Done()
 			defer func() { <-sem }()
-			if err := s.dispatchSingleExecution(ctx, item); err != nil {
+			if err := dispatchAttemptResultError(s.dispatchSingleExecution(ctx, item)); err != nil {
 				errCh <- err
 			}
 		}(row)
@@ -104,19 +118,32 @@ func (s *OJTaskService) DispatchPendingExecutions(ctx context.Context) error {
 	return joined
 }
 
+// ExecuteExecutionByID 通过 execution_id 触发单条执行。
+// 它面向事件订阅器使用：只要执行已安全收口到终态或明确 no-op，就返回 nil 以便 ACK。
+func (s *OJTaskService) ExecuteExecutionByID(ctx context.Context, executionID uint) error {
+	result := s.executeSingleExecutionByID(ctx, executionID)
+	return triggerAttemptResultError(result)
+}
+
 // dispatchSingleExecution 负责单条执行记录的完整流转：
 // 分布式锁竞争 -> 执行记录抢占 -> 任务置 executing -> 生成快照 -> 事务落库。
 func (s *OJTaskService) dispatchSingleExecution(
 	ctx context.Context,
 	row *readmodel.OJTaskExecutionDispatch,
-) error {
+) ojTaskExecutionAttemptResult {
 	if row == nil || row.ExecutionID == 0 || row.TaskID == 0 {
-		return nil
+		return ojTaskExecutionAttemptResult{State: ojTaskExecutionAttemptStateNoop}
+	}
+	if !isDispatchableOJTaskExecutionStatus(row.Status) {
+		return ojTaskExecutionAttemptResult{State: ojTaskExecutionAttemptStateNoop}
 	}
 
-	lock, err := acquireOJTaskExecutionLock(ctx, row.ExecutionID)
+	lock, contended, err := acquireOJTaskExecutionLock(ctx, row.ExecutionID)
 	if err != nil {
-		return err
+		return ojTaskExecutionAttemptResult{State: ojTaskExecutionAttemptStateRetryableError, Err: err}
+	}
+	if contended {
+		return ojTaskExecutionAttemptResult{State: ojTaskExecutionAttemptStateNoop}
 	}
 	if lock != nil {
 		defer releaseOJTaskExecutionLock(row.ExecutionID, lock)
@@ -130,30 +157,44 @@ func (s *OJTaskService) dispatchSingleExecution(
 		time.Now().UTC(),
 	)
 	if err != nil {
-		return bizerrors.Wrap(bizerrors.CodeDBError, err)
+		return ojTaskExecutionAttemptResult{
+			State: ojTaskExecutionAttemptStateRetryableError,
+			Err:   bizerrors.Wrap(bizerrors.CodeDBError, err),
+		}
 	}
 	if !claimed {
-		return nil
+		return ojTaskExecutionAttemptResult{State: ojTaskExecutionAttemptStateNoop}
 	}
 
 	task, err := s.taskRepo.GetByID(ctx, row.TaskID)
 	if err != nil {
-		_ = s.markExecutionFailed(ctx, row.TaskID, row.ExecutionID, err)
-		return bizerrors.Wrap(bizerrors.CodeDBError, err)
+		return s.failExecutionAttempt(
+			ctx,
+			row.TaskID,
+			row.ExecutionID,
+			bizerrors.Wrap(bizerrors.CodeDBError, err),
+		)
 	}
 	if task == nil {
-		notFoundErr := bizerrors.New(bizerrors.CodeOJTaskNotFound)
-		_ = s.markExecutionFailed(ctx, row.TaskID, row.ExecutionID, notFoundErr)
-		return notFoundErr
+		return s.failExecutionAttempt(ctx, row.TaskID, row.ExecutionID, bizerrors.New(bizerrors.CodeOJTaskNotFound))
 	}
 
 	execution, err := s.executionRepo.GetByID(ctx, row.ExecutionID)
 	if err != nil {
-		_ = s.markExecutionFailed(ctx, row.TaskID, row.ExecutionID, err)
-		return bizerrors.Wrap(bizerrors.CodeDBError, err)
+		return s.failExecutionAttempt(
+			ctx,
+			row.TaskID,
+			row.ExecutionID,
+			bizerrors.Wrap(bizerrors.CodeDBError, err),
+		)
 	}
 	if execution == nil {
-		return bizerrors.New(bizerrors.CodeOJTaskExecutionNotFound)
+		return s.failExecutionAttempt(
+			ctx,
+			row.TaskID,
+			row.ExecutionID,
+			bizerrors.New(bizerrors.CodeOJTaskExecutionNotFound),
+		)
 	}
 
 	task.Status = string(consts.OJTaskStatusExecuting)
@@ -161,21 +202,93 @@ func (s *OJTaskService) dispatchSingleExecution(
 		task.UpdatedBy = execution.RequestedBy
 	}
 	if err := s.taskRepo.Update(ctx, task); err != nil {
-		_ = s.markExecutionFailed(ctx, row.TaskID, row.ExecutionID, err)
-		return bizerrors.Wrap(bizerrors.CodeDBError, err)
+		return s.failExecutionAttempt(
+			ctx,
+			row.TaskID,
+			row.ExecutionID,
+			bizerrors.Wrap(bizerrors.CodeDBError, err),
+		)
 	}
 
 	// 先在内存中冻结执行事实，再统一事务落库，减少查询侧读到中间态的概率。
 	snapshot, err := s.buildExecutionSnapshot(ctx, task, execution)
 	if err != nil {
-		_ = s.markExecutionFailed(ctx, task.ID, execution.ID, err)
-		return err
+		return s.failExecutionAttempt(ctx, task.ID, execution.ID, err)
 	}
 	if err := s.persistExecutionSnapshot(ctx, task, execution, snapshot); err != nil {
-		_ = s.markExecutionFailed(ctx, task.ID, execution.ID, err)
-		return err
+		return s.failExecutionAttempt(ctx, task.ID, execution.ID, err)
+	}
+	return ojTaskExecutionAttemptResult{State: ojTaskExecutionAttemptStateExecuted}
+}
+
+// executeSingleExecutionByID 通过 execution_id 执行单条记录，面向事件订阅器使用。
+func (s *OJTaskService) executeSingleExecutionByID(
+	ctx context.Context,
+	executionID uint,
+) ojTaskExecutionAttemptResult {
+	if executionID == 0 {
+		return ojTaskExecutionAttemptResult{State: ojTaskExecutionAttemptStateNoop}
+	}
+	row, err := s.executionRepo.GetDispatchExecutionByID(ctx, executionID)
+	if err != nil {
+		return ojTaskExecutionAttemptResult{
+			State: ojTaskExecutionAttemptStateRetryableError,
+			Err:   bizerrors.Wrap(bizerrors.CodeDBError, err),
+		}
+	}
+	if row == nil {
+		return ojTaskExecutionAttemptResult{State: ojTaskExecutionAttemptStateNoop}
+	}
+	return s.dispatchSingleExecution(ctx, row)
+}
+
+// failExecutionAttempt 将执行推进到失败状态，并根据失败原因区分可重试与不可重试两类结果。
+func (s *OJTaskService) failExecutionAttempt(
+	ctx context.Context,
+	taskID, executionID uint,
+	cause error,
+) ojTaskExecutionAttemptResult {
+	if cause == nil {
+		cause = bizerrors.NewWithMsg(bizerrors.CodeInternalError, "oj task execution failed")
+	}
+	if err := s.markExecutionFailed(ctx, taskID, executionID, cause); err != nil {
+		return ojTaskExecutionAttemptResult{
+			State: ojTaskExecutionAttemptStateRetryableError,
+			Err:   stderrors.Join(cause, bizerrors.Wrap(bizerrors.CodeDBError, err)),
+		}
+	}
+	return ojTaskExecutionAttemptResult{
+		State: ojTaskExecutionAttemptStateTerminalFailed,
+		Err:   cause,
+	}
+}
+
+// dispatchAttemptResultError 只对执行失败的结果返回错误，供调度器使用以决定是否继续重试。
+func dispatchAttemptResultError(result ojTaskExecutionAttemptResult) error {
+	switch result.State {
+	case ojTaskExecutionAttemptStateTerminalFailed, ojTaskExecutionAttemptStateRetryableError:
+		return result.Err
+	default:
+		return nil
+	}
+}
+
+// triggerAttemptResultError 只对执行失败的结果返回错误，供事件订阅器使用以决定是否 ACK。
+func triggerAttemptResultError(result ojTaskExecutionAttemptResult) error {
+	if result.State == ojTaskExecutionAttemptStateRetryableError {
+		return result.Err
 	}
 	return nil
+}
+
+// isDispatchableOJTaskExecutionStatus 判断执行状态是否符合调度条件。
+func isDispatchableOJTaskExecutionStatus(status string) bool {
+	switch status {
+	case string(consts.OJTaskExecutionStatusScheduled), string(consts.OJTaskExecutionStatusQueued):
+		return true
+	default:
+		return false
+	}
 }
 
 // buildExecutionSnapshot 根据任务组织、题单和用户刷题事实构建本次执行快照。
@@ -589,18 +702,18 @@ func (s *OJTaskService) markExecutionFailed(
 
 // acquireOJTaskExecutionLock 尝试获取执行级分布式锁。
 // “锁已被其他实例持有”视为正常竞争结果，不作为系统错误返回。
-func acquireOJTaskExecutionLock(ctx context.Context, executionID uint) (*redislock.RedisLock, error) {
+func acquireOJTaskExecutionLock(ctx context.Context, executionID uint) (*redislock.RedisLock, bool, error) {
 	if global.Redis == nil || (global.Config != nil && !global.Config.Task.DistributedLockEnabled) {
-		return nil, nil
+		return nil, false, nil
 	}
 	lock := redislock.NewRedisLock(ctx, fmt.Sprintf("oj_task:execution:%d", executionID), resolveOJTaskExecutionLockTTL())
 	if err := lock.TryLock(); err != nil {
 		if stderrors.Is(err, redislock.ErrLockFailed) {
-			return nil, nil
+			return nil, true, nil
 		}
-		return nil, bizerrors.Wrap(bizerrors.CodeRedisError, err)
+		return nil, false, bizerrors.Wrap(bizerrors.CodeRedisError, err)
 	}
-	return lock, nil
+	return lock, false, nil
 }
 
 // releaseOJTaskExecutionLock 释放执行级分布式锁。

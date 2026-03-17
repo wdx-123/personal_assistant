@@ -15,6 +15,7 @@ type OJTaskExecutionRepository interface {
 	Create(ctx context.Context, execution *entity.OJTaskExecution) error
 	Update(ctx context.Context, execution *entity.OJTaskExecution) error
 	GetByID(ctx context.Context, executionID uint) (*entity.OJTaskExecution, error)
+	GetDispatchExecutionByID(ctx context.Context, executionID uint) (*readmodel.OJTaskExecutionDispatch, error)
 	GetByTaskID(ctx context.Context, taskID uint) (*entity.OJTaskExecution, error)
 	GetByTaskIDForUpdate(ctx context.Context, taskID uint) (*entity.OJTaskExecution, error)
 	ListDueExecutions(ctx context.Context, statuses []string, before time.Time, limit int) ([]*readmodel.OJTaskExecutionDispatch, error)

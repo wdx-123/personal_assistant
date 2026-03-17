@@ -111,6 +111,13 @@ func Init() {
 	); err != nil {
 		global.Log.Error("init subscribers failed", zap.Error(err))
 	}
+	if err := core.InitCriticalOJTaskSubscribers(
+		context.Background(),
+		service.GroupApp.SystemServiceSupplier.GetOJTaskSvc(),
+	); err != nil {
+		global.Log.Error("init oj task subscribers failed", zap.Error(err))
+		os.Exit(1)
+	}
 
 	// 控制函数
 	controller.ApiGroupApp = &controller.ApiGroup{

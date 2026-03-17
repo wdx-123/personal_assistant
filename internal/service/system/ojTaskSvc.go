@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"personal_assistant/internal/model/consts"
+	eventdto "personal_assistant/internal/model/dto/event"
 	"personal_assistant/internal/model/dto/request"
 	dtoresp "personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
@@ -55,6 +56,7 @@ type OJTaskService struct {
 	luoguUserQuestionRepo    interfaces.LuoguUserQuestionRepository
 	leetcodeUserQuestionRepo interfaces.LeetcodeUserQuestionRepository
 	lanqiaoUserQuestionRepo  interfaces.LanqiaoUserQuestionRepository
+	triggerPublisher         ojTaskExecutionTriggerEventPublisher
 	authorizationService     svccontract.AuthorizationServiceContract
 }
 
@@ -78,7 +80,10 @@ func NewOJTaskService(
 		luoguUserQuestionRepo:    repositoryGroup.SystemRepositorySupplier.GetLuoguUserQuestionRepository(),
 		leetcodeUserQuestionRepo: repositoryGroup.SystemRepositorySupplier.GetLeetcodeUserQuestionRepository(),
 		lanqiaoUserQuestionRepo:  repositoryGroup.SystemRepositorySupplier.GetLanqiaoUserQuestionRepository(),
-		authorizationService:     authorizationService,
+		triggerPublisher: newOJTaskExecutionTriggerOutboxPublisher(
+			repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
+		),
+		authorizationService: authorizationService,
 	}
 }
 
@@ -237,6 +242,9 @@ func (s *OJTaskService) ExecuteTaskNow(
 		}
 		if err := txExecutionRepo.Update(ctx, execution); err != nil {
 			return bizerrors.Wrap(bizerrors.CodeDBError, err)
+		}
+		if err := s.publishQueuedExecutionTriggerInTx(ctx, tx, execution.ID, task.ID); err != nil {
+			return err
 		}
 		out = &dtoresp.OJTaskCreateResp{
 			TaskID:      task.ID,
@@ -782,6 +790,11 @@ func (s *OJTaskService) createTaskVersionTx(
 	if err := txExecutionRepo.Create(ctx, execution); err != nil {
 		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
 	}
+	if execution.Status == string(consts.OJTaskExecutionStatusQueued) {
+		if err := s.publishQueuedExecutionTriggerInTx(ctx, tx, execution.ID, task.ID); err != nil {
+			return nil, err
+		}
+	}
 
 	return &dtoresp.OJTaskCreateResp{
 		TaskID:      task.ID,
@@ -1030,6 +1043,26 @@ func normalizeUintSlice(values []uint) []uint {
 		out = append(out, value)
 	}
 	return out
+}
+
+func (s *OJTaskService) publishQueuedExecutionTriggerInTx(
+	ctx context.Context,
+	tx any,
+	executionID, taskID uint,
+) error {
+	if executionID == 0 || taskID == 0 {
+		return nil
+	}
+	if s.triggerPublisher == nil {
+		return bizerrors.NewWithMsg(bizerrors.CodeInternalError, "oj task trigger publisher not initialized")
+	}
+	if err := s.triggerPublisher.PublishInTx(ctx, tx, &eventdto.OJTaskExecutionTriggerEvent{
+		ExecutionID: executionID,
+		TaskID:      taskID,
+	}); err != nil {
+		return bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	return nil
 }
 
 func buildTaskOrgRows(taskID uint, orgIDs []uint) []*entity.OJTaskOrg {

@@ -14,6 +14,9 @@ type Messaging struct {
 	LeetcodeBindTopic              string `json:"leetcode_bind_topic" yaml:"leetcode_bind_topic"`
 	LeetcodeBindGroup              string `json:"leetcode_bind_group" yaml:"leetcode_bind_group"`
 	LeetcodeBindConsumer           string `json:"leetcode_bind_consumer" yaml:"leetcode_bind_consumer"`
+	OJTaskExecutionTriggerTopic    string `json:"oj_task_execution_trigger_topic" yaml:"oj_task_execution_trigger_topic"`
+	OJTaskExecutionTriggerGroup    string `json:"oj_task_execution_trigger_group" yaml:"oj_task_execution_trigger_group"`
+	OJTaskExecutionTriggerConsumer string `json:"oj_task_execution_trigger_consumer" yaml:"oj_task_execution_trigger_consumer"`
 	OJDailyStatsProjectionTopic    string `json:"oj_daily_stats_projection_topic" yaml:"oj_daily_stats_projection_topic"`
 	OJDailyStatsProjectionGroup    string `json:"oj_daily_stats_projection_group" yaml:"oj_daily_stats_projection_group"`
 	OJDailyStatsProjectionConsumer string `json:"oj_daily_stats_projection_consumer" yaml:"oj_daily_stats_projection_consumer"`

@@ -52,6 +52,26 @@ func (r *ojTaskExecutionRepository) GetByID(ctx context.Context, executionID uin
 	return &execution, nil
 }
 
+func (r *ojTaskExecutionRepository) GetDispatchExecutionByID(
+	ctx context.Context,
+	executionID uint,
+) (*readmodel.OJTaskExecutionDispatch, error) {
+	var row readmodel.OJTaskExecutionDispatch
+	err := r.db.WithContext(ctx).
+		Table("oj_task_executions").
+		Select("id AS execution_id, task_id, status, planned_at").
+		Where("id = ?", executionID).
+		Limit(1).
+		Scan(&row).Error
+	if err != nil {
+		return nil, err
+	}
+	if row.ExecutionID == 0 {
+		return nil, nil
+	}
+	return &row, nil
+}
+
 // GetByTaskID 根据任务版本 ID 获取对应的 OJTaskExecution 实体；未找到时返回 nil。
 func (r *ojTaskExecutionRepository) GetByTaskID(ctx context.Context, taskID uint) (*entity.OJTaskExecution, error) {
 	var execution entity.OJTaskExecution
