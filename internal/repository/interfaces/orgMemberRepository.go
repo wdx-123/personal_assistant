@@ -5,6 +5,7 @@ import (
 
 	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/entity"
+	readmodel "personal_assistant/internal/model/readmodel"
 )
 
 // OrgMemberRepository 组织成员状态仓储
@@ -37,6 +38,8 @@ type OrgMemberRepository interface {
 	CountActiveMembersByOrgIDs(ctx context.Context, orgIDs []uint) (map[uint]int64, error)
 	// 获取用户加入的所有活跃组织ID列表
 	ListActiveOrgIDsByUser(ctx context.Context, userID uint) ([]uint, error)
+	// 批量获取多个组织下的 active 用户-组织对
+	ListActiveUserOrgPairsByOrgIDs(ctx context.Context, orgIDs []uint) ([]*readmodel.UserOrgPair, error)
 	// 获取组织下全部成员用户 ID 列表（包含非 active，用于批量投影修复）
 	ListUserIDsByOrg(ctx context.Context, orgID uint) ([]uint, error)
 	// 事务上下文切换

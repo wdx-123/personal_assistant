@@ -26,8 +26,10 @@ type OJDailyStatsProjectionService struct {
 	userRepo                 interfaces.UserRepository
 	leetcodeDetailRepo       interfaces.LeetcodeUserDetailRepository
 	luoguDetailRepo          interfaces.LuoguUserDetailRepository
+	lanqiaoDetailRepo        interfaces.LanqiaoUserDetailRepository
 	leetcodeUserQuestionRepo interfaces.LeetcodeUserQuestionRepository
 	luoguUserQuestionRepo    interfaces.LuoguUserQuestionRepository
+	lanqiaoUserQuestionRepo  interfaces.LanqiaoUserQuestionRepository
 	ojDailyStatsRepo         interfaces.OJDailyStatsRepository
 	projectionEventPublisher ojDailyStatsProjectionEventPublisher
 }
@@ -37,8 +39,10 @@ func NewOJDailyStatsProjectionService(repositoryGroup *repository.Group) *OJDail
 		userRepo:                 repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
 		leetcodeDetailRepo:       repositoryGroup.SystemRepositorySupplier.GetLeetcodeUserDetailRepository(),
 		luoguDetailRepo:          repositoryGroup.SystemRepositorySupplier.GetLuoguUserDetailRepository(),
+		lanqiaoDetailRepo:        repositoryGroup.SystemRepositorySupplier.GetLanqiaoUserDetailRepository(),
 		leetcodeUserQuestionRepo: repositoryGroup.SystemRepositorySupplier.GetLeetcodeUserQuestionRepository(),
 		luoguUserQuestionRepo:    repositoryGroup.SystemRepositorySupplier.GetLuoguUserQuestionRepository(),
+		lanqiaoUserQuestionRepo:  repositoryGroup.SystemRepositorySupplier.GetLanqiaoUserQuestionRepository(),
 		ojDailyStatsRepo:         repositoryGroup.SystemRepositorySupplier.GetOJDailyStatsRepository(),
 		projectionEventPublisher: newOJDailyStatsProjectionOutboxPublisher(
 			repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
@@ -126,6 +130,23 @@ func (s *OJDailyStatsProjectionService) RebuildRecentWindow(
 		currentTotal = detail.PassedNumber
 		sourceUpdatedAt = detail.UpdatedAt
 		dateSolvedCounts, err = s.luoguUserQuestionRepo.CountSolvedByDateRange(ctx, detail.ID, startDate, endDateExclusive)
+	case "lanqiao":
+		detail, detailErr := s.lanqiaoDetailRepo.GetByUserID(ctx, userID)
+		if detailErr != nil {
+			return detailErr
+		}
+		if detail == nil {
+			return s.ojDailyStatsRepo.DeleteByUserPlatform(ctx, userID, platform)
+		}
+		passedCount, countErr := s.lanqiaoUserQuestionRepo.CountPassed(ctx, detail.ID)
+		if countErr != nil {
+			return countErr
+		}
+		currentTotal = int(passedCount)
+		if detail.LastSyncAt != nil {
+			sourceUpdatedAt = *detail.LastSyncAt
+		}
+		dateSolvedCounts, err = s.lanqiaoUserQuestionRepo.CountSolvedByDateRange(ctx, detail.ID, startDate, endDateExclusive)
 	default:
 		return errors.New("unsupported oj daily stats platform")
 	}
@@ -170,7 +191,15 @@ func (s *OJDailyStatsProjectionService) RepairRecentWindow(ctx context.Context) 
 	if err != nil {
 		return err
 	}
-	return s.repairPlatformUsers(ctx, "luogu", activeSet, luoguDetails)
+	if err := s.repairPlatformUsers(ctx, "luogu", activeSet, luoguDetails); err != nil {
+		return err
+	}
+
+	lanqiaoDetails, err := s.lanqiaoDetailRepo.GetAll(ctx)
+	if err != nil {
+		return err
+	}
+	return s.repairPlatformUsers(ctx, "lanqiao", activeSet, lanqiaoDetails)
 }
 
 // repairPlatformUsers 批量修复指定平台的用户数据，activeSet 用于过滤非活跃用户，details 是平台用户详情列表
@@ -193,6 +222,15 @@ func (s *OJDailyStatsProjectionService) repairPlatformUsers(
 			}
 		}
 	case []*entity.LuoguUserDetail:
+		for _, detail := range typed {
+			if detail == nil {
+				continue
+			}
+			if _, ok := activeSet[detail.UserID]; ok {
+				userIDs = append(userIDs, detail.UserID)
+			}
+		}
+	case []*entity.LanqiaoUserDetail:
 		for _, detail := range typed {
 			if detail == nil {
 				continue
@@ -231,6 +269,8 @@ func normalizeOJDailyStatsPlatform(platform string) string {
 		return "leetcode"
 	case "luogu":
 		return "luogu"
+	case "lanqiao":
+		return "lanqiao"
 	default:
 		return ""
 	}

@@ -39,6 +39,36 @@ func (r *luoguUserQuestionRepository) GetSolvedProblemIDs(
 	return idSet, nil
 }
 
+func (r *luoguUserQuestionRepository) GetSolvedProblemIDsByDetailIDs(
+	ctx context.Context,
+	luoguUserDetailIDs []uint,
+) (map[uint]map[uint]struct{}, error) {
+	result := make(map[uint]map[uint]struct{}, len(luoguUserDetailIDs))
+	if len(luoguUserDetailIDs) == 0 {
+		return result, nil
+	}
+	type row struct {
+		LuoguUserDetailID uint `gorm:"column:luogu_user_detail_id"`
+		LuoguQuestionID   uint `gorm:"column:luogu_question_id"`
+	}
+	var rows []row
+	err := r.db.WithContext(ctx).
+		Model(&entity.LuoguUserQuestion{}).
+		Select("luogu_user_detail_id, luogu_question_id").
+		Where("luogu_user_detail_id IN ?", luoguUserDetailIDs).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if _, ok := result[row.LuoguUserDetailID]; !ok {
+			result[row.LuoguUserDetailID] = make(map[uint]struct{})
+		}
+		result[row.LuoguUserDetailID][row.LuoguQuestionID] = struct{}{}
+	}
+	return result, nil
+}
+
 func (r *luoguUserQuestionRepository) BatchCreate(
 	ctx context.Context,
 	records []*entity.LuoguUserQuestion,

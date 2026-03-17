@@ -477,13 +477,16 @@ func (u *UserService) GetUserList(
 	list := make([]*resp.UserListItem, 0, len(users))
 	for _, user := range users {
 		item := &resp.UserListItem{
-			ID:       user.ID,
-			Username: user.Username,
-			Phone:    util.DesensitizePhone(user.Phone),
+			ID:           user.ID,
+			Username:     user.Username,
+			Phone:        util.DesensitizePhone(user.Phone),
+			CurrentOrgID: user.CurrentOrgID,
 		}
 		if user.CurrentOrg != nil {
-			item.CurrentOrg.ID = user.CurrentOrg.ID
-			item.CurrentOrg.Name = user.CurrentOrg.Name
+			item.CurrentOrg = &resp.OrgSimpleItem{
+				ID:   user.CurrentOrg.ID,
+				Name: user.CurrentOrg.Name,
+			}
 		}
 
 		// 获取用户在该上下文下的角色

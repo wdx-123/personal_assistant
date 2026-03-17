@@ -10,9 +10,10 @@ type RouterGroup struct {
 	HealthRouter       // 健康检查路由（公开）
 
 	// 业务模块
-	UserRouter // 用户管理路由
-	OrgRouter  // 组织管理路由
-	OJRouter   // OJ判题模块路由
+	UserRouter   // 用户管理路由
+	OrgRouter    // 组织管理路由
+	OJRouter     // OJ判题模块路由
+	OJTaskRouter // OJ任务模块路由
 
 	// 权限管理
 	ApiRouter  // API接口管理路由

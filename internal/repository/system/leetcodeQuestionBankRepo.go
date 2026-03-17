@@ -24,6 +24,13 @@ func NewLeetcodeQuestionBankRepository(db *gorm.DB) interfaces.LeetcodeQuestionB
 	return &leetcodeQuestionBankRepository{db: db}
 }
 
+func (r *leetcodeQuestionBankRepository) WithTx(tx any) interfaces.LeetcodeQuestionBankRepository {
+	if transaction, ok := tx.(*gorm.DB); ok {
+		return &leetcodeQuestionBankRepository{db: transaction}
+	}
+	return r
+}
+
 func (r *leetcodeQuestionBankRepository) GetAllTitleSlugMap(
 	ctx context.Context,
 ) (map[string]uint, error) {
@@ -75,6 +82,35 @@ func (r *leetcodeQuestionBankRepository) BatchCreate(
 	return nil
 }
 
+func (r *leetcodeQuestionBankRepository) Create(
+	ctx context.Context,
+	question *entity.LeetcodeQuestionBank,
+) error {
+	return r.db.WithContext(ctx).Create(question).Error
+}
+
+func (r *leetcodeQuestionBankRepository) Update(
+	ctx context.Context,
+	question *entity.LeetcodeQuestionBank,
+) error {
+	return r.db.WithContext(ctx).Save(question).Error
+}
+
+func (r *leetcodeQuestionBankRepository) GetByID(
+	ctx context.Context,
+	id uint,
+) (*entity.LeetcodeQuestionBank, error) {
+	var q entity.LeetcodeQuestionBank
+	err := r.db.WithContext(ctx).First(&q, id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &q, nil
+}
+
 func (r *leetcodeQuestionBankRepository) GetByTitleSlug(
 	ctx context.Context,
 	titleSlug string,
@@ -82,6 +118,39 @@ func (r *leetcodeQuestionBankRepository) GetByTitleSlug(
 	var q entity.LeetcodeQuestionBank
 	err := r.db.WithContext(ctx).Where("title_slug = ?", titleSlug).First(&q).Error
 	return &q, err
+}
+
+func (r *leetcodeQuestionBankRepository) ListByExactTitle(
+	ctx context.Context,
+	title string,
+) ([]*entity.LeetcodeQuestionBank, error) {
+	var questions []*entity.LeetcodeQuestionBank
+	err := r.db.WithContext(ctx).
+		Where("title = ?", title).
+		Order("source_status ASC, id ASC").
+		Find(&questions).Error
+	if err != nil {
+		return nil, err
+	}
+	return questions, nil
+}
+
+func (r *leetcodeQuestionBankRepository) SearchByTitle(
+	ctx context.Context,
+	keyword string,
+	limit int,
+) ([]*entity.LeetcodeQuestionBank, error) {
+	query := r.db.WithContext(ctx).
+		Where("title LIKE ?", "%"+keyword+"%").
+		Order("source_status ASC, id ASC")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	var questions []*entity.LeetcodeQuestionBank
+	if err := query.Find(&questions).Error; err != nil {
+		return nil, err
+	}
+	return questions, nil
 }
 
 func (r *leetcodeQuestionBankRepository) GetCachedID(

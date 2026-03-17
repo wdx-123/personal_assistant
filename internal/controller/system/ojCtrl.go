@@ -11,6 +11,7 @@ import (
 	bizerrors "personal_assistant/pkg/errors"
 	"personal_assistant/pkg/jwt"
 	"personal_assistant/pkg/response"
+	"personal_assistant/pkg/util"
 
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
@@ -18,6 +19,33 @@ import (
 
 type OJCtrl struct {
 	ojService serviceContract.OJServiceContract
+}
+
+func (ctrl *OJCtrl) BindLanqiaoAccount(c *gin.Context) {
+	var req request.BindLanqiaoAccountReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		global.Log.Error("蓝桥绑定参数错误", zap.Error(err))
+		response.BizFailWithCodeMsg(bizerrors.CodeBindFailed, fmt.Sprintf("参数错误: %v", err), c)
+		return
+	}
+
+	userID := jwt.GetUserID(c)
+	if userID == 0 {
+		response.BizResult(bizerrors.CodeLoginRequired, gin.H{"reload": true}, "用户未登录", c)
+		return
+	}
+
+	out, err := ctrl.ojService.BindLanqiaoAccount(c.Request.Context(), userID, &req)
+	if err != nil {
+		global.Log.Error("绑定蓝桥账号失败",
+			zap.Uint("user_id", userID),
+			zap.String("phone", util.DesensitizePhone(req.Phone)),
+			zap.Error(err))
+		response.BizFailWithError(err, c)
+		return
+	}
+
+	response.BizOkWithData(out, c)
 }
 
 func (ctrl *OJCtrl) BindOJAccount(c *gin.Context) {
@@ -40,6 +68,14 @@ func (ctrl *OJCtrl) BindOJAccount(c *gin.Context) {
 
 	out, err := ctrl.ojService.BindOJAccount(c.Request.Context(), userID, &req)
 	if err != nil {
+		if bizerrors.FromError(err) != nil {
+			global.Log.Error("绑定OJ账号失败",
+				zap.Uint("user_id", userID),
+				zap.String("platform", req.Platform),
+				zap.Error(err))
+			response.BizFailWithError(err, c)
+			return
+		}
 		code := bizerrors.CodeInternalError
 		if errors.Is(err, serviceContract.ErrInvalidPlatform) {
 			code = bizerrors.CodeOJPlatformInvalid
@@ -83,6 +119,13 @@ func (ctrl *OJCtrl) GetRankingList(c *gin.Context) {
 
 	out, err := ctrl.ojService.GetRankingList(c.Request.Context(), userID, &req)
 	if err != nil {
+		if bizerrors.FromError(err) != nil {
+			global.Log.Error("获取排行榜失败",
+				zap.Uint("user_id", userID),
+				zap.Error(err))
+			response.BizFailWithError(err, c)
+			return
+		}
 		code := bizerrors.CodeInternalError
 		if errors.Is(err, serviceContract.ErrInvalidPlatform) {
 			code = bizerrors.CodeOJPlatformInvalid
@@ -122,6 +165,14 @@ func (ctrl *OJCtrl) GetStats(c *gin.Context) {
 
 	out, err := ctrl.ojService.GetUserStats(c.Request.Context(), userID, &req)
 	if err != nil {
+		if bizerrors.FromError(err) != nil {
+			global.Log.Error("获取用户卡片信息失败",
+				zap.Uint("user_id", userID),
+				zap.String("platform", req.Platform),
+				zap.Error(err))
+			response.BizFailWithError(err, c)
+			return
+		}
 		code := bizerrors.CodeInternalError
 		if errors.Is(err, serviceContract.ErrInvalidPlatform) {
 			code = bizerrors.CodeOJPlatformInvalid
@@ -144,7 +195,7 @@ func (ctrl *OJCtrl) GetStats(c *gin.Context) {
 		return
 	}
 
-	response.NewResponse[resp.BindOJAccountResp, resp.BindOJAccountResp](c).
+	response.NewResponse[resp.OJStatsResp, resp.OJStatsResp](c).
 		SetCode(bizerrors.CodeSuccess).
 		Success("获取成功", out)
 }

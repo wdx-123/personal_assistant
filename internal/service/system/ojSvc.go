@@ -37,20 +37,25 @@ import (
 )
 
 type OJService struct {
+	txRunner                  repository.TxRunner
 	userRepo                  interfaces.UserRepository
 	orgRepo                   interfaces.OrgRepository
 	orgMemberRepo             interfaces.OrgMemberRepository
 	roleRepo                  interfaces.RoleRepository
 	leetcodeRepo              interfaces.LeetcodeUserDetailRepository
 	luoguRepo                 interfaces.LuoguUserDetailRepository
+	lanqiaoRepo               interfaces.LanqiaoUserDetailRepository
 	leetcodeQuestionBankRepo  interfaces.LeetcodeQuestionBankRepository
 	luoguQuestionBankRepo     interfaces.LuoguQuestionBankRepository
+	lanqiaoQuestionBankRepo   interfaces.LanqiaoQuestionBankRepository
 	leetcodeUserQuestionRepo  interfaces.LeetcodeUserQuestionRepository
 	luoguUserQuestionRepo     interfaces.LuoguUserQuestionRepository
+	lanqiaoUserQuestionRepo   interfaces.LanqiaoUserQuestionRepository
 	ojDailyStatsRepo          interfaces.OJDailyStatsRepository
 	rankingReadModelRepo      interfaces.RankingReadModelRepository
 	outboxRepo                interfaces.OutboxRepository
 	cacheProjectionPublisher  cacheProjectionEventPublisher
+	questionUpsertPublisher   ojQuestionUpsertEventPublisher
 	cacheProjectionSvc        svccontract.CacheProjectionServiceContract
 	ojDailyStatsProjectionSvc svccontract.OJDailyStatsProjectionServiceContract
 }
@@ -61,20 +66,27 @@ func NewOJService(
 	ojDailyStatsProjectionSvc svccontract.OJDailyStatsProjectionServiceContract,
 ) *OJService {
 	return &OJService{
+		txRunner:                 repositoryGroup,
 		userRepo:                 repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
 		orgRepo:                  repositoryGroup.SystemRepositorySupplier.GetOrgRepository(),
 		orgMemberRepo:            repositoryGroup.SystemRepositorySupplier.GetOrgMemberRepository(),
 		roleRepo:                 repositoryGroup.SystemRepositorySupplier.GetRoleRepository(),
 		leetcodeRepo:             repositoryGroup.SystemRepositorySupplier.GetLeetcodeUserDetailRepository(),
 		luoguRepo:                repositoryGroup.SystemRepositorySupplier.GetLuoguUserDetailRepository(),
+		lanqiaoRepo:              repositoryGroup.SystemRepositorySupplier.GetLanqiaoUserDetailRepository(),
 		leetcodeQuestionBankRepo: repositoryGroup.SystemRepositorySupplier.GetLeetcodeQuestionBankRepository(),
 		luoguQuestionBankRepo:    repositoryGroup.SystemRepositorySupplier.GetLuoguQuestionBankRepository(),
+		lanqiaoQuestionBankRepo:  repositoryGroup.SystemRepositorySupplier.GetLanqiaoQuestionBankRepository(),
 		leetcodeUserQuestionRepo: repositoryGroup.SystemRepositorySupplier.GetLeetcodeUserQuestionRepository(),
 		luoguUserQuestionRepo:    repositoryGroup.SystemRepositorySupplier.GetLuoguUserQuestionRepository(),
+		lanqiaoUserQuestionRepo:  repositoryGroup.SystemRepositorySupplier.GetLanqiaoUserQuestionRepository(),
 		ojDailyStatsRepo:         repositoryGroup.SystemRepositorySupplier.GetOJDailyStatsRepository(),
 		rankingReadModelRepo:     repositoryGroup.SystemRepositorySupplier.GetRankingReadModelRepository(),
 		outboxRepo:               repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
 		cacheProjectionPublisher: newCacheProjectionOutboxPublisher(
+			repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
+		),
+		questionUpsertPublisher: newOJQuestionUpsertOutboxPublisher(
 			repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
 		),
 		cacheProjectionSvc:        cacheProjectionSvc,
@@ -113,7 +125,7 @@ func (s *OJService) GetUserStats(
 	ctx context.Context,
 	userID uint,
 	req *request.OJStatsReq,
-) (*resp.BindOJAccountResp, error) {
+) (*resp.OJStatsResp, error) {
 	if req == nil {
 		return nil, errors.New("invalid request")
 	}
@@ -123,7 +135,9 @@ func (s *OJService) GetUserStats(
 
 	platform := strings.ToLower(strings.TrimSpace(req.Platform))
 	if platform != "luogu" && platform != "leetcode" {
-		return nil, svccontract.ErrInvalidPlatform
+		if platform != "lanqiao" {
+			return nil, svccontract.ErrInvalidPlatform
+		}
 	}
 
 	if platform == "luogu" {
@@ -134,12 +148,34 @@ func (s *OJService) GetUserStats(
 		if detail == nil {
 			return nil, svccontract.ErrOJAccountNotBound
 		}
-		return &resp.BindOJAccountResp{
+		return &resp.OJStatsResp{
 			Platform:     "luogu",
 			Identifier:   detail.Identification,
 			RealName:     detail.RealName,
 			UserAvatar:   detail.UserAvatar,
 			PassedNumber: detail.PassedNumber,
+		}, nil
+	}
+
+	if platform == "lanqiao" {
+		detail, err := s.lanqiaoRepo.GetByUserID(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		if detail == nil {
+			return nil, svccontract.ErrOJAccountNotBound
+		}
+		passedCount, err := s.lanqiaoUserQuestionRepo.CountPassed(ctx, detail.ID)
+		if err != nil {
+			return nil, err
+		}
+		return &resp.OJStatsResp{
+			Platform:           "lanqiao",
+			Identifier:         detail.MaskedPhone,
+			PassedNumber:       int(passedCount),
+			SubmitSuccessCount: detail.SubmitSuccessCount,
+			SubmitFailedCount:  detail.SubmitFailedCount,
+			LanqiaoSyncAlert:   s.buildLanqiaoSyncAlert(ctx, userID),
 		}, nil
 	}
 
@@ -150,7 +186,7 @@ func (s *OJService) GetUserStats(
 	if detail == nil {
 		return nil, svccontract.ErrOJAccountNotBound
 	}
-	return &resp.BindOJAccountResp{
+	return &resp.OJStatsResp{
 		Platform:     "leetcode",
 		Identifier:   detail.UserSlug,
 		RealName:     detail.RealName,
@@ -242,6 +278,22 @@ func (s *OJService) loadOJCurveSource(
 			return 0, time.Time{}, false, nil
 		}
 		return detail.PassedNumber, detail.UpdatedAt, true, nil
+	case "lanqiao":
+		detail, err := s.lanqiaoRepo.GetByUserID(ctx, userID)
+		if err != nil {
+			return 0, time.Time{}, false, err
+		}
+		if detail == nil {
+			return 0, time.Time{}, false, nil
+		}
+		passedCount, err := s.lanqiaoUserQuestionRepo.CountPassed(ctx, detail.ID)
+		if err != nil {
+			return 0, time.Time{}, false, err
+		}
+		if detail.LastSyncAt != nil {
+			return int(passedCount), *detail.LastSyncAt, true, nil
+		}
+		return int(passedCount), detail.UpdatedAt, true, nil
 	default:
 		return 0, time.Time{}, false, svccontract.ErrInvalidPlatform
 	}
@@ -879,8 +931,42 @@ func (s *OJService) upsertLuoguProblems(
 		return nil
 	}
 
-	// 批量插入 (Repository 层会自动回填 Redis)
-	if err := s.luoguQuestionBankRepo.BatchCreate(ctx, newProblems); err != nil {
+	if s.txRunner == nil {
+		return errors.New("transaction runner is nil")
+	}
+	if s.questionUpsertPublisher == nil {
+		return errors.New("oj question upsert publisher is nil")
+	}
+	if err := s.txRunner.InTx(ctx, func(tx any) error {
+		repo := s.luoguQuestionBankRepo.WithTx(tx)
+		if err := repo.BatchCreate(ctx, newProblems); err != nil {
+			return err
+		}
+		for _, problem := range newProblems {
+			if problem == nil {
+				continue
+			}
+			if problem.ID == 0 {
+				existing, err := repo.GetByPID(ctx, strings.TrimSpace(problem.Pid))
+				if err != nil {
+					return err
+				}
+				problem = existing
+			}
+			if problem == nil || problem.ID == 0 {
+				continue
+			}
+			if err := s.questionUpsertPublisher.PublishInTx(ctx, tx, &eventdto.QuestionUpsertedEvent{
+				Platform:     consts.OJPlatformLuogu,
+				QuestionID:   problem.ID,
+				QuestionCode: strings.TrimSpace(problem.Pid),
+				Title:        strings.TrimSpace(problem.Title),
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
 		return err
 	}
 
@@ -926,8 +1012,43 @@ func (s *OJService) upsertLeetcodeProblems( // 写入 LeetCode 题库（去重 +
 	if len(newProblems) == 0 { // 无新增题目
 		return nil // 直接返回
 	}
-	if err := s.leetcodeQuestionBankRepo.BatchCreate(ctx, newProblems); err != nil { // 批量插入
-		return err // 向上返回错误
+	if s.txRunner == nil {
+		return errors.New("transaction runner is nil")
+	}
+	if s.questionUpsertPublisher == nil {
+		return errors.New("oj question upsert publisher is nil")
+	}
+	if err := s.txRunner.InTx(ctx, func(tx any) error {
+		repo := s.leetcodeQuestionBankRepo.WithTx(tx)
+		if err := repo.BatchCreate(ctx, newProblems); err != nil {
+			return err
+		}
+		for _, problem := range newProblems {
+			if problem == nil {
+				continue
+			}
+			if problem.ID == 0 {
+				existing, err := repo.GetByTitleSlug(ctx, strings.TrimSpace(problem.TitleSlug))
+				if err != nil {
+					return err
+				}
+				problem = existing
+			}
+			if problem == nil || problem.ID == 0 {
+				continue
+			}
+			if err := s.questionUpsertPublisher.PublishInTx(ctx, tx, &eventdto.QuestionUpsertedEvent{
+				Platform:     consts.OJPlatformLeetcode,
+				QuestionID:   problem.ID,
+				QuestionCode: strings.TrimSpace(problem.TitleSlug),
+				Title:        strings.TrimSpace(problem.Title),
+			}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
 	global.Log.Info("added new leetcode problems", zap.Int("count", len(newProblems))) // 记录新增数量
 	return nil                                                                         // 正常结束
@@ -1210,7 +1331,7 @@ func normalizeRankingRequest(
 	}
 
 	platform := strings.ToLower(strings.TrimSpace(req.Platform))
-	if platform != "luogu" && platform != "leetcode" {
+	if platform != "luogu" && platform != "leetcode" && platform != "lanqiao" {
 		return "", 0, 0, "", nil, svccontract.ErrInvalidPlatform
 	}
 
@@ -1474,6 +1595,10 @@ func buildRankingList(
 		if platform == "luogu" {
 			item.PlatformDetails = &resp.OJRankingPlatformDetails{
 				Luogu: entry.Score,
+			}
+		} else if platform == "lanqiao" {
+			item.PlatformDetails = &resp.OJRankingPlatformDetails{
+				Lanqiao: entry.Score,
 			}
 		} else {
 			item.PlatformDetails = &resp.OJRankingPlatformDetails{

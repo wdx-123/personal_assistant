@@ -62,7 +62,7 @@ func SyncProjectionRanks(
 	removeOrgIDs := dedupeOrgIDs(orgIDsToRemove, projection.CurrentOrgID)
 	pipe := client.Pipeline()
 	// 先从全站排行榜和相关组织排行榜中移除用户，确保旧排名被清除。
-	for _, platform := range []string{PlatformLuogu, PlatformLeetcode} {
+	for _, platform := range []string{PlatformLuogu, PlatformLeetcode, PlatformLanqiao} {
 		profile := projection.Platform(platform)
 		pipe.ZRem(ctx, rediskey.RankingAllMembersZSetKey(platform), member)
 		for _, orgID := range removeOrgIDs {
@@ -105,7 +105,7 @@ func DeleteProjection(
 	// 删除用户详情 hash，确保用户的详细信息不再可用。
 	pipe.Del(ctx, rediskey.RankingUserHashKey(userID))
 	// 从全站排行榜和相关组织排行榜中移除用户，确保用户不再出现在任何排行榜中。
-	for _, platform := range []string{PlatformLuogu, PlatformLeetcode} {
+	for _, platform := range []string{PlatformLuogu, PlatformLeetcode, PlatformLanqiao} {
 		pipe.ZRem(ctx, rediskey.RankingAllMembersZSetKey(platform), member)
 		for _, orgID := range dedupeOrgIDs(orgIDs, nil) {
 			pipe.ZRem(ctx, rediskey.RankingOrgZSetKey(orgID, platform), member)

@@ -10,6 +10,7 @@ import (
 const (
 	PlatformLuogu    = "luogu"
 	PlatformLeetcode = "leetcode"
+	PlatformLanqiao  = "lanqiao"
 )
 
 const (
@@ -24,6 +25,9 @@ const (
 	hashFieldLeetcodeSlug    = "leetcode_identifier"
 	hashFieldLeetcodeAvatar  = "leetcode_avatar"
 	hashFieldLeetcodeScore   = "leetcode_score"
+	hashFieldLanqiaoID       = "lanqiao_identifier"
+	hashFieldLanqiaoAvatar   = "lanqiao_avatar"
+	hashFieldLanqiaoScore    = "lanqiao_score"
 	hashActiveValueTrue      = "1"
 	hashActiveValueFalse     = "0"
 )
@@ -44,6 +48,7 @@ type UserProjection struct {
 	Active         bool   // 用户是否活跃。
 	Luogu          PlatformProfile
 	Leetcode       PlatformProfile
+	Lanqiao        PlatformProfile
 }
 
 // FromReadModel 从数据库读模型构建 UserProjection 对象，确保字段映射的正确性和完整性。
@@ -68,6 +73,11 @@ func FromReadModel(item *readmodel.Ranking) *UserProjection {
 			Avatar:     item.LeetcodeAvatar,
 			Score:      item.LeetcodeScore,
 		},
+		Lanqiao: PlatformProfile{
+			Identifier: item.LanqiaoIdentifier,
+			Avatar:     item.LanqiaoAvatar,
+			Score:      item.LanqiaoScore,
+		},
 	}
 }
 
@@ -87,6 +97,9 @@ func (p *UserProjection) HashValues() map[string]interface{} {
 		hashFieldLeetcodeSlug:    p.Leetcode.Identifier,
 		hashFieldLeetcodeAvatar:  p.Leetcode.Avatar,
 		hashFieldLeetcodeScore:   p.Leetcode.Score,
+		hashFieldLanqiaoID:       p.Lanqiao.Identifier,
+		hashFieldLanqiaoAvatar:   p.Lanqiao.Avatar,
+		hashFieldLanqiaoScore:    p.Lanqiao.Score,
 	}
 	if p.Active {
 		values[hashFieldActive] = hashActiveValueTrue
@@ -123,6 +136,11 @@ func ProjectionFromHash(userID uint, values map[string]string) (*UserProjection,
 			Avatar:     strings.TrimSpace(values[hashFieldLeetcodeAvatar]),
 			Score:      parseInt(values[hashFieldLeetcodeScore]),
 		},
+		Lanqiao: PlatformProfile{
+			Identifier: strings.TrimSpace(values[hashFieldLanqiaoID]),
+			Avatar:     strings.TrimSpace(values[hashFieldLanqiaoAvatar]),
+			Score:      parseInt(values[hashFieldLanqiaoScore]),
+		},
 	}
 
 	// 解析 current_org_id 字段，确保正确处理空值和无效值。
@@ -140,6 +158,8 @@ func (p *UserProjection) Platform(platform string) PlatformProfile {
 	switch NormalizePlatform(platform) {
 	case PlatformLeetcode:
 		return p.Leetcode
+	case PlatformLanqiao:
+		return p.Lanqiao
 	default:
 		return p.Luogu
 	}
@@ -150,6 +170,8 @@ func NormalizePlatform(platform string) string {
 	switch strings.ToLower(strings.TrimSpace(platform)) {
 	case PlatformLeetcode:
 		return PlatformLeetcode
+	case PlatformLanqiao:
+		return PlatformLanqiao
 	default:
 		return PlatformLuogu
 	}

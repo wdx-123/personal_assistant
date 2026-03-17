@@ -130,6 +130,71 @@ func TestGetRankingListOrgScopeRequiresActiveMembership(t *testing.T) {
 	}
 }
 
+func TestGetRankingListLanqiaoUsesLanqiaoScore(t *testing.T) {
+	setupRankingRedis(t)
+
+	if err := global.Redis.ZAdd(context.Background(), rediskey.RankingAllMembersZSetKey("lanqiao"), &redis.Z{
+		Score:  12,
+		Member: "2",
+	}).Err(); err != nil {
+		t.Fatalf("seed ranking zset error = %v", err)
+	}
+
+	allMembersKey := consts.OrgBuiltinKeyAllMembers
+	currentOrgID := uint(100)
+	svc := &OJService{
+		userRepo: &stubRankingUserRepository{
+			users: map[uint]*entity.User{
+				1: {
+					MODEL:        entity.MODEL{ID: 1},
+					Status:       consts.UserStatusActive,
+					CurrentOrgID: &currentOrgID,
+					CurrentOrg: &entity.Org{
+						MODEL:      entity.MODEL{ID: currentOrgID},
+						IsBuiltin:  true,
+						BuiltinKey: &allMembersKey,
+					},
+				},
+			},
+		},
+		roleRepo: &stubRankingRoleRepository{},
+		rankingReadModelRepo: &stubRankingReadModelRepository{
+			items: map[uint]*readmodel.Ranking{
+				2: {
+					UserID:            2,
+					Username:          "alice",
+					Avatar:            "base-avatar",
+					Status:            consts.UserStatusActive,
+					LanqiaoIdentifier: "138****0000",
+					LanqiaoScore:      12,
+				},
+			},
+		},
+	}
+
+	out, err := svc.GetRankingList(context.Background(), 1, &request.OJRankingListReq{
+		Platform: "lanqiao",
+		Scope:    rankingScopeCurrentOrg,
+		Page:     1,
+		PageSize: 10,
+	})
+	if err != nil {
+		t.Fatalf("GetRankingList() error = %v", err)
+	}
+	if out.Total != 1 || len(out.List) != 1 {
+		t.Fatalf("unexpected ranking result: total=%d len=%d", out.Total, len(out.List))
+	}
+	if out.List[0].TotalPassed != 12 {
+		t.Fatalf("TotalPassed = %d, want 12", out.List[0].TotalPassed)
+	}
+	if out.List[0].PlatformDetails == nil || out.List[0].PlatformDetails.Lanqiao != 12 {
+		t.Fatalf("PlatformDetails = %+v, want lanqiao score 12", out.List[0].PlatformDetails)
+	}
+	if out.List[0].Avatar != "base-avatar" {
+		t.Fatalf("avatar = %q, want %q", out.List[0].Avatar, "base-avatar")
+	}
+}
+
 func setupRankingRedis(t *testing.T) {
 	t.Helper()
 

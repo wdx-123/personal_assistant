@@ -103,6 +103,20 @@ func LeetcodeSyncTask() {
 	})
 }
 
+// LanqiaoSyncTask 蓝桥用户数据定时增量同步。
+func LanqiaoSyncTask() {
+	runServiceTask("LanqiaoSyncTask", func(ctx context.Context) error {
+		return service.GroupApp.SystemServiceSupplier.GetOJSvc().SyncAllLanqiaoUsers(ctx)
+	})
+}
+
+// LanqiaoStatsRefreshTask 蓝桥提交成功/失败次数低频刷新。
+func LanqiaoStatsRefreshTask() {
+	runServiceTask("LanqiaoStatsRefreshTask", func(ctx context.Context) error {
+		return service.GroupApp.SystemServiceSupplier.GetOJSvc().RefreshAllLanqiaoSubmissionStats(ctx)
+	})
+}
+
 // RankingSyncTask 排行榜缓存定时重建。
 func RankingSyncTask() {
 	runServiceTask("RankingSyncTask", func(ctx context.Context) error {
@@ -118,6 +132,13 @@ func OJDailyStatsRepairTask() {
 			return nil
 		}
 		return svc.RepairRecentWindow(ctx)
+	})
+}
+
+// OJTaskDispatchTask OJ 任务执行扫描器。
+func OJTaskDispatchTask() {
+	runServiceTask("OJTaskDispatchTask", func(ctx context.Context) error {
+		return service.GroupApp.SystemServiceSupplier.GetOJTaskSvc().DispatchPendingExecutions(ctx)
 	})
 }
 
@@ -158,6 +179,22 @@ func RegisterScheduledTasks(c *cron.Cron) error {
 		return fmt.Errorf("注册 LeetcodeSyncTask 失败: %w", err)
 	}
 
+	lanqiaoInterval := global.Config.Task.LanqiaoSyncIntervalSeconds
+	if lanqiaoInterval <= 0 {
+		lanqiaoInterval = 3600
+	}
+	if _, err := c.AddFunc(fmt.Sprintf("@every %ds", lanqiaoInterval), LanqiaoSyncTask); err != nil {
+		return fmt.Errorf("注册 LanqiaoSyncTask 失败: %w", err)
+	}
+
+	lanqiaoStatsCron := strings.TrimSpace(global.Config.Task.LanqiaoStatsRefreshCron)
+	if lanqiaoStatsCron == "" {
+		lanqiaoStatsCron = "@daily"
+	}
+	if _, err := c.AddFunc(lanqiaoStatsCron, LanqiaoStatsRefreshTask); err != nil {
+		return fmt.Errorf("注册 LanqiaoStatsRefreshTask 失败: %w", err)
+	}
+
 	// 排行榜重建 — 间隔由配置驱动
 	rankingInterval := global.Config.Task.RankingSyncIntervalSeconds
 	if rankingInterval <= 0 {
@@ -173,6 +210,16 @@ func RegisterScheduledTasks(c *cron.Cron) error {
 	}
 	if _, err := c.AddFunc(curveRepairCron, OJDailyStatsRepairTask); err != nil {
 		return fmt.Errorf("注册 OJDailyStatsRepairTask 失败: %w", err)
+	}
+
+	if global.Config.Task.OJTaskDispatchEnabled {
+		dispatchInterval := global.Config.Task.OJTaskDispatchIntervalSeconds
+		if dispatchInterval <= 0 {
+			dispatchInterval = 10
+		}
+		if _, err := c.AddFunc(fmt.Sprintf("@every %ds", dispatchInterval), OJTaskDispatchTask); err != nil {
+			return fmt.Errorf("注册 OJTaskDispatchTask 失败: %w", err)
+		}
 	}
 
 	// 孤儿图片清理 — cron 表达式由配置驱动

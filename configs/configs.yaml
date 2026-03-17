@@ -27,10 +27,10 @@ system:
   bind_cool_down_hours: 48 # 换绑冷却时间（小时），防止频繁换绑
 security:
   sensitive_data:
-    enabled: false               # 敏感数据编解码器总开关；关闭时不初始化
+    enabled: false               # 敏感数据编解码器总开关；默认关闭，建议通过环境变量开启
     cipher_prefix: "enc:v1:"     # 密文前缀；为空时回落到默认 enc:v1:
-    aes_key_base64: ""           # AES-256-GCM 密钥，需 base64 解码后为 32 字节
-    hash_key_base64: ""          # HMAC-SHA256 密钥，需 base64 解码后为 32 字节
+    aes_key_base64: ""           # AES-256-GCM 密钥，需通过环境变量注入
+    hash_key_base64: ""          # HMAC-SHA256 密钥，需通过环境变量注入
 zap:
   level: warn #  日志级别为error：仅记录错误信息，不包含info和debug信息
   filename: log/assist_backed_app.log # 日志文件存储路径及名称：日志会写入项目根目录下的log文件夹，文件名为go_blog.log，便于统一管理和查找
@@ -185,6 +185,15 @@ task:
   oj_daily_stats_repair_cron: "@daily"
   oj_daily_stats_repair_batch_size: 100
   oj_daily_stats_repair_window_days: 35
+  oj_task_dispatch_enabled: true
+  oj_task_dispatch_interval_seconds: 10
+  oj_task_dispatch_batch_size: 10
+  oj_task_dispatch_worker_count: 1
+  oj_task_analyze_fuzzy_limit: 5
+  oj_task_preflight_enabled: true
+  oj_task_preflight_fail_open: false
+  oj_task_snapshot_insert_batch_size: 500
+  oj_task_execution_lock_ttl_seconds: 60
   disabled_user_cleanup_enabled: true
   disabled_user_retention_days: 30
   disabled_user_cleanup_cron: "@daily"
@@ -199,6 +208,9 @@ messaging:
   leetcode_bind_topic: "leetcode.bind"
   leetcode_bind_group: "leetcode_bind_group"
   leetcode_bind_consumer: "leetcode_bind_consumer"
+  oj_task_execution_trigger_topic: "oj_task_execution_trigger"
+  oj_task_execution_trigger_group: "oj_task_execution_trigger_group"
+  oj_task_execution_trigger_consumer: "oj_task_execution_trigger_consumer"
   oj_daily_stats_projection_topic: "oj_daily_stats_projection"
   oj_daily_stats_projection_group: "oj_daily_stats_projection_group"
   oj_daily_stats_projection_consumer: "oj_daily_stats_projection_consumer"

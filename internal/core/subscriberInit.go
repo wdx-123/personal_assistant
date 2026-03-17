@@ -119,6 +119,74 @@ func initOJDailyStatsProjectionSubscribers(
 	return nil
 }
 
+func initOJTaskSubscribers(
+	ctx context.Context,
+	ojTaskSvc contract.OJTaskServiceContract,
+) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if ojTaskSvc == nil || global.Redis == nil || global.Log == nil || global.Config == nil {
+		return errors.New("oj task subscriber dependencies missing")
+	}
+
+	cfg := global.Config.Messaging
+	topic := strings.TrimSpace(cfg.OJTaskExecutionTriggerTopic)
+	group := strings.TrimSpace(cfg.OJTaskExecutionTriggerGroup)
+	consumer := strings.TrimSpace(cfg.OJTaskExecutionTriggerConsumer)
+	if topic == "" || group == "" || consumer == "" {
+		return errors.New("oj task execution trigger messaging config missing")
+	}
+
+	subscriber := messaging.NewRedisStreamSubscriber(global.Redis, global.Log, group, consumer)
+	go func() {
+		err := subscriber.Subscribe(ctx, topic, func(ctx context.Context, msg *messaging.Message) error {
+			var payload eventdto.OJTaskExecutionTriggerEvent
+			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+				return err
+			}
+			if payload.ExecutionID == 0 {
+				aggregateID := strings.TrimSpace(msg.Metadata["aggregate_id"])
+				if aggregateID != "" {
+					executionID, err := strconv.ParseUint(aggregateID, 10, 64)
+					if err == nil {
+						payload.ExecutionID = uint(executionID)
+					}
+				}
+			}
+			if payload.ExecutionID == 0 {
+				return errors.New("oj task execution id missing")
+			}
+			return ojTaskSvc.ExecuteExecutionByID(ctx, payload.ExecutionID)
+		})
+		if err != nil && !errors.Is(err, context.Canceled) {
+			global.Log.Error("oj task trigger subscriber stopped", zap.Error(err))
+		}
+	}()
+
+	questionTopic := strings.TrimSpace(cfg.OJQuestionUpsertTopic)
+	questionGroup := strings.TrimSpace(cfg.OJQuestionUpsertGroup)
+	questionConsumer := strings.TrimSpace(cfg.OJQuestionUpsertConsumer)
+	if questionTopic == "" || questionGroup == "" || questionConsumer == "" {
+		return errors.New("oj question upsert messaging config missing")
+	}
+
+	questionSubscriber := messaging.NewRedisStreamSubscriber(global.Redis, global.Log, questionGroup, questionConsumer)
+	go func() {
+		err := questionSubscriber.Subscribe(ctx, questionTopic, func(ctx context.Context, msg *messaging.Message) error {
+			var payload eventdto.QuestionUpsertedEvent
+			if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+				return err
+			}
+			return ojTaskSvc.HandleQuestionUpserted(ctx, &payload)
+		})
+		if err != nil && !errors.Is(err, context.Canceled) {
+			global.Log.Error("oj question upsert subscriber stopped", zap.Error(err))
+		}
+	}()
+	return nil
+}
+
 // InitSubscribers 初始化所有事件订阅器。
 func InitSubscribers(
 	ctx context.Context,
@@ -171,6 +239,15 @@ func InitSubscribers(
 		}
 	}()
 	return nil
+}
+
+// InitCriticalOJTaskSubscribers 初始化 OJTask 即时触发订阅器。
+// 与其他历史订阅器不同，该链路初始化失败应由上层决定是否 fail-fast。
+func InitCriticalOJTaskSubscribers(
+	ctx context.Context,
+	ojTaskSvc contract.OJTaskServiceContract,
+) error {
+	return initOJTaskSubscribers(ctx, ojTaskSvc)
 }
 
 func initPermissionSubscribers(

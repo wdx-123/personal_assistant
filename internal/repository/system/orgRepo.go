@@ -149,28 +149,13 @@ func (r *orgRepository) GetOrgsByUserID(
 	return orgs, err
 }
 
-// GetOrgListWithKeyword 支持关键词搜索的分页查询
+// GetOrgListWithKeyword 支持关键词搜索；page <= 0 时返回全部匹配数据
 func (r *orgRepository) GetOrgListWithKeyword(ctx context.Context, page, pageSize int, keyword string) ([]*entity.Org, int64, error) {
-	var orgs []*entity.Org
-	var total int64
-
-	query := r.db.WithContext(ctx).Model(&entity.Org{})
-
-	// 关键词搜索（按名称模糊匹配）
-	keyword = strings.TrimSpace(keyword)
-	if keyword != "" {
-		query = query.Where("name LIKE ?", "%"+keyword+"%")
-	}
-
-	// 统计总数
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-
-	// 分页查询
-	offset := (page - 1) * pageSize
-	err := query.Order("id DESC").Offset(offset).Limit(pageSize).Find(&orgs).Error
-	return orgs, total, err
+	query := r.applyOrgKeywordFilter(
+		r.db.WithContext(ctx).Model(&entity.Org{}),
+		keyword,
+	)
+	return r.listOrgsWithQuery(query, page, pageSize)
 }
 
 // IsUserInOrg 检查用户是否属于指定组织
@@ -184,4 +169,53 @@ func (r *orgRepository) IsUserInOrg(
 		Where("user_id = ? AND org_id = ? AND member_status = ?", userID, orgID, consts.OrgMemberStatusActive).
 		Count(&count).Error
 	return count > 0, err
+}
+
+// GetVisibleOrgListByUserIDWithKeyword 获取用户可见的活跃组织列表；page <= 0 时返回全部匹配数据
+func (r *orgRepository) GetVisibleOrgListByUserIDWithKeyword(
+	ctx context.Context,
+	userID uint,
+	page, pageSize int,
+	keyword string,
+) ([]*entity.Org, int64, error) {
+	query := r.applyOrgKeywordFilter(
+		r.db.WithContext(ctx).
+			Model(&entity.Org{}).
+			Joins("JOIN org_members ON org_members.org_id = orgs.id").
+			Where("org_members.user_id = ? AND org_members.member_status = ?", userID, consts.OrgMemberStatusActive),
+		keyword,
+	)
+	return r.listOrgsWithQuery(query, page, pageSize)
+}
+
+func (r *orgRepository) applyOrgKeywordFilter(query *gorm.DB, keyword string) *gorm.DB {
+	keyword = strings.TrimSpace(keyword)
+	if keyword != "" {
+		query = query.Where("orgs.name LIKE ?", "%"+keyword+"%")
+	}
+	return query
+}
+
+func (r *orgRepository) listOrgsWithQuery(
+	query *gorm.DB,
+	page, pageSize int,
+) ([]*entity.Org, int64, error) {
+	var (
+		orgs  []*entity.Org
+		total int64
+	)
+
+	if err := query.Session(&gorm.Session{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	if page > 0 && pageSize > 0 {
+		offset := (page - 1) * pageSize
+		query = query.Order("orgs.id DESC").Offset(offset).Limit(pageSize)
+	}
+
+	if err := query.Find(&orgs).Error; err != nil {
+		return nil, 0, err
+	}
+	return orgs, total, nil
 }

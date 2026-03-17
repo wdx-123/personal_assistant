@@ -24,6 +24,13 @@ func NewLuoguQuestionBankRepository(db *gorm.DB) interfaces.LuoguQuestionBankRep
 	return &luoguQuestionBankRepository{db: db}
 }
 
+func (r *luoguQuestionBankRepository) WithTx(tx any) interfaces.LuoguQuestionBankRepository {
+	if transaction, ok := tx.(*gorm.DB); ok {
+		return &luoguQuestionBankRepository{db: transaction}
+	}
+	return r
+}
+
 func (r *luoguQuestionBankRepository) GetAllPIDMap(
 	ctx context.Context,
 ) (map[string]uint, error) {
@@ -81,6 +88,35 @@ func (r *luoguQuestionBankRepository) BatchCreate(
 	return nil
 }
 
+func (r *luoguQuestionBankRepository) Create(
+	ctx context.Context,
+	question *entity.LuoguQuestionBank,
+) error {
+	return r.db.WithContext(ctx).Create(question).Error
+}
+
+func (r *luoguQuestionBankRepository) Update(
+	ctx context.Context,
+	question *entity.LuoguQuestionBank,
+) error {
+	return r.db.WithContext(ctx).Save(question).Error
+}
+
+func (r *luoguQuestionBankRepository) GetByID(
+	ctx context.Context,
+	id uint,
+) (*entity.LuoguQuestionBank, error) {
+	var q entity.LuoguQuestionBank
+	err := r.db.WithContext(ctx).First(&q, id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &q, nil
+}
+
 func (r *luoguQuestionBankRepository) GetByPID(
 	ctx context.Context,
 	pid string,
@@ -88,6 +124,39 @@ func (r *luoguQuestionBankRepository) GetByPID(
 	var q entity.LuoguQuestionBank
 	err := r.db.WithContext(ctx).Where("pid = ?", pid).First(&q).Error
 	return &q, err
+}
+
+func (r *luoguQuestionBankRepository) ListByExactTitle(
+	ctx context.Context,
+	title string,
+) ([]*entity.LuoguQuestionBank, error) {
+	var questions []*entity.LuoguQuestionBank
+	err := r.db.WithContext(ctx).
+		Where("title = ?", title).
+		Order("source_status ASC, id ASC").
+		Find(&questions).Error
+	if err != nil {
+		return nil, err
+	}
+	return questions, nil
+}
+
+func (r *luoguQuestionBankRepository) SearchByTitle(
+	ctx context.Context,
+	keyword string,
+	limit int,
+) ([]*entity.LuoguQuestionBank, error) {
+	query := r.db.WithContext(ctx).
+		Where("title LIKE ?", "%"+keyword+"%").
+		Order("source_status ASC, id ASC")
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	var questions []*entity.LuoguQuestionBank
+	if err := query.Find(&questions).Error; err != nil {
+		return nil, err
+	}
+	return questions, nil
 }
 
 // 从 Redis 缓存里根据洛谷题号 PID（比如 P1000）查到你本地题库表的 ID，并告诉你“有没有命中缓存”。

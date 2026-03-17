@@ -8,12 +8,23 @@ import (
 
 // LuoguQuestionBankRepository 洛谷题库仓储接口
 type LuoguQuestionBankRepository interface {
+	WithTx(tx any) LuoguQuestionBankRepository
 	// GetAllPIDMap 获取所有题目的 PID 到 ID 的映射
 	GetAllPIDMap(ctx context.Context) (map[string]uint, error)
 	// BatchCreate 批量创建题目
 	BatchCreate(ctx context.Context, questions []*entity.LuoguQuestionBank) error
+	// Create 创建题目
+	Create(ctx context.Context, question *entity.LuoguQuestionBank) error
+	// Update 更新题目
+	Update(ctx context.Context, question *entity.LuoguQuestionBank) error
+	// GetByID 根据本地主键获取题目
+	GetByID(ctx context.Context, id uint) (*entity.LuoguQuestionBank, error)
 	// GetByPID 根据PID获取题目
 	GetByPID(ctx context.Context, pid string) (*entity.LuoguQuestionBank, error)
+	// ListByExactTitle 根据标题精确查询题目
+	ListByExactTitle(ctx context.Context, title string) ([]*entity.LuoguQuestionBank, error)
+	// SearchByTitle 根据标题关键字模糊查询题目
+	SearchByTitle(ctx context.Context, keyword string, limit int) ([]*entity.LuoguQuestionBank, error)
 	// 从 Redis 缓存里根据洛谷题号 PID（比如 P1000）查到你本地题库表的 ID，并告诉你“有没有命中缓存”。
 	GetCachedID(ctx context.Context, pid string) (uint, bool, error)
 	// CacheID 写缓存

@@ -29,7 +29,7 @@ func NewOrgCtrl(orgService serviceContract.OrgServiceContract) *OrgCtrl {
 	}
 }
 
-// GetOrgList 获取组织列表（支持分页、关键词搜索）
+// GetOrgList 获取组织列表（按当前用户可见范围过滤，支持分页、关键词搜索）
 func (ctrl *OrgCtrl) GetOrgList(c *gin.Context) {
 	var req request.OrgListReq
 	if err := c.ShouldBindQuery(&req); err != nil {
@@ -43,7 +43,8 @@ func (ctrl *OrgCtrl) GetOrgList(c *gin.Context) {
 		req.Page = 1
 	}
 
-	orgs, total, err := ctrl.orgService.GetOrgList(c.Request.Context(), req.Page, req.PageSize, req.Keyword)
+	userID := jwt.GetUserID(c)
+	orgs, total, err := ctrl.orgService.GetOrgList(c.Request.Context(), userID, req.Page, req.PageSize, req.Keyword)
 	if err != nil {
 		global.Log.Error("获取组织列表失败", zap.Error(err))
 		response.BizFailWithError(err, c)

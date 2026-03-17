@@ -32,8 +32,10 @@ type OrgRepository interface {
 	CountMembersByOrgID(ctx context.Context, orgID uint) (int64, error)
 	// GetOrgsByUserID 获取用户所属的活跃组织列表
 	GetOrgsByUserID(ctx context.Context, userID uint) ([]*entity.Org, error)
-	// GetOrgListWithKeyword 支持关键词搜索的分页查询
+	// GetOrgListWithKeyword 支持关键词搜索；page <= 0 时返回全部匹配数据
 	GetOrgListWithKeyword(ctx context.Context, page, pageSize int, keyword string) ([]*entity.Org, int64, error)
+	// GetVisibleOrgListByUserIDWithKeyword 获取用户可见的活跃组织列表；page <= 0 时返回全部匹配数据
+	GetVisibleOrgListByUserIDWithKeyword(ctx context.Context, userID uint, page, pageSize int, keyword string) ([]*entity.Org, int64, error)
 	// IsUserInOrg 检查用户是否属于指定组织
 	IsUserInOrg(ctx context.Context, userID, orgID uint) (bool, error)
 	// RemoveAllMembers 删除组织下的所有成员关联

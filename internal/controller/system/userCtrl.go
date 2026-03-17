@@ -330,29 +330,27 @@ func (u *UserCtrl) UpdateUserStatus(c *gin.Context) {
 // entityToUserDetail 将用户实体转换为详情DTO
 func entityToUserDetail(user *entity.User) *resp.UserDetailItem {
 	item := &resp.UserDetailItem{
-		ID:        user.ID,
-		UUID:      user.UUID.String(),
-		Username:  user.Username,
-		Phone:     util.DesensitizePhone(user.Phone),
-		Email:     user.Email,
-		Avatar:    user.Avatar,
-		AvatarID:  user.AvatarID,
-		Address:   user.Address,
-		Signature: user.Signature,
-		Register:  int(user.Register),
-		Freeze:    user.Freeze,
-		Status:    int(user.Status),
-		CreatedAt: user.CreatedAt.Format(time.DateTime),
-		UpdatedAt: user.UpdatedAt.Format(time.DateTime),
+		ID:           user.ID,
+		UUID:         user.UUID.String(),
+		Username:     user.Username,
+		Phone:        util.DesensitizePhone(user.Phone),
+		Email:        user.Email,
+		Avatar:       user.Avatar,
+		AvatarID:     user.AvatarID,
+		Address:      user.Address,
+		Signature:    user.Signature,
+		Register:     int(user.Register),
+		Freeze:       user.Freeze,
+		Status:       int(user.Status),
+		CreatedAt:    user.CreatedAt.Format(time.DateTime),
+		UpdatedAt:    user.UpdatedAt.Format(time.DateTime),
+		CurrentOrgID: user.CurrentOrgID,
 	}
 	if user.DisabledAt != nil {
 		item.DisabledAt = user.DisabledAt.Format(time.DateTime)
 	}
 	if user.CurrentOrg != nil {
-		item.CurrentOrg = struct {
-			ID   uint   `json:"id"`
-			Name string `json:"name"`
-		}{
+		item.CurrentOrg = &resp.OrgSimpleItem{
 			ID:   user.CurrentOrg.ID,
 			Name: user.CurrentOrg.Name,
 		}

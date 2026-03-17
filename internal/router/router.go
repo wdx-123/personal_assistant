@@ -79,6 +79,8 @@ func InitRouter() *gin.Engine {
 	{
 		// OJ 相关路由
 		systemRouter.InitOJRouter(BusinessGroup)
+		// OJ 任务相关路由
+		systemRouter.InitOJTaskRouter(BusinessGroup)
 		// 图片路由：登录即可访问，上传接口额外挂载限流中间件（全局+用户级双层限流）
 		systemRouter.InitImageRouter(BusinessGroup, uploadRateLimitMW)
 		// 组织路由：登录即可切换组织、查看我的组织

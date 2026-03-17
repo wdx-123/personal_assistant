@@ -25,6 +25,8 @@ type JWTServiceContract interface {
 type AuthorizationServiceContract interface {
 	// GetUserRoles 获取用户角色
 	GetUserRoles(ctx context.Context, userID uint) ([]entity.Role, error)
+	// IsSuperAdmin 判断用户是否具备全局超级管理员角色
+	IsSuperAdmin(ctx context.Context, userID uint) (bool, error)
 	// CheckUserAPIPermission 检查用户API权限
 	CheckUserAPIPermission(ctx context.Context, userID uint, apiPath, method string) (bool, error)
 	// CheckUserCapabilityInOrg 检查用户在组织中的能力
@@ -84,7 +86,7 @@ type UserServiceContract interface {
 }
 
 type OrgServiceContract interface {
-	GetOrgList(ctx context.Context, page, pageSize int, keyword string) ([]*readmodel.OrgWithMemberCount, int64, error)
+	GetOrgList(ctx context.Context, userID uint, page, pageSize int, keyword string) ([]*readmodel.OrgWithMemberCount, int64, error)
 	GetOrgDetail(ctx context.Context, userID uint, orgID uint) (*readmodel.OrgWithMemberCount, error)
 	CreateOrg(ctx context.Context, userID uint, req *request.CreateOrgReq) error
 	UpdateOrg(ctx context.Context, userID, orgID uint, req *request.UpdateOrgReq) error
@@ -107,14 +109,36 @@ type OrgServiceContract interface {
 
 type OJServiceContract interface {
 	BindOJAccount(ctx context.Context, userID uint, req *request.BindOJAccountReq) (*resp.BindOJAccountResp, error)
+	BindLanqiaoAccount(ctx context.Context, userID uint, req *request.BindLanqiaoAccountReq) (*resp.BindOJAccountResp, error)
 	GetRankingList(ctx context.Context, userID uint, req *request.OJRankingListReq) (*resp.OJRankingListResp, error)
-	GetUserStats(ctx context.Context, userID uint, req *request.OJStatsReq) (*resp.BindOJAccountResp, error)
+	GetUserStats(ctx context.Context, userID uint, req *request.OJStatsReq) (*resp.OJStatsResp, error)
 	GetCurve(ctx context.Context, userID uint, req *request.OJCurveReq) (*resp.OJCurveResp, error)
 	SyncAllLuoguUsers(ctx context.Context) error
 	SyncAllLeetcodeUsers(ctx context.Context) error
+	SyncAllLanqiaoUsers(ctx context.Context) error
+	RefreshAllLanqiaoSubmissionStats(ctx context.Context) error
 	RebuildRankingCaches(ctx context.Context) error
 	HandleLuoguBindPayload(ctx context.Context, userID uint, payload *eventdto.LuoguBindPayload) error
 	HandleLeetcodeBindSignal(ctx context.Context, userID uint) error
+}
+
+type OJTaskServiceContract interface {
+	AnalyzeTaskTitles(ctx context.Context, req *request.AnalyzeOJTaskTitlesReq) (*resp.OJTaskAnalyzeResp, error)
+	CreateTask(ctx context.Context, operatorID uint, req *request.CreateOJTaskReq) (*resp.OJTaskCreateResp, error)
+	UpdateTask(ctx context.Context, operatorID, taskID uint, req *request.UpdateOJTaskReq) error
+	DeleteTask(ctx context.Context, operatorID, taskID uint) error
+	ExecuteTaskNow(ctx context.Context, operatorID, taskID uint) (*resp.OJTaskCreateResp, error)
+	ExecuteExecutionByID(ctx context.Context, executionID uint) error
+	ReviseTask(ctx context.Context, operatorID, taskID uint, req *request.ReviseOJTaskReq) (*resp.OJTaskCreateResp, error)
+	RetryTask(ctx context.Context, operatorID, taskID uint) (*resp.OJTaskCreateResp, error)
+	GetVisibleTaskList(ctx context.Context, userID uint, req *request.OJTaskListReq) ([]*resp.OJTaskListItemResp, int64, error)
+	GetTaskDetail(ctx context.Context, userID, taskID uint) (*resp.OJTaskDetailResp, error)
+	GetTaskVersions(ctx context.Context, userID, taskID uint) (*resp.OJTaskVersionListResp, error)
+	GetTaskExecutionDetail(ctx context.Context, userID, taskID, executionID uint) (*resp.OJTaskExecutionResp, error)
+	GetTaskExecutionUsers(ctx context.Context, userID, taskID, executionID uint, req *request.OJTaskExecutionUserListReq) (*resp.OJTaskExecutionUserListResp, error)
+	GetTaskExecutionUserDetail(ctx context.Context, userID, taskID, executionID, targetUserID uint) (*resp.OJTaskExecutionUserDetailResp, error)
+	DispatchPendingExecutions(ctx context.Context) error
+	HandleQuestionUpserted(ctx context.Context, event *eventdto.QuestionUpsertedEvent) error
 }
 
 type OJDailyStatsProjectionServiceContract interface {
@@ -192,6 +216,7 @@ type Supplier interface {
 	GetUserSvc() UserServiceContract
 	GetOrgSvc() OrgServiceContract
 	GetOJSvc() OJServiceContract
+	GetOJTaskSvc() OJTaskServiceContract
 	GetApiSvc() ApiServiceContract
 	GetMenuSvc() MenuServiceContract
 	GetRoleSvc() RoleServiceContract

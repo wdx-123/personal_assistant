@@ -1,5 +1,5 @@
 package request
 
 type OJStatsReq struct {
-	Platform string `json:"platform" binding:"required,oneof=leetcode luogu"`
+	Platform string `json:"platform" binding:"required,oneof=leetcode luogu lanqiao"`
 }

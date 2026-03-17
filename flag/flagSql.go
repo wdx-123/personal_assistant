@@ -24,34 +24,50 @@ func SQL() error {
 	db := global.DB.Set("gorm:table_options", "ENGINE=InnoDB")
 
 	if err := db.AutoMigrate(
-		&entity.User{},                   // 用户表
-		&entity.Org{},                    // 组织表
-		&entity.OrgMember{},              // 组织成员状态表 - 身份上的
-		&entity.LeetcodeUserDetail{},     // 力扣用户详情表
-		&entity.LuoguUserDetail{},        // 洛谷用户详情表
-		&entity.LeetcodeQuestionBank{},   // 力扣题库题目表
-		&entity.LuoguQuestionBank{},      // 洛谷题库题目表
-		&entity.LeetcodeUserQuestion{},   // 力扣用户以做题目表
-		&entity.LuoguUserQuestion{},      // 洛谷用户以做题目表
-		&entity.OJUserDailyStat{},        // OJ 刷题曲线日聚合读模型
-		&entity.Login{},                  // 登录日志表
-		&entity.UserToken{},              // 用户Token记录表
-		&entity.TokenBlacklist{},         // Token黑名单表
-		&entity.JwtBlacklist{},           // JWT黑名单表（兼容现有代码）
-		&entity.Role{},                   // 角色表
-		&entity.Capability{},             // 业务能力表
-		&entity.Menu{},                   // 菜单表
-		&entity.UserOrgRole{},            // 用户组织角色关联表 - 权限上的（与 OrgMember 配合）
-		&entity.RoleCapability{},         // 角色与业务能力关联表
-		&entity.RoleAPI{},                // 角色API直绑关联表
-		&entity.API{},                    // api表
-		&entity.OutboxEvent{},            // Outbox事件表
-		&entity.Image{},                  // 图片表
-		&entity.ObservabilityMetric{},    // 指标聚合表
-		&entity.ObservabilityTraceSpan{}, // 全链路追踪明细表
+		&entity.User{},                    // 用户表
+		&entity.Org{},                     // 组织表
+		&entity.OrgMember{},               // 组织成员状态表 - 身份上的
+		&entity.LeetcodeUserDetail{},      // 力扣用户详情表
+		&entity.LuoguUserDetail{},         // 洛谷用户详情表
+		&entity.LanqiaoUserDetail{},       // 蓝桥用户详情表
+		&entity.LeetcodeQuestionBank{},    // 力扣题库题目表
+		&entity.LuoguQuestionBank{},       // 洛谷题库题目表
+		&entity.LanqiaoQuestionBank{},     // 蓝桥题库题目表
+		&entity.LeetcodeUserQuestion{},    // 力扣用户以做题目表
+		&entity.LuoguUserQuestion{},       // 洛谷用户以做题目表
+		&entity.LanqiaoUserQuestion{},     // 蓝桥用户已通过题目表
+		&entity.OJUserDailyStat{},         // OJ 刷题曲线日聚合读模型
+		&entity.OJTask{},                  // OJ 任务版本表
+		&entity.OJTaskOrg{},               // OJ 任务组织关联表
+		&entity.OJTaskItem{},              // OJ 任务题单表
+		&entity.OJQuestionIntake{},        // OJ 任务待解析题目表
+		&entity.OJTaskExecution{},         // OJ 任务执行表
+		&entity.OJTaskExecutionUser{},     // OJ 任务执行用户快照表
+		&entity.OJTaskExecutionUserOrg{},  // OJ 任务执行用户组织快照表
+		&entity.OJTaskExecutionUserItem{}, // OJ 任务执行用户题目快照表
+		&entity.Login{},                   // 登录日志表
+		&entity.UserToken{},               // 用户Token记录表
+		&entity.TokenBlacklist{},          // Token黑名单表
+		&entity.JwtBlacklist{},            // JWT黑名单表（兼容现有代码）
+		&entity.Role{},                    // 角色表
+		&entity.Capability{},              // 业务能力表
+		&entity.Menu{},                    // 菜单表
+		&entity.UserOrgRole{},             // 用户组织角色关联表 - 权限上的（与 OrgMember 配合）
+		&entity.RoleCapability{},          // 角色与业务能力关联表
+		&entity.RoleAPI{},                 // 角色API直绑关联表
+		&entity.API{},                     // api表
+		&entity.OutboxEvent{},             // Outbox事件表
+		&entity.Image{},                   // 图片表
+		&entity.ObservabilityMetric{},     // 指标聚合表
+		&entity.ObservabilityTraceSpan{},  // 全链路追踪明细表
 	); err != nil {
 		return err
 	}
+
+	// AutoMigrate 会在当前 *gorm.DB 上留下 Statement 上下文。
+	// 后续迁移步骤如果继续复用同一个实例，可能把历史表名串到新的查询/DDL 中。
+	// 这里显式切换到全新 Session，避免后续辅助迁移误命中脏状态。
+	db = global.DB.Session(&gorm.Session{NewDB: true})
 
 	// menu_apis 加唯一索引前先按 api_id 清洗历史重复绑定，仅保留最小 menu_id。
 	// 清晰数据用的，后期可删
@@ -73,6 +89,9 @@ func SQL() error {
 		return err
 	}
 	if err := seedBuiltinRoleCapabilities(); err != nil {
+		return err
+	}
+	if err := migrateOJTaskSchema(db); err != nil {
 		return err
 	}
 
@@ -295,10 +314,13 @@ func ensureLifecycleSchema(db *gorm.DB) error {
 }
 
 func ensureColumn(db *gorm.DB, model any, field string) error {
-	if db.Migrator().HasColumn(model, field) {
+	// 使用全新 Session，避免复用链路上残留的 Statement/Table 状态，
+	// 导致 GORM 在 AddColumn 时错误地把目标表解析成历史上下文中的临时表名。
+	migrator := db.Session(&gorm.Session{NewDB: true}).Migrator()
+	if migrator.HasColumn(model, field) {
 		return nil
 	}
-	return db.Migrator().AddColumn(model, field)
+	return migrator.AddColumn(model, field)
 }
 
 func normalizeOrgInviteCodes(db *gorm.DB) error {
@@ -475,6 +497,183 @@ func deduplicateOrgMembers(db *gorm.DB) error {
 	`).Error
 }
 
+func migrateOJTaskSchema(db *gorm.DB) error {
+	if err := ensureUniqueIndex(db, "oj_tasks", "uk_oj_tasks_root_version", "root_task_id", "version_no"); err != nil {
+		return err
+	}
+	if err := ensureIndex(db, "oj_tasks", "idx_oj_tasks_created_by_created_at", "created_by", "created_at"); err != nil {
+		return err
+	}
+	if err := ensureUniqueIndex(db, "oj_task_orgs", "uk_oj_task_orgs_task_org", "task_id", "org_id"); err != nil {
+		return err
+	}
+	if err := ensureIndex(db, "oj_task_orgs", "idx_oj_task_orgs_org_task", "org_id", "task_id"); err != nil {
+		return err
+	}
+	if err := backfillOJTaskItemSchema(db); err != nil {
+		return err
+	}
+	if err := dropIndexIfExists(db, "oj_task_items", "uk_oj_task_items_task_platform_code"); err != nil {
+		return err
+	}
+	if err := ensureIndex(db, "oj_task_items", "idx_oj_task_items_task_resolved_question", "task_id", "resolved_question_id"); err != nil {
+		return err
+	}
+	if err := ensureIndex(db, "oj_task_items", "idx_oj_task_items_task_resolution_status", "task_id", "resolution_status"); err != nil {
+		return err
+	}
+	if err := ensureIndex(db, "oj_task_items", "idx_oj_task_items_platform_input_title", "platform", "input_title"); err != nil {
+		return err
+	}
+	if err := ensureUniqueIndex(db, "oj_question_intakes", "uk_oj_question_intakes_task_item", "task_item_id"); err != nil {
+		return err
+	}
+	if err := ensureIndex(db, "oj_question_intakes", "idx_oj_question_intakes_platform_title_status", "platform", "input_title", "status"); err != nil {
+		return err
+	}
+	if err := ensureIndex(db, "oj_question_intakes", "idx_oj_question_intakes_task_status", "task_id", "status"); err != nil {
+		return err
+	}
+	if err := syncOJQuestionIntakesFromTaskItems(db); err != nil {
+		return err
+	}
+	if err := ensureUniqueIndex(db, "oj_task_executions", "uk_oj_task_executions_task", "task_id"); err != nil {
+		return err
+	}
+	if err := ensureIndex(db, "oj_task_executions", "idx_oj_task_executions_status_planned", "status", "planned_at"); err != nil {
+		return err
+	}
+	if err := ensureIndex(db, "oj_task_executions", "idx_oj_task_executions_task_created", "task_id", "created_at"); err != nil {
+		return err
+	}
+	if err := ensureUniqueIndex(db, "oj_task_execution_users", "uk_oj_task_execution_users_execution_user", "execution_id", "user_id"); err != nil {
+		return err
+	}
+	if err := ensureIndex(db, "oj_task_execution_users", "idx_oj_task_execution_users_execution_completed_user", "execution_id", "all_completed", "user_id"); err != nil {
+		return err
+	}
+	if err := ensureUniqueIndex(db, "oj_task_execution_user_orgs", "uk_oj_task_execution_user_orgs_execution_user_org", "execution_user_id", "org_id"); err != nil {
+		return err
+	}
+	if err := ensureUniqueIndex(db, "oj_task_execution_user_items", "uk_oj_task_execution_user_items_execution_user_task_item", "execution_user_id", "task_item_id"); err != nil {
+		return err
+	}
+	if err := ensureIndex(db, "oj_task_execution_user_items", "idx_oj_task_execution_user_items_execution_user_status_reason", "execution_user_id", "result_status", "reason"); err != nil {
+		return err
+	}
+	return ensureIndex(db, "oj_task_execution_user_items", "idx_oj_task_execution_user_items_execution_user_result", "execution_id", "user_id", "result_status")
+}
+
+func backfillOJTaskItemSchema(db *gorm.DB) error {
+	if !db.Migrator().HasTable("oj_task_items") {
+		return nil
+	}
+
+	hasQuestionTitleSnapshot, err := columnExists(db, "oj_task_items", "question_title_snapshot")
+	if err != nil {
+		return err
+	}
+	hasQuestionCode, err := columnExists(db, "oj_task_items", "question_code")
+	if err != nil {
+		return err
+	}
+	hasPlatformQuestionID, err := columnExists(db, "oj_task_items", "platform_question_id")
+	if err != nil {
+		return err
+	}
+
+	inputTitleExpr := "COALESCE(NULLIF(input_title, ''), '')"
+	if hasQuestionTitleSnapshot && hasQuestionCode {
+		inputTitleExpr = "COALESCE(NULLIF(input_title, ''), NULLIF(question_title_snapshot, ''), NULLIF(question_code, ''), '')"
+	} else if hasQuestionTitleSnapshot {
+		inputTitleExpr = "COALESCE(NULLIF(input_title, ''), NULLIF(question_title_snapshot, ''), '')"
+	} else if hasQuestionCode {
+		inputTitleExpr = "COALESCE(NULLIF(input_title, ''), NULLIF(question_code, ''), '')"
+	}
+
+	resolvedQuestionIDExpr := "COALESCE(resolved_question_id, 0)"
+	if hasPlatformQuestionID {
+		resolvedQuestionIDExpr = "CASE WHEN COALESCE(resolved_question_id, 0) > 0 THEN resolved_question_id ELSE COALESCE(platform_question_id, 0) END"
+	}
+
+	resolvedQuestionCodeExpr := "COALESCE(NULLIF(resolved_question_code, ''), '')"
+	if hasQuestionCode {
+		resolvedQuestionCodeExpr = "COALESCE(NULLIF(resolved_question_code, ''), NULLIF(question_code, ''), '')"
+	}
+
+	resolvedTitleSnapshotExpr := "COALESCE(NULLIF(resolved_title_snapshot, ''), NULLIF(input_title, ''), '')"
+	if hasQuestionTitleSnapshot && hasQuestionCode {
+		resolvedTitleSnapshotExpr = "COALESCE(NULLIF(resolved_title_snapshot, ''), NULLIF(question_title_snapshot, ''), NULLIF(input_title, ''), NULLIF(question_code, ''), '')"
+	} else if hasQuestionTitleSnapshot {
+		resolvedTitleSnapshotExpr = "COALESCE(NULLIF(resolved_title_snapshot, ''), NULLIF(question_title_snapshot, ''), NULLIF(input_title, ''), '')"
+	} else if hasQuestionCode {
+		resolvedTitleSnapshotExpr = "COALESCE(NULLIF(resolved_title_snapshot, ''), NULLIF(input_title, ''), NULLIF(question_code, ''), '')"
+	}
+
+	resolutionStatusExpr := fmt.Sprintf(`CASE
+		WHEN resolution_status IN ('resolved', 'shadow_resolved') THEN 'resolved'
+		WHEN resolution_status = 'shadow_pending' THEN 'pending_resolution'
+		WHEN resolution_status = 'missing' THEN 'invalid'
+		WHEN (%s) > 0 THEN 'resolved'
+		WHEN resolution_status = 'invalid' THEN 'invalid'
+		ELSE 'pending_resolution'
+	END`, resolvedQuestionIDExpr)
+
+	updateSQL := fmt.Sprintf(`
+		UPDATE oj_task_items
+		SET
+			input_title = %s,
+			input_mode = 'title',
+			resolved_question_id = %s,
+			resolved_question_code = %s,
+			resolved_title_snapshot = %s,
+			resolution_status = %s
+		WHERE deleted_at IS NULL
+	`, inputTitleExpr, resolvedQuestionIDExpr, resolvedQuestionCodeExpr, resolvedTitleSnapshotExpr, resolutionStatusExpr)
+	return db.Exec(updateSQL).Error
+}
+
+func syncOJQuestionIntakesFromTaskItems(db *gorm.DB) error {
+	if !db.Migrator().HasTable("oj_task_items") || !db.Migrator().HasTable("oj_question_intakes") {
+		return nil
+	}
+	return db.Exec(`
+		INSERT INTO oj_question_intakes (
+			task_id,
+			task_item_id,
+			platform,
+			input_title,
+			status,
+			resolved_question_id,
+			resolution_note,
+			created_at,
+			updated_at
+		)
+		SELECT
+			task_id,
+			id,
+			platform,
+			input_title,
+			resolution_status,
+			resolved_question_id,
+			resolution_note,
+			NOW(),
+			NOW()
+		FROM oj_task_items
+		WHERE deleted_at IS NULL
+			AND resolution_status = 'pending_resolution'
+		ON DUPLICATE KEY UPDATE
+			task_id = VALUES(task_id),
+			platform = VALUES(platform),
+			input_title = VALUES(input_title),
+			status = VALUES(status),
+			resolved_question_id = VALUES(resolved_question_id),
+			resolution_note = VALUES(resolution_note),
+			deleted_at = NULL,
+			updated_at = VALUES(updated_at)
+	`).Error
+}
+
 func ensureUniqueIndex(db *gorm.DB, tableName, indexName string, columns ...string) error {
 	exists, err := indexExists(db, tableName, indexName)
 	if err != nil {
@@ -488,12 +687,33 @@ func ensureUniqueIndex(db *gorm.DB, tableName, indexName string, columns ...stri
 	).Error
 }
 
-func indexExists(db *gorm.DB, tableName, indexName string) (bool, error) {
-	type indexCount struct {
-		Count int64 `gorm:"column:count"`
+func ensureIndex(db *gorm.DB, tableName, indexName string, columns ...string) error {
+	exists, err := indexExists(db, tableName, indexName)
+	if err != nil {
+		return err
 	}
-	var result indexCount
-	err := db.Raw(
+	if exists {
+		return nil
+	}
+	return db.Exec(
+		fmt.Sprintf("CREATE INDEX %s ON %s (%s)", indexName, tableName, strings.Join(columns, ", ")),
+	).Error
+}
+
+func dropIndexIfExists(db *gorm.DB, tableName, indexName string) error {
+	exists, err := indexExists(db, tableName, indexName)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	return db.Exec(fmt.Sprintf("DROP INDEX %s ON %s", indexName, tableName)).Error
+}
+
+func indexExists(db *gorm.DB, tableName, indexName string) (bool, error) {
+	var count int64
+	row := db.Raw(
 		`SELECT COUNT(1) AS count
 		   FROM information_schema.statistics
 		  WHERE table_schema = DATABASE()
@@ -501,19 +721,16 @@ func indexExists(db *gorm.DB, tableName, indexName string) (bool, error) {
 			AND index_name = ?`,
 		tableName,
 		indexName,
-	).Scan(&result).Error
-	if err != nil {
+	).Row()
+	if err := row.Scan(&count); err != nil {
 		return false, err
 	}
-	return result.Count > 0, nil
+	return count > 0, nil
 }
 
 func columnExists(db *gorm.DB, tableName, columnName string) (bool, error) {
-	type columnCount struct {
-		Count int64 `gorm:"column:count"`
-	}
-	var result columnCount
-	err := db.Raw(
+	var count int64
+	row := db.Raw(
 		`SELECT COUNT(1) AS count
 		   FROM information_schema.columns
 		  WHERE table_schema = DATABASE()
@@ -521,11 +738,11 @@ func columnExists(db *gorm.DB, tableName, columnName string) (bool, error) {
 			AND column_name = ?`,
 		tableName,
 		columnName,
-	).Scan(&result).Error
-	if err != nil {
+	).Row()
+	if err := row.Scan(&count); err != nil {
 		return false, err
 	}
-	return result.Count > 0, nil
+	return count > 0, nil
 }
 
 func ensureAllMembersOrg(db *gorm.DB) (uint, error) {

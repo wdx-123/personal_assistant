@@ -18,10 +18,15 @@ type Supplier interface {
 	GetOrgMemberRepository() interfaces.OrgMemberRepository
 	GetLeetcodeUserDetailRepository() interfaces.LeetcodeUserDetailRepository
 	GetLuoguUserDetailRepository() interfaces.LuoguUserDetailRepository
+	GetLanqiaoUserDetailRepository() interfaces.LanqiaoUserDetailRepository
 	GetLeetcodeQuestionBankRepository() interfaces.LeetcodeQuestionBankRepository
 	GetLuoguQuestionBankRepository() interfaces.LuoguQuestionBankRepository
+	GetLanqiaoQuestionBankRepository() interfaces.LanqiaoQuestionBankRepository
 	GetLeetcodeUserQuestionRepository() interfaces.LeetcodeUserQuestionRepository
 	GetLuoguUserQuestionRepository() interfaces.LuoguUserQuestionRepository
+	GetLanqiaoUserQuestionRepository() interfaces.LanqiaoUserQuestionRepository
+	GetOJTaskRepository() interfaces.OJTaskRepository
+	GetOJTaskExecutionRepository() interfaces.OJTaskExecutionRepository
 	GetOJDailyStatsRepository() interfaces.OJDailyStatsRepository
 	GetOutboxRepository() interfaces.OutboxRepository
 	GetRankingReadModelRepository() interfaces.RankingReadModelRepository
@@ -44,10 +49,15 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 	var orgMemberRepo interfaces.OrgMemberRepository
 	var leetcodeUserDetailRepo interfaces.LeetcodeUserDetailRepository
 	var luoguUserDetailRepo interfaces.LuoguUserDetailRepository
+	var lanqiaoUserDetailRepo interfaces.LanqiaoUserDetailRepository
 	var leetcodeQuestionBankRepo interfaces.LeetcodeQuestionBankRepository
 	var luoguQuestionBankRepo interfaces.LuoguQuestionBankRepository
+	var lanqiaoQuestionBankRepo interfaces.LanqiaoQuestionBankRepository
 	var leetcodeUserQuestionRepo interfaces.LeetcodeUserQuestionRepository
 	var luoguUserQuestionRepo interfaces.LuoguUserQuestionRepository
+	var lanqiaoUserQuestionRepo interfaces.LanqiaoUserQuestionRepository
+	var ojTaskRepo interfaces.OJTaskRepository
+	var ojTaskExecutionRepo interfaces.OJTaskExecutionRepository
 	var ojDailyStatsRepo interfaces.OJDailyStatsRepository
 	var outboxRepo interfaces.OutboxRepository
 	var rankingReadModelRepo interfaces.RankingReadModelRepository
@@ -70,10 +80,15 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			orgMemberRepo = NewOrgMemberRepository(db)
 			leetcodeUserDetailRepo = NewLeetcodeUserDetailRepository(db)
 			luoguUserDetailRepo = NewLuoguUserDetailRepository(db)
+			lanqiaoUserDetailRepo = NewLanqiaoUserDetailRepository(db)
 			leetcodeQuestionBankRepo = NewLeetcodeQuestionBankRepository(db)
 			luoguQuestionBankRepo = NewLuoguQuestionBankRepository(db)
+			lanqiaoQuestionBankRepo = NewLanqiaoQuestionBankRepository(db)
 			leetcodeUserQuestionRepo = NewLeetcodeUserQuestionRepository(db)
 			luoguUserQuestionRepo = NewLuoguUserQuestionRepository(db)
+			lanqiaoUserQuestionRepo = NewLanqiaoUserQuestionRepository(db)
+			ojTaskRepo = NewOJTaskRepository(db)
+			ojTaskExecutionRepo = NewOJTaskExecutionRepository(db)
 			ojDailyStatsRepo = NewOJDailyStatsRepository(db)
 			outboxRepo = NewOutboxRepository(db)
 			rankingReadModelRepo = NewRankingReadModelRepository(db)
@@ -102,10 +117,15 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 			orgMemberRepo = NewOrgMemberRepository(db)
 			leetcodeUserDetailRepo = NewLeetcodeUserDetailRepository(db)
 			luoguUserDetailRepo = NewLuoguUserDetailRepository(db)
+			lanqiaoUserDetailRepo = NewLanqiaoUserDetailRepository(db)
 			leetcodeQuestionBankRepo = NewLeetcodeQuestionBankRepository(db)
 			luoguQuestionBankRepo = NewLuoguQuestionBankRepository(db)
+			lanqiaoQuestionBankRepo = NewLanqiaoQuestionBankRepository(db)
 			leetcodeUserQuestionRepo = NewLeetcodeUserQuestionRepository(db)
 			luoguUserQuestionRepo = NewLuoguUserQuestionRepository(db)
+			lanqiaoUserQuestionRepo = NewLanqiaoUserQuestionRepository(db)
+			ojTaskRepo = NewOJTaskRepository(db)
+			ojTaskExecutionRepo = NewOJTaskExecutionRepository(db)
 			ojDailyStatsRepo = NewOJDailyStatsRepository(db)
 			outboxRepo = NewOutboxRepository(db)
 			rankingReadModelRepo = NewRankingReadModelRepository(db)
@@ -127,10 +147,15 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 		orgMemberRepository:            orgMemberRepo,
 		leetcodeUserDetailRepository:   leetcodeUserDetailRepo,
 		luoguUserDetailRepository:      luoguUserDetailRepo,
+		lanqiaoUserDetailRepository:    lanqiaoUserDetailRepo,
 		leetcodeQuestionBankRepository: leetcodeQuestionBankRepo,
 		luoguQuestionBankRepository:    luoguQuestionBankRepo,
+		lanqiaoQuestionBankRepository:  lanqiaoQuestionBankRepo,
 		leetcodeUserQuestionRepository: leetcodeUserQuestionRepo,
 		luoguUserQuestionRepository:    luoguUserQuestionRepo,
+		lanqiaoUserQuestionRepository:  lanqiaoUserQuestionRepo,
+		ojTaskRepository:               ojTaskRepo,
+		ojTaskExecutionRepository:      ojTaskExecutionRepo,
 		ojDailyStatsRepository:         ojDailyStatsRepo,
 		outboxRepository:               outboxRepo,
 		rankingReadModelRepository:     rankingReadModelRepo,

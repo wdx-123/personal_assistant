@@ -105,8 +105,9 @@ var builtinCapabilitySeeds = []CapabilitySeed{
 
 // BuiltinCapabilitySeeds 返回 capability 种子定义副本。
 func BuiltinCapabilitySeeds() []CapabilitySeed {
-	dst := make([]CapabilitySeed, len(builtinCapabilitySeeds))
-	copy(dst, builtinCapabilitySeeds)
+	dst := make([]CapabilitySeed, 0, len(builtinCapabilitySeeds)+len(OJTaskCapabilitySeeds()))
+	dst = append(dst, builtinCapabilitySeeds...)
+	dst = append(dst, OJTaskCapabilitySeeds()...)
 	return dst
 }
 
@@ -139,6 +140,7 @@ func OrgManageCapabilityCodes() []string {
 // BuiltinOrgAdminCapabilityCodes 返回组织管理员默认能力列表副本。
 func BuiltinOrgAdminCapabilityCodes() []string {
 	codes := append(OrgMemberCapabilityCodes(), OrgManageCapabilityCodes()...)
+	codes = append(codes, OJTaskCapabilityCodes()...)
 	dst := make([]string, len(codes))
 	copy(dst, codes)
 	return dst

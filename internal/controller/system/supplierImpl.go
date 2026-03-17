@@ -7,6 +7,7 @@ type controllerSupplier struct {
 	userCtrl          *UserCtrl
 	orgCtrl           *OrgCtrl
 	ojCtrl            *OJCtrl
+	ojTaskCtrl        *OJTaskCtrl
 	apiCtrl           *ApiCtrl
 	menuCtrl          *MenuCtrl
 	roleCtrl          *RoleCtrl
@@ -32,6 +33,10 @@ func (c *controllerSupplier) GetOrgCtrl() *OrgCtrl {
 
 func (c *controllerSupplier) GetOJCtrl() *OJCtrl {
 	return c.ojCtrl
+}
+
+func (c *controllerSupplier) GetOJTaskCtrl() *OJTaskCtrl {
+	return c.ojTaskCtrl
 }
 
 func (c *controllerSupplier) GetApiCtrl() *ApiCtrl {

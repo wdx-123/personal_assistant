@@ -1,0 +1,3727 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "personal_assistant - OJ 任务模块接口",
+    "version": "1.0.0",
+    "description": "覆盖 OJ 任务模块的 13 个接口，可直接导入 Apifox。\n\n接口范围：\n- POST /oj/task/analyze\n- POST /oj/task\n- PUT /oj/task/{id}\n- DELETE /oj/task/{id}\n- POST /oj/task/{id}/execute-now\n- POST /oj/task/{id}/revise\n- POST /oj/task/{id}/retry\n- GET /oj/task/list\n- GET /oj/task/{id}\n- GET /oj/task/{id}/versions\n- GET /oj/task/{id}/executions/{executionId}\n- GET /oj/task/{id}/executions/{executionId}/users\n- GET /oj/task/{id}/executions/{executionId}/users/{userId}\n\n统一约束：\n- 以上接口全部注册在 BusinessGroup，下游统一经过 JWTAuth 与 ActiveUserMW。\n- JWT 当前支持 3 种取 token 方式：Authorization: Bearer <access_token>、x-access-token: <access_token>、Cookie 中的 x-access-token。\n- Controller 成功与业务失败统一走新版 BizResponse：code + success + message + data + timestamp，HTTP 状态码通常为 200。\n- JWT 缺失、Token 无效、Token 过期时，由 JWTAuth 中间件提前返回旧版认证响应壳：code + data + error，HTTP 状态码仍为 200。\n- 账号被禁用或非 active 时，ActiveUserMW 返回 HTTP 401 的 BizResponse。\n- 管理类接口（创建、更新、删除、提前执行、派生、重试）要求当前用户对涉及组织具备 capability `oj.task.manage`；组织 owner 与 `super_admin` 可绕过 capability 校验。\n- Analyze 接口只做本地题库分析，不联网，也不会触发远端爬虫。\n- 查看类接口按当前成员关系判定可见性：当前仍是该版本任一关联组织 active 成员即可查看该版本及其 execution 结果；`super_admin` 全量可见。\n- 所有请求和响应时间字段统一使用 RFC3339；服务端会将 `execute_at` 归一化为 UTC 存储与返回。\n\n当前实现语义：\n- 一个任务版本只对应一条 execution；再次执行不会追加第二条 execution，而是通过 revise / retry 派生新版本。\n- 创建/更新/派生任务时，`items` 统一只接受 `{ platform, title, analysis_token? }`。\n- Analyze 与 create/update/revise 共享同一套本地解析服务：唯一 verified 命中自动直绑，多候选返回 `analysis_token` 供显式选择，零命中自动落 `pending_resolution`。\n- 任务侧只保存输入意图与解析快照；权威题库不再写 shadow question。待解析事实写入 `oj_question_intakes`，后续题库 upsert 后会自动回填。\n- `immediate` 创建只落 `queued` 执行记录，不会在创建接口内同步执行快照。\n- `scheduled` 版本只有在 `task.status=scheduled` 且 `execution.status=scheduled` 时，才允许原地 `PUT/DELETE/execute-now`。\n- `only_latest` 在任务列表接口中默认开启；未传时只返回每个 `root_task_id` 下当前用户可见的最高版本。\n- 执行用户分页默认按 `pending_item_count DESC, user_id ASC` 排序。"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:9000",
+      "description": "本地开发环境，请按实际地址修改"
+    }
+  ],
+  "tags": [
+    {
+      "name": "OJ任务-管理",
+      "description": "要求对相关组织具备 `oj.task.manage` 的管理操作。"
+    },
+    {
+      "name": "OJ任务-查询",
+      "description": "只要求登录、账号 active，且当前仍对目标版本具备可见性。"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    },
+    {
+      "AccessTokenHeader": []
+    }
+  ],
+  "paths": {
+    "/oj/task/analyze": {
+      "post": {
+        "tags": [
+          "OJ任务-管理"
+        ],
+        "summary": "分析题目标题并给出本地题库匹配结果",
+        "description": "按 `items[].platform + items[].title` 在本地单平台题库中执行精确匹配，返回 `resolved / ambiguous / missing` 三类结果。\n\n分析规则：\n- 仅查询本地 Luogu / LeetCode / Lanqiao 题库，不联网。\n- 每个输入项只在其自身 `platform` 下查询，不做跨平台扩散。\n- 若只命中 1 条已验证题目，则归类为 `resolved`。\n- 若同平台下存在多条已验证精确命中，则归类为 `ambiguous`，由调用方使用返回的 `analysis_token` 显式选择。\n- 未命中任何候选时返回 `missing`；后续创建任务时可直接传原始 `platform + title`，服务端会自动落 `pending_resolution`。",
+        "operationId": "AnalyzeOJTaskTitles",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyzeOJTaskTitlesReq"
+              },
+              "example": {
+                "items": [
+                  {
+                    "platform": "leetcode",
+                    "title": "Two Sum"
+                  },
+                  {
+                    "platform": "luogu",
+                    "title": "A+B Problem"
+                  },
+                  {
+                    "platform": "lanqiao",
+                    "title": "未知题目A"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与响应壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseOJTaskAnalyze"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "账号已禁用": {
+                    "$ref": "#/components/examples/ActiveUserUnauthorized"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oj/task": {
+      "post": {
+        "tags": [
+          "OJ任务-管理"
+        ],
+        "summary": "创建 OJ 任务版本",
+        "description": "创建一个新的 OJ 任务版本，并同步落一条唯一 execution 记录。\n\n创建规则：\n- `org_ids` 至少传 1 个，服务端会去重并校验组织是否存在。\n- `items` 至少传 1 题，每项只接受 `{ platform, title, analysis_token? }`。\n- 带合法 `analysis_token` 时，会直绑到对应权威题。\n- 不带 `analysis_token` 时：唯一 verified 命中自动直绑；零命中自动写成 `pending_resolution` 并创建 intake；多命中直接返回歧义业务错误。\n- 题单会在事务内物化后去重并重新编号 `sort_no=1..N`。\n- `mode=immediate`：\n  - 不允许传 `execute_at`。\n  - 创建后 `task.status=queued`、`execution.status=queued`、`trigger_type=create_immediate`。\n  - 不会在接口内同步跑快照，需等待扫描器异步消费。\n- `mode=scheduled`：\n  - 必须传未来时间的 `execute_at`。\n  - 创建后 `task.status=scheduled`、`execution.status=scheduled`、`trigger_type=schedule_due`。\n- 创建成功只返回 `task_id / execution_id / status`，前端应轮询查询接口获取执行结果。",
+        "operationId": "CreateOJTask",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateOJTaskReq"
+              },
+              "examples": {
+                "创建立即任务": {
+                  "summary": "立即任务不会同步执行，只会创建 queued execution",
+                  "value": {
+                    "title": "春招冲刺 - 高频热题",
+                    "description": "适合本周训练营成员的基础热题清单",
+                    "mode": "immediate",
+                    "org_ids": [
+                      11,
+                      18
+                    ],
+                    "items": [
+                      {
+                        "platform": "leetcode",
+                        "title": "Two Sum"
+                      },
+                      {
+                        "platform": "luogu",
+                        "title": "A+B Problem"
+                      },
+                      {
+                        "platform": "lanqiao",
+                        "title": "数列求值"
+                      }
+                    ]
+                  }
+                },
+                "创建定时任务": {
+                  "summary": "定时任务必须提供未来时间的 execute_at",
+                  "value": {
+                    "title": "算法周训第 3 期",
+                    "description": "面向 3 月校招训练营成员的定时任务",
+                    "mode": "scheduled",
+                    "execute_at": "2026-03-20T12:00:00Z",
+                    "org_ids": [
+                      11,
+                      18
+                    ],
+                    "items": [
+                      {
+                        "platform": "luogu",
+                        "title": "A+B Problem"
+                      },
+                      {
+                        "platform": "leetcode",
+                        "title": "Two Sum"
+                      },
+                      {
+                        "platform": "lanqiao",
+                        "title": "未知题目A"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与响应壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseOJTaskCreate"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "创建成功-立即任务": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "task_id": 101,
+                        "execution_id": 301,
+                        "status": "queued"
+                      },
+                      "timestamp": 1773568800123
+                    }
+                  },
+                  "创建成功-定时任务": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "task_id": 102,
+                        "execution_id": 302,
+                        "status": "scheduled"
+                      },
+                      "timestamp": 1773568801123
+                    }
+                  },
+                  "执行时间非法": {
+                    "$ref": "#/components/examples/OJTaskExecuteAtFutureRequired"
+                  },
+                  "题目不存在": {
+                    "$ref": "#/components/examples/OJTaskQuestionNotFound"
+                  },
+                  "权限不足": {
+                    "$ref": "#/components/examples/PermissionDenied"
+                  },
+                  "未登录-缺少AccessToken": {
+                    "$ref": "#/components/examples/LegacyTokenRequired"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "账号已禁用": {
+                    "$ref": "#/components/examples/ActiveUserUnauthorized"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oj/task/{id}": {
+      "put": {
+        "tags": [
+          "OJ任务-管理"
+        ],
+        "summary": "更新未 claim 的 scheduled 任务版本",
+        "description": "原地更新一个尚未被调度器 claim 的 `scheduled` 任务版本。\n\n更新规则：\n- 仅 `task.mode=scheduled` 且 `task.status=scheduled` 且 `execution.status=scheduled` 的版本允许更新。\n- 请求体中的 `mode` 固定只能是 `scheduled`，不能改成 `immediate`。\n- `title / description / execute_at / org_ids / items` 全量替换。\n- `items` 同样只接受 `{ platform, title, analysis_token? }`。\n- 不带 `analysis_token` 时，后端会自动执行本地唯一命中、pending_resolution 落库或歧义报错。\n- 权限校验使用“旧组织 + 新组织”并集，确保不会通过编辑绕过组织管理能力。\n- `execute_at` 必须继续是未来时间；更新后 execution 的 `planned_at` 与 `requested_by` 会同步刷新。",
+        "operationId": "UpdateOJTask",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "任务版本 ID。必须是大于 0 的正整数。",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 102
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateOJTaskReq"
+              },
+              "example": {
+                "title": "算法周训第 3 期 - 调整版",
+                "description": "推迟到周五中午执行，并新增一道蓝桥题",
+                "mode": "scheduled",
+                "execute_at": "2026-03-21T04:00:00Z",
+                "org_ids": [
+                  11,
+                  18
+                ],
+                "items": [
+                  {
+                    "platform": "luogu",
+                    "title": "A+B Problem"
+                  },
+                  {
+                    "platform": "leetcode",
+                    "title": "Two Sum"
+                  },
+                  {
+                    "platform": "lanqiao",
+                    "title": "数列求值"
+                  },
+                  {
+                    "platform": "leetcode",
+                    "title": "Valid Parentheses",
+                    "analysis_token": "eyJhbGciOiJIUzI1NiJ9.update-example"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与响应壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizSuccessNoDataResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "更新成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": null,
+                      "timestamp": 1773568810123
+                    }
+                  },
+                  "任务不可修改": {
+                    "$ref": "#/components/examples/OJTaskNotEditable"
+                  },
+                  "执行时间非法": {
+                    "$ref": "#/components/examples/OJTaskExecuteAtFutureRequired"
+                  },
+                  "参数错误-id非法": {
+                    "$ref": "#/components/examples/InvalidParams"
+                  },
+                  "权限不足": {
+                    "$ref": "#/components/examples/PermissionDenied"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "账号已禁用": {
+                    "$ref": "#/components/examples/ActiveUserUnauthorized"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "OJ任务-管理"
+        ],
+        "summary": "删除未 claim 的 scheduled 任务版本",
+        "description": "逻辑删除一个尚未被 claim 的 `scheduled` 任务版本。\n\n删除规则：\n- 仅 `task.mode=scheduled` 且 `task.status=scheduled` 且 `execution.status=scheduled` 的版本允许删除。\n- 成功后不会物理删行，而是：\n  - `task.status=deleted`\n  - `execution.status=cancelled`\n  - `execution.finished_at=当前时间`\n- 已有的版本链关系仍保留，便于后续审计与历史追踪。",
+        "operationId": "DeleteOJTask",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "任务版本 ID。必须是大于 0 的正整数。",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 102
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与响应壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizSuccessNoDataResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "删除成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": null,
+                      "timestamp": 1773568820123
+                    }
+                  },
+                  "任务不可修改": {
+                    "$ref": "#/components/examples/OJTaskNotEditable"
+                  },
+                  "任务已删除": {
+                    "$ref": "#/components/examples/OJTaskDeleted"
+                  },
+                  "权限不足": {
+                    "$ref": "#/components/examples/PermissionDenied"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "账号已禁用": {
+                    "$ref": "#/components/examples/ActiveUserUnauthorized"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "OJ任务-查询"
+        ],
+        "summary": "查询任务版本详情",
+        "description": "查询单个任务版本的详情。\n\n查询规则：\n- 只要当前用户对该版本具备可见性即可查看，不要求 `oj.task.manage`。\n- `orgs` 为当前任务版本绑定的组织列表；组织名称不是 execution 快照，而是查询时关联到的当前组织名称。\n- `items` 为创建/编辑时冻结的题目快照，包含平台题目主键与标题快照。\n- `current_execution` 始终表示该版本唯一的一条 execution 摘要。",
+        "operationId": "GetOJTaskDetail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "任务版本 ID。",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 100
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与响应壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseOJTaskDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "查询成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "task_id": 100,
+                        "root_task_id": 100,
+                        "version_no": 1,
+                        "title": "春招冲刺 - 高频热题",
+                        "description": "适合本周训练营成员的基础热题清单",
+                        "mode": "immediate",
+                        "status": "succeeded",
+                        "created_by": 7,
+                        "updated_by": 7,
+                        "created_at": "2026-03-15T09:00:00Z",
+                        "updated_at": "2026-03-15T09:00:00Z",
+                        "orgs": [
+                          {
+                            "org_id": 11,
+                            "org_name": "训练营一期"
+                          },
+                          {
+                            "org_id": 18,
+                            "org_name": "春招冲刺群"
+                          }
+                        ],
+                        "items": [
+                          {
+                            "id": 9001,
+                            "sort_no": 1,
+                            "platform": "leetcode",
+                            "input_title": "Two Sum",
+                            "input_mode": "title",
+                            "resolution_status": "resolved",
+                            "resolved_question_id": 501,
+                            "resolved_question_code": "two-sum",
+                            "resolved_title_snapshot": "Two Sum"
+                          },
+                          {
+                            "id": 9002,
+                            "sort_no": 2,
+                            "platform": "luogu",
+                            "input_title": "A+B Problem",
+                            "input_mode": "title",
+                            "resolution_status": "resolved",
+                            "resolved_question_id": 601,
+                            "resolved_question_code": "P1001",
+                            "resolved_title_snapshot": "A+B Problem"
+                          },
+                          {
+                            "id": 9003,
+                            "sort_no": 3,
+                            "platform": "lanqiao",
+                            "input_title": "数列求值",
+                            "input_mode": "title",
+                            "resolution_status": "pending_resolution",
+                            "resolution_note": "awaiting_question_sync"
+                          }
+                        ],
+                        "current_execution": {
+                          "execution_id": 301,
+                          "task_id": 100,
+                          "trigger_type": "create_immediate",
+                          "requested_by": 7,
+                          "status": "succeeded",
+                          "planned_at": "2026-03-15T09:00:00Z",
+                          "started_at": "2026-03-15T09:00:05Z",
+                          "finished_at": "2026-03-15T09:00:18Z",
+                          "total_user_count": 120,
+                          "completed_user_count": 47,
+                          "pending_user_count": 73,
+                          "total_item_count": 360,
+                          "completed_item_count": 154,
+                          "pending_item_count": 206
+                        }
+                      },
+                      "timestamp": 1773568830123
+                    }
+                  },
+                  "任务不存在": {
+                    "$ref": "#/components/examples/OJTaskNotFound"
+                  },
+                  "无可见权限": {
+                    "$ref": "#/components/examples/OJTaskVisibleDenied"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "账号已禁用": {
+                    "$ref": "#/components/examples/ActiveUserUnauthorized"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oj/task/{id}/execute-now": {
+      "post": {
+        "tags": [
+          "OJ任务-管理"
+        ],
+        "summary": "将 scheduled 任务立即入队",
+        "description": "把一个尚未 claim 的 `scheduled` 任务版本改为 `queued`，等待扫描器异步执行。\n\n规则：\n- 仅 `task.status=scheduled` 且 `execution.status=scheduled` 的版本允许提前执行。\n- 成功后：\n  - `task.status=queued`\n  - `execution.status=queued`\n  - `execution.trigger_type=execute_now`\n  - `execution.planned_at=当前时间`\n  - 清空 `started_at / finished_at / error_message` 与全部聚合计数\n- 接口只负责改状态，不会直接在当前请求内执行快照。",
+        "operationId": "ExecuteOJTaskNow",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "任务版本 ID。",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 102
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与响应壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseOJTaskCreate"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "提前执行成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "task_id": 102,
+                        "execution_id": 302,
+                        "status": "queued"
+                      },
+                      "timestamp": 1773568840123
+                    }
+                  },
+                  "任务不可修改": {
+                    "$ref": "#/components/examples/OJTaskNotEditable"
+                  },
+                  "权限不足": {
+                    "$ref": "#/components/examples/PermissionDenied"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "账号已禁用": {
+                    "$ref": "#/components/examples/ActiveUserUnauthorized"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oj/task/{id}/revise": {
+      "post": {
+        "tags": [
+          "OJ任务-管理"
+        ],
+        "summary": "基于旧版本派生新版本",
+        "description": "基于已有版本创建一个新的版本号。\n\n派生规则：\n- 不会覆写旧版本；新版本的 `root_task_id` 继承源链根，`parent_task_id` 指向当前源版本，`version_no` 自动递增。\n- 权限校验使用“旧组织 + 新组织”并集。\n- 新版本题单与创建接口一致，只接受 `{ platform, title, analysis_token? }`。\n- 不带 `analysis_token` 时，后端会自动执行本地唯一命中、pending_resolution 落库或歧义报错。\n- `mode` 支持 `immediate / scheduled`：\n  - `immediate` 会创建 `queued` execution。\n  - `scheduled` 会创建 `scheduled` execution，且必须提供未来时间的 `execute_at`。\n- 旧版本的 execution 与快照历史继续保留，可通过版本链继续访问。",
+        "operationId": "ReviseOJTask",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "源任务版本 ID。",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 100
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviseOJTaskReq"
+              },
+              "examples": {
+                "派生新的 scheduled 版本": {
+                  "value": {
+                    "title": "春招冲刺 - 高频热题 v2",
+                    "description": "新增一道力扣题，调整执行时间",
+                    "mode": "scheduled",
+                    "execute_at": "2026-03-22T02:00:00Z",
+                    "org_ids": [
+                      11,
+                      18,
+                      25
+                    ],
+                    "items": [
+                      {
+                        "platform": "leetcode",
+                        "title": "Two Sum"
+                      },
+                      {
+                        "platform": "luogu",
+                        "title": "A+B Problem"
+                      },
+                      {
+                        "platform": "lanqiao",
+                        "title": "数列求值"
+                      },
+                      {
+                        "platform": "leetcode",
+                        "title": "Valid Parentheses",
+                        "analysis_token": "eyJhbGciOiJIUzI1NiJ9.revise-example"
+                      }
+                    ]
+                  }
+                },
+                "派生立即执行版本": {
+                  "value": {
+                    "title": "春招冲刺 - 高频热题 v3",
+                    "description": "用于临时补发的新版本",
+                    "mode": "immediate",
+                    "org_ids": [
+                      11,
+                      18
+                    ],
+                    "items": [
+                      {
+                        "platform": "leetcode",
+                        "title": "Two Sum"
+                      },
+                      {
+                        "platform": "luogu",
+                        "title": "A+B Problem"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与响应壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseOJTaskCreate"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "派生成功-定时版本": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "task_id": 103,
+                        "execution_id": 303,
+                        "status": "scheduled"
+                      },
+                      "timestamp": 1773568850123
+                    }
+                  },
+                  "派生成功-立即版本": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "task_id": 104,
+                        "execution_id": 304,
+                        "status": "queued"
+                      },
+                      "timestamp": 1773568851123
+                    }
+                  },
+                  "任务已删除": {
+                    "$ref": "#/components/examples/OJTaskDeleted"
+                  },
+                  "题目不存在": {
+                    "$ref": "#/components/examples/OJTaskQuestionNotFound"
+                  },
+                  "权限不足": {
+                    "$ref": "#/components/examples/PermissionDenied"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "账号已禁用": {
+                    "$ref": "#/components/examples/ActiveUserUnauthorized"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oj/task/{id}/retry": {
+      "post": {
+        "tags": [
+          "OJ任务-管理"
+        ],
+        "summary": "重试已完成或失败的任务版本",
+        "description": "基于旧版本复制出一个新的立即执行版本。\n\n重试规则：\n- 仅当源版本 execution 状态是 `succeeded` 或 `failed` 时允许重试。\n- 新版本固定 `mode=immediate`，因此不会携带 `execute_at`。\n- 新版本复制旧版本的 `title / description / orgs / items`，并创建一条新的 `queued` execution，`trigger_type=retry`。\n- 不会在旧版本上追加第二条 execution。",
+        "operationId": "RetryOJTask",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "源任务版本 ID。",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 100
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与响应壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseOJTaskCreate"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "重试成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "task_id": 105,
+                        "execution_id": 305,
+                        "status": "queued"
+                      },
+                      "timestamp": 1773568860123
+                    }
+                  },
+                  "仅成功或失败版本允许重试": {
+                    "$ref": "#/components/examples/OJTaskRetryNotAllowed"
+                  },
+                  "任务已删除": {
+                    "$ref": "#/components/examples/OJTaskDeleted"
+                  },
+                  "权限不足": {
+                    "$ref": "#/components/examples/PermissionDenied"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "账号已禁用": {
+                    "$ref": "#/components/examples/ActiveUserUnauthorized"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oj/task/list": {
+      "get": {
+        "tags": [
+          "OJ任务-查询"
+        ],
+        "summary": "分页查询当前用户可见任务版本",
+        "description": "分页查询当前用户可见的任务版本列表。\n\n列表规则：\n- 可见性基于“当前是否仍是该版本任一关联组织的 active 成员”；`super_admin` 绕过。\n- `only_latest` 默认是 `true`：\n  - 未传时，每个 `root_task_id` 只返回当前用户可见的最高 `version_no`。\n  - 传 `false` 时，返回全部可见版本。\n- `status` 过滤的是 `task.status`，不是 `execution.status`。\n- `keyword` 对 `title` 做模糊匹配。\n- 排序固定为 `created_at DESC, id DESC`。\n- 分页默认值：`page=1`、`page_size=10`；最大 `page_size=200`。",
+        "operationId": "ListVisibleOJTasks",
+        "parameters": [
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "页码。默认 1。",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "default": 1
+            },
+            "example": 1
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "description": "每页条数。默认 10，最大 200。",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 10
+            },
+            "example": 10
+          },
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "description": "按标题模糊匹配的关键字。",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "example": "春招"
+          },
+          {
+            "name": "org_id",
+            "in": "query",
+            "required": false,
+            "description": "按某个关联组织过滤任务版本。普通用户只能查自己当前可见组织；`super_admin` 可查任意组织。",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 18
+          },
+          {
+            "name": "root_task_id",
+            "in": "query",
+            "required": false,
+            "description": "按版本链根任务 ID 过滤。",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 100
+          },
+          {
+            "name": "only_latest",
+            "in": "query",
+            "required": false,
+            "description": "是否只返回每个 root_task_id 下当前用户可见的最新版本。默认 true。",
+            "schema": {
+              "type": "boolean",
+              "default": true
+            },
+            "example": true
+          },
+          {
+            "name": "mode",
+            "in": "query",
+            "required": false,
+            "description": "按任务模式过滤。",
+            "schema": {
+              "$ref": "#/components/schemas/OJTaskMode"
+            },
+            "example": "scheduled"
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "description": "按任务版本状态过滤。",
+            "schema": {
+              "$ref": "#/components/schemas/OJTaskStatus"
+            },
+            "example": "queued"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与响应壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizPageResponseOJTaskList"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "查询成功-仅最新版本": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "获取成功",
+                      "data": {
+                        "list": [
+                          {
+                            "task_id": 103,
+                            "root_task_id": 100,
+                            "parent_task_id": 100,
+                            "version_no": 2,
+                            "title": "春招冲刺 - 高频热题 v2",
+                            "description": "新增一道力扣题，调整执行时间",
+                            "mode": "scheduled",
+                            "status": "scheduled",
+                            "execute_at": "2026-03-22T02:00:00Z",
+                            "created_by": 7,
+                            "updated_by": 7,
+                            "created_at": "2026-03-15T09:30:00Z",
+                            "updated_at": "2026-03-15T09:30:00Z",
+                            "execution_id": 303,
+                            "execution_status": "scheduled",
+                            "total_user_count": 0,
+                            "completed_user_count": 0,
+                            "pending_user_count": 0,
+                            "total_item_count": 0,
+                            "completed_item_count": 0,
+                            "pending_item_count": 0,
+                            "org_count": 3,
+                            "item_count": 4
+                          }
+                        ],
+                        "total": 1,
+                        "page": 1,
+                        "page_size": 10
+                      },
+                      "timestamp": 1773568870123
+                    }
+                  },
+                  "查询成功-返回全部版本": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "获取成功",
+                      "data": {
+                        "list": [
+                          {
+                            "task_id": 103,
+                            "root_task_id": 100,
+                            "parent_task_id": 100,
+                            "version_no": 2,
+                            "title": "春招冲刺 - 高频热题 v2",
+                            "description": "新增一道力扣题，调整执行时间",
+                            "mode": "scheduled",
+                            "status": "scheduled",
+                            "execute_at": "2026-03-22T02:00:00Z",
+                            "created_by": 7,
+                            "updated_by": 7,
+                            "created_at": "2026-03-15T09:30:00Z",
+                            "updated_at": "2026-03-15T09:30:00Z",
+                            "execution_id": 303,
+                            "execution_status": "scheduled",
+                            "total_user_count": 0,
+                            "completed_user_count": 0,
+                            "pending_user_count": 0,
+                            "total_item_count": 0,
+                            "completed_item_count": 0,
+                            "pending_item_count": 0,
+                            "org_count": 3,
+                            "item_count": 4
+                          },
+                          {
+                            "task_id": 100,
+                            "root_task_id": 100,
+                            "version_no": 1,
+                            "title": "春招冲刺 - 高频热题",
+                            "description": "适合本周训练营成员的基础热题清单",
+                            "mode": "immediate",
+                            "status": "succeeded",
+                            "created_by": 7,
+                            "updated_by": 7,
+                            "created_at": "2026-03-15T09:00:00Z",
+                            "updated_at": "2026-03-15T09:00:00Z",
+                            "execution_id": 301,
+                            "execution_status": "succeeded",
+                            "total_user_count": 120,
+                            "completed_user_count": 47,
+                            "pending_user_count": 73,
+                            "total_item_count": 360,
+                            "completed_item_count": 154,
+                            "pending_item_count": 206,
+                            "org_count": 2,
+                            "item_count": 3
+                          }
+                        ],
+                        "total": 2,
+                        "page": 1,
+                        "page_size": 10
+                      },
+                      "timestamp": 1773568871123
+                    }
+                  },
+                  "参数绑定失败": {
+                    "$ref": "#/components/examples/BindFailedPage"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "账号已禁用": {
+                    "$ref": "#/components/examples/ActiveUserUnauthorized"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oj/task/{id}/versions": {
+      "get": {
+        "tags": [
+          "OJ任务-查询"
+        ],
+        "summary": "查询版本链",
+        "description": "查询某个任务版本所属版本链中，当前用户可见的全部版本。\n\n规则：\n- 先通过 `{id}` 定位目标版本所属的 `root_task_id`。\n- 再按“当前用户是否仍对该版本可见”过滤同链版本，不会泄露不可见版本的 ID、标题或版本号。\n- 排序固定为 `version_no DESC, id DESC`。",
+        "operationId": "GetOJTaskVersions",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "任务版本 ID。",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 100
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与响应壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseOJTaskVersionList"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "查询成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "root_task_id": 100,
+                        "versions": [
+                          {
+                            "task_id": 105,
+                            "root_task_id": 100,
+                            "parent_task_id": 100,
+                            "version_no": 3,
+                            "title": "春招冲刺 - 高频热题",
+                            "mode": "immediate",
+                            "status": "queued",
+                            "created_at": "2026-03-15T10:00:00Z",
+                            "execution_id": 305,
+                            "execution_status": "queued"
+                          },
+                          {
+                            "task_id": 103,
+                            "root_task_id": 100,
+                            "parent_task_id": 100,
+                            "version_no": 2,
+                            "title": "春招冲刺 - 高频热题 v2",
+                            "mode": "scheduled",
+                            "status": "scheduled",
+                            "execute_at": "2026-03-22T02:00:00Z",
+                            "created_at": "2026-03-15T09:30:00Z",
+                            "execution_id": 303,
+                            "execution_status": "scheduled"
+                          },
+                          {
+                            "task_id": 100,
+                            "root_task_id": 100,
+                            "version_no": 1,
+                            "title": "春招冲刺 - 高频热题",
+                            "mode": "immediate",
+                            "status": "succeeded",
+                            "created_at": "2026-03-15T09:00:00Z",
+                            "execution_id": 301,
+                            "execution_status": "succeeded"
+                          }
+                        ]
+                      },
+                      "timestamp": 1773568880123
+                    }
+                  },
+                  "无可见权限": {
+                    "$ref": "#/components/examples/OJTaskVisibleDenied"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "账号已禁用": {
+                    "$ref": "#/components/examples/ActiveUserUnauthorized"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oj/task/{id}/executions/{executionId}": {
+      "get": {
+        "tags": [
+          "OJ任务-查询"
+        ],
+        "summary": "查询 execution 汇总详情",
+        "description": "查询某个任务版本唯一 execution 的汇总快照。\n\n规则：\n- `executionId` 必须真实存在且归属于当前 `taskId`，否则返回 `40107`。\n- 成功返回的汇总字段均来自本地 execution 快照，不会在查询时临时抓第三方平台。\n- 如果 execution 失败，`error_message` 会带执行失败原因；若成功或尚未结束，则该字段通常为空字符串或省略。",
+        "operationId": "GetOJTaskExecutionDetail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "任务版本 ID。",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 100
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "description": "执行记录 ID。",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 301
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与响应壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseOJTaskExecution"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "查询成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "execution_id": 301,
+                        "task_id": 100,
+                        "trigger_type": "create_immediate",
+                        "requested_by": 7,
+                        "status": "succeeded",
+                        "planned_at": "2026-03-15T09:00:00Z",
+                        "started_at": "2026-03-15T09:00:05Z",
+                        "finished_at": "2026-03-15T09:00:18Z",
+                        "total_user_count": 120,
+                        "completed_user_count": 47,
+                        "pending_user_count": 73,
+                        "total_item_count": 360,
+                        "completed_item_count": 154,
+                        "pending_item_count": 206
+                      },
+                      "timestamp": 1773568890123
+                    }
+                  },
+                  "执行记录不存在": {
+                    "$ref": "#/components/examples/OJTaskExecutionNotFound"
+                  },
+                  "无可见权限": {
+                    "$ref": "#/components/examples/OJTaskVisibleDenied"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "账号已禁用": {
+                    "$ref": "#/components/examples/ActiveUserUnauthorized"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oj/task/{id}/executions/{executionId}/users": {
+      "get": {
+        "tags": [
+          "OJ任务-查询"
+        ],
+        "summary": "分页查询 execution 用户快照",
+        "description": "分页查询某次 execution 下的用户快照列表。\n\n规则：\n- 只返回当前用户对该任务版本有可见性的 execution 用户列表。\n- `all_completed` 过滤的是 execution_user 快照中的布尔字段，不是实时计算。\n- `username` 对 `username_snapshot` 做模糊匹配。\n- 排序固定为 `pending_item_count DESC, user_id ASC`，便于优先查看待完成题多的用户。\n- 分页默认值：`page=1`、`page_size=10`；最大 `page_size=200`。",
+        "operationId": "ListOJTaskExecutionUsers",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "任务版本 ID。",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 100
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "description": "执行记录 ID。",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 301
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "description": "页码。默认 1。",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "default": 1
+            },
+            "example": 1
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "description": "每页条数。默认 10，最大 200。",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 200,
+              "default": 10
+            },
+            "example": 20
+          },
+          {
+            "name": "all_completed",
+            "in": "query",
+            "required": false,
+            "description": "是否只看全部完成或未全部完成的用户。",
+            "schema": {
+              "type": "boolean"
+            },
+            "example": false
+          },
+          {
+            "name": "username",
+            "in": "query",
+            "required": false,
+            "description": "按用户名快照模糊匹配。",
+            "schema": {
+              "type": "string",
+              "maxLength": 50
+            },
+            "example": "alice"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与响应壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizPageResponseOJTaskExecutionUsers"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "查询成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "获取成功",
+                      "data": {
+                        "list": [
+                          {
+                            "user_id": 12,
+                            "user_uuid_snapshot": "2ad7a80a-f63b-4c90-b8ff-9db55d2a1001",
+                            "username_snapshot": "alice",
+                            "avatar_snapshot": "https://cdn.example.com/avatar/alice.png",
+                            "user_status_snapshot": 1,
+                            "completed_item_count": 1,
+                            "pending_item_count": 2,
+                            "all_completed": false,
+                            "orgs": [
+                              {
+                                "org_id": 11,
+                                "org_name_snapshot": "训练营一期"
+                              },
+                              {
+                                "org_id": 18,
+                                "org_name_snapshot": "春招冲刺群"
+                              }
+                            ]
+                          },
+                          {
+                            "user_id": 28,
+                            "user_uuid_snapshot": "2ad7a80a-f63b-4c90-b8ff-9db55d2a1002",
+                            "username_snapshot": "bob",
+                            "avatar_snapshot": "https://cdn.example.com/avatar/bob.png",
+                            "user_status_snapshot": 1,
+                            "completed_item_count": 3,
+                            "pending_item_count": 0,
+                            "all_completed": true,
+                            "orgs": [
+                              {
+                                "org_id": 18,
+                                "org_name_snapshot": "春招冲刺群"
+                              }
+                            ]
+                          }
+                        ],
+                        "total": 2,
+                        "page": 1,
+                        "page_size": 20
+                      },
+                      "timestamp": 1773568900123
+                    }
+                  },
+                  "参数绑定失败": {
+                    "$ref": "#/components/examples/BindFailedExecutionUsers"
+                  },
+                  "执行记录不存在": {
+                    "$ref": "#/components/examples/OJTaskExecutionNotFound"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "账号已禁用": {
+                    "$ref": "#/components/examples/ActiveUserUnauthorized"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oj/task/{id}/executions/{executionId}/users/{userId}": {
+      "get": {
+        "tags": [
+          "OJ任务-查询"
+        ],
+        "summary": "查询单个用户的 execution 快照详情",
+        "description": "查询某次 execution 下单个用户的完整快照。\n\n规则：\n- 路径中的 `userId` 是系统用户 ID，不是 execution_user 主键。\n- `completed_items` 与 `pending_items` 都按任务题单 `sort_no ASC` 排序。\n- `reason` 只有在 `pending_items` 中有业务意义：\n  - `account_unbound`：该平台账号未绑定，导致该平台题目全部 pending。\n  - `unsolved`：账号已绑定，但本地已做题事实表未命中该题。\n- 若 execution 下不存在该用户快照，返回 `20001`。",
+        "operationId": "GetOJTaskExecutionUserDetail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "任务版本 ID。",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 100
+          },
+          {
+            "name": "executionId",
+            "in": "path",
+            "required": true,
+            "description": "执行记录 ID。",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 301
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "description": "系统用户 ID。",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 12
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功、业务失败、JWT 缺失或 Token 无效都可能返回 HTTP 200；请结合 code 与响应壳结构判断。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseOJTaskExecutionUserDetail"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "查询成功": {
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "user_id": 12,
+                        "user_uuid_snapshot": "2ad7a80a-f63b-4c90-b8ff-9db55d2a1001",
+                        "username_snapshot": "alice",
+                        "avatar_snapshot": "https://cdn.example.com/avatar/alice.png",
+                        "user_status_snapshot": 1,
+                        "completed_item_count": 1,
+                        "pending_item_count": 2,
+                        "all_completed": false,
+                        "orgs": [
+                          {
+                            "org_id": 11,
+                            "org_name_snapshot": "训练营一期"
+                          },
+                          {
+                            "org_id": 18,
+                            "org_name_snapshot": "春招冲刺群"
+                          }
+                        ],
+                        "completed_items": [
+                          {
+                            "task_item_id": 9001,
+                            "sort_no": 1,
+                            "platform": "leetcode",
+                            "input_title": "Two Sum",
+                            "resolution_status": "resolved",
+                            "resolved_question_id": 501,
+                            "resolved_question_code": "two-sum",
+                            "resolved_title_snapshot": "Two Sum",
+                            "result_status": "completed"
+                          }
+                        ],
+                        "pending_items": [
+                          {
+                            "task_item_id": 9002,
+                            "sort_no": 2,
+                            "platform": "luogu",
+                            "input_title": "A+B Problem",
+                            "resolution_status": "resolved",
+                            "resolved_question_id": 601,
+                            "resolved_question_code": "P1001",
+                            "resolved_title_snapshot": "A+B Problem",
+                            "result_status": "pending",
+                            "reason": "unsolved"
+                          },
+                          {
+                            "task_item_id": 9003,
+                            "sort_no": 3,
+                            "platform": "lanqiao",
+                            "input_title": "数列求值",
+                            "resolution_status": "pending_resolution",
+                            "resolution_note": "awaiting_question_sync",
+                            "result_status": "pending",
+                            "reason": "account_unbound"
+                          }
+                        ]
+                      },
+                      "timestamp": 1773568910123
+                    }
+                  },
+                  "用户快照不存在": {
+                    "$ref": "#/components/examples/UserNotFound"
+                  },
+                  "执行记录不存在": {
+                    "$ref": "#/components/examples/OJTaskExecutionNotFound"
+                  },
+                  "无可见权限": {
+                    "$ref": "#/components/examples/OJTaskVisibleDenied"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号活跃态校验失败，例如账号已禁用。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "账号已禁用": {
+                    "$ref": "#/components/examples/ActiveUserUnauthorized"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "推荐写法：在 Authorization 头中传 `Bearer <access_token>`。"
+      },
+      "AccessTokenHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-access-token",
+        "description": "兼容旧客户端：直接在 `x-access-token` 头中传 access token。"
+      }
+    },
+    "schemas": {
+      "LegacyAuthFailureData": {
+        "type": "object",
+        "description": "JWTAuth 中间件失败时 data 字段的旧版结构。",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "认证失败原因。",
+            "example": "Access token is required"
+          },
+          "reload": {
+            "type": "boolean",
+            "description": "前端是否应触发登录态刷新或跳转。",
+            "example": true
+          }
+        },
+        "required": [
+          "message",
+          "reload"
+        ]
+      },
+      "LegacyTokenErrorResponse": {
+        "type": "object",
+        "description": "JWT 缺失、Token 无效或过期时的旧版响应壳。HTTP 状态码仍然是 200。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "description": "业务错误码，例如 11005/11003/11001。",
+            "example": 11005
+          },
+          "data": {
+            "$ref": "#/components/schemas/LegacyAuthFailureData"
+          },
+          "error": {
+            "type": "string",
+            "description": "旧版错误文案。",
+            "example": "Access token is required"
+          }
+        },
+        "required": [
+          "code",
+          "data",
+          "error"
+        ]
+      },
+      "BizErrorResponse": {
+        "type": "object",
+        "description": "新版 BizResponse 失败响应。OJ 任务模块的 Controller 业务失败统一使用该壳。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "description": "业务错误码。0 以外表示失败。",
+            "example": 40102
+          },
+          "success": {
+            "type": "boolean",
+            "description": "是否成功。失败时固定为 false。",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "description": "失败原因或业务错误文案。",
+            "example": "该 OJ 任务版本当前不可修改"
+          },
+          "data": {
+            "nullable": true,
+            "description": "失败时本模块通常为 null。",
+            "example": null
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "响应时间戳（毫秒）。",
+            "example": 1773568810123
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizUnauthorizedResponse": {
+        "type": "object",
+        "description": "ActiveUserMW 返回的 HTTP 401 BizResponse。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "description": "未授权业务码。",
+            "example": 11000
+          },
+          "success": {
+            "type": "boolean",
+            "description": "固定为 false。",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "description": "未授权原因，例如账号已禁用。",
+            "example": "账号已禁用"
+          },
+          "data": {
+            "nullable": true,
+            "description": "通常为 null。",
+            "example": null
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "响应时间戳（毫秒）。",
+            "example": 1773568802123
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizSuccessNoDataResponse": {
+        "type": "object",
+        "description": "新版 BizResponse 成功响应，无业务数据。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "description": "业务码。成功固定为 0。",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "description": "固定为 true。",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "description": "成功提示。",
+            "example": "操作成功"
+          },
+          "data": {
+            "nullable": true,
+            "description": "成功但无额外业务数据时为 null。",
+            "example": null
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "description": "响应时间戳（毫秒）。",
+            "example": 1773568820123
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "OJPlatform": {
+        "type": "string",
+        "description": "OJ 平台标识。",
+        "enum": [
+          "luogu",
+          "leetcode",
+          "lanqiao"
+        ],
+        "example": "leetcode"
+      },
+      "OJTaskMode": {
+        "type": "string",
+        "description": "任务版本模式。`immediate` 表示立即入队，`scheduled` 表示定时执行。",
+        "enum": [
+          "immediate",
+          "scheduled"
+        ],
+        "example": "scheduled"
+      },
+      "OJTaskStatus": {
+        "type": "string",
+        "description": "任务版本状态。",
+        "enum": [
+          "scheduled",
+          "queued",
+          "executing",
+          "succeeded",
+          "failed",
+          "deleted"
+        ],
+        "example": "queued"
+      },
+      "OJTaskExecutionStatus": {
+        "type": "string",
+        "description": "execution 状态。",
+        "enum": [
+          "scheduled",
+          "queued",
+          "executing",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "example": "scheduled"
+      },
+      "OJTaskExecutionTriggerType": {
+        "type": "string",
+        "description": "execution 的触发来源。",
+        "enum": [
+          "create_immediate",
+          "schedule_due",
+          "execute_now",
+          "retry"
+        ],
+        "example": "retry"
+      },
+      "OJTaskExecutionUserItemResultStatus": {
+        "type": "string",
+        "description": "单题执行结果状态。",
+        "enum": [
+          "completed",
+          "pending"
+        ],
+        "example": "pending"
+      },
+      "OJTaskExecutionUserItemPendingReason": {
+        "type": "string",
+        "description": "pending 原因。仅当 `result_status=pending` 时有业务意义。",
+        "enum": [
+          "account_unbound",
+          "unsolved",
+          "question_not_found"
+        ],
+        "example": "account_unbound"
+      },
+      "OJQuestionSourceStatus": {
+        "type": "string",
+        "description": "题目来源状态。",
+        "enum": [
+          "verified",
+          "pending",
+          "invalid"
+        ],
+        "example": "verified"
+      },
+      "OJTaskItemResolutionStatus": {
+        "type": "string",
+        "description": "任务题目在创建与执行前的解析状态。",
+        "enum": [
+          "resolved",
+          "pending_resolution",
+          "invalid"
+        ],
+        "example": "pending_resolution"
+      },
+      "OJTaskItemReq": {
+        "type": "object",
+        "description": "创建、更新、派生任务时的单题请求项。统一只接受 `platform + title + analysis_token?`。",
+        "properties": {
+          "platform": {
+            "$ref": "#/components/schemas/OJPlatform"
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "用户输入题目标题。服务端只按当前 `platform` 做本地精确匹配。",
+            "example": "Two Sum"
+          },
+          "analysis_token": {
+            "type": "string",
+            "maxLength": 1024,
+            "description": "Analyze 返回的短期签名 token。只有在同平台同标题存在多个候选且需要显式指定题目时才需要传。",
+            "example": "eyJhbGciOiJIUzI1NiJ9.example"
+          }
+        },
+        "required": [
+          "platform",
+          "title"
+        ]
+      },
+      "AnalyzeOJTaskTitlesReq": {
+        "type": "object",
+        "description": "本地题库标题分析请求。",
+        "properties": {
+          "items": {
+            "type": "array",
+            "minItems": 1,
+            "description": "待分析的题目列表。每项都需要显式携带 `platform + title`。",
+            "items": {
+              "type": "object",
+              "properties": {
+                "platform": {
+                  "$ref": "#/components/schemas/OJPlatform"
+                },
+                "title": {
+                  "type": "string",
+                  "maxLength": 255,
+                  "example": "Two Sum"
+                }
+              },
+              "required": [
+                "platform",
+                "title"
+              ]
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "CreateOJTaskReq": {
+        "type": "object",
+        "description": "创建任务版本请求体。",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "任务标题。服务端会做 trim，空白标题会被拒绝。",
+            "example": "算法周训第 3 期"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "任务描述，可为空字符串。",
+            "example": "面向 3 月校招训练营成员的定时任务"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/OJTaskMode"
+          },
+          "execute_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "计划执行时间。`mode=scheduled` 时必填且必须是未来时间；`mode=immediate` 时必须省略。服务端会转成 UTC 存储。",
+            "example": "2026-03-20T12:00:00Z"
+          },
+          "org_ids": {
+            "type": "array",
+            "description": "目标组织 ID 列表。至少 1 个；允许重复传，服务端会去重并保持首次出现顺序。",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "minItems": 1,
+            "example": [
+              11,
+              18
+            ]
+          },
+          "items": {
+            "type": "array",
+            "description": "题单列表。至少 1 题；后端会自动完成直绑、pending_resolution 入库或歧义报错。",
+            "items": {
+              "$ref": "#/components/schemas/OJTaskItemReq"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "mode",
+          "org_ids",
+          "items"
+        ]
+      },
+      "UpdateOJTaskReq": {
+        "type": "object",
+        "description": "更新尚未 claim 的 scheduled 任务版本请求体。`mode` 固定只能是 `scheduled`。",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "更新后的任务标题。",
+            "example": "算法周训第 3 期 - 调整版"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "更新后的任务描述。",
+            "example": "推迟到周五中午执行，并新增一道蓝桥题"
+          },
+          "mode": {
+            "type": "string",
+            "description": "固定只能传 `scheduled`。",
+            "enum": [
+              "scheduled"
+            ],
+            "example": "scheduled"
+          },
+          "execute_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "新的计划执行时间，必须是未来时间。",
+            "example": "2026-03-21T04:00:00Z"
+          },
+          "org_ids": {
+            "type": "array",
+            "description": "更新后的目标组织列表。",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "minItems": 1,
+            "example": [
+              11,
+              18
+            ]
+          },
+          "items": {
+            "type": "array",
+            "description": "更新后的题单，会整单替换。",
+            "items": {
+              "$ref": "#/components/schemas/OJTaskItemReq"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "mode",
+          "execute_at",
+          "org_ids",
+          "items"
+        ]
+      },
+      "ReviseOJTaskReq": {
+        "type": "object",
+        "description": "基于旧版本派生新版本的请求体。字段语义与创建一致。",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 200,
+            "description": "新版本标题。",
+            "example": "春招冲刺 - 高频热题 v2"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "新版本描述。",
+            "example": "新增一道力扣题，调整执行时间"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/OJTaskMode"
+          },
+          "execute_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "新版本计划执行时间。仅 `mode=scheduled` 时需要传。",
+            "example": "2026-03-22T02:00:00Z"
+          },
+          "org_ids": {
+            "type": "array",
+            "description": "新版本关联组织列表。",
+            "items": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "minItems": 1,
+            "example": [
+              11,
+              18,
+              25
+            ]
+          },
+          "items": {
+            "type": "array",
+            "description": "新版本题单。",
+            "items": {
+              "$ref": "#/components/schemas/OJTaskItemReq"
+            },
+            "minItems": 1
+          }
+        },
+        "required": [
+          "title",
+          "description",
+          "mode",
+          "org_ids",
+          "items"
+        ]
+      },
+      "OJTaskAnalyzeResolvedItemResp": {
+        "type": "object",
+        "description": "Analyze 阶段可直接落任务的题目。",
+        "properties": {
+          "input_index": {
+            "type": "integer",
+            "format": "int32",
+            "example": 0
+          },
+          "platform": {
+            "$ref": "#/components/schemas/OJPlatform"
+          },
+          "title": {
+            "type": "string",
+            "example": "Two Sum"
+          },
+          "analysis_token": {
+            "type": "string",
+            "example": "eyJhbGciOiJIUzI1NiJ9.analyze-example"
+          },
+          "resolved_question_id": {
+            "type": "integer",
+            "format": "int64",
+            "example": 501
+          },
+          "resolved_question_code": {
+            "type": "string",
+            "example": "two-sum"
+          },
+          "resolved_title": {
+            "type": "string",
+            "example": "Two Sum"
+          }
+        },
+        "required": [
+          "input_index",
+          "platform",
+          "title",
+          "analysis_token",
+          "resolved_question_id",
+          "resolved_question_code",
+          "resolved_title"
+        ]
+      },
+      "OJTaskAnalyzeCandidateResp": {
+        "type": "object",
+        "description": "Analyze 阶段的候选题目。",
+        "properties": {
+          "analysis_token": {
+            "type": "string",
+            "example": "eyJhbGciOiJIUzI1NiJ9.candidate-example"
+          },
+          "resolved_question_id": {
+            "type": "integer",
+            "format": "int64",
+            "example": 701
+          },
+          "resolved_question_code": {
+            "type": "string",
+            "example": "P1001"
+          },
+          "resolved_title": {
+            "type": "string",
+            "example": "A+B Problem"
+          }
+        },
+        "required": [
+          "analysis_token",
+          "resolved_question_id",
+          "resolved_question_code",
+          "resolved_title"
+        ]
+      },
+      "OJTaskAnalyzeAmbiguousItemResp": {
+        "type": "object",
+        "description": "Analyze 阶段需要人工选择的歧义项。",
+        "properties": {
+          "input_index": {
+            "type": "integer",
+            "format": "int32",
+            "example": 1
+          },
+          "platform": {
+            "$ref": "#/components/schemas/OJPlatform"
+          },
+          "title": {
+            "type": "string",
+            "example": "A+B Problem"
+          },
+          "options": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OJTaskAnalyzeCandidateResp"
+            }
+          }
+        },
+        "required": [
+          "input_index",
+          "platform",
+          "title",
+          "options"
+        ]
+      },
+      "OJTaskAnalyzeMissingItemResp": {
+        "type": "object",
+        "description": "Analyze 阶段未命中任何候选的题目。",
+        "properties": {
+          "input_index": {
+            "type": "integer",
+            "format": "int32",
+            "example": 2
+          },
+          "platform": {
+            "$ref": "#/components/schemas/OJPlatform"
+          },
+          "title": {
+            "type": "string",
+            "example": "未知题目A"
+          }
+        },
+        "required": [
+          "input_index",
+          "platform",
+          "title"
+        ]
+      },
+      "OJTaskAnalyzeResp": {
+        "type": "object",
+        "description": "Analyze 响应。",
+        "properties": {
+          "resolved": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OJTaskAnalyzeResolvedItemResp"
+            }
+          },
+          "ambiguous": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OJTaskAnalyzeAmbiguousItemResp"
+            }
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OJTaskAnalyzeMissingItemResp"
+            }
+          }
+        },
+        "required": [
+          "resolved",
+          "ambiguous",
+          "missing"
+        ]
+      },
+      "OJTaskCreateResp": {
+        "type": "object",
+        "description": "创建、提前执行、派生、重试时返回的最小确认数据。",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "任务版本 ID。",
+            "example": 103
+          },
+          "execution_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "该版本唯一 execution ID。",
+            "example": 303
+          },
+          "status": {
+            "$ref": "#/components/schemas/OJTaskStatus"
+          }
+        },
+        "required": [
+          "task_id",
+          "execution_id",
+          "status"
+        ]
+      },
+      "OJTaskOrgItemResp": {
+        "type": "object",
+        "description": "任务版本关联的组织项。",
+        "properties": {
+          "org_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "组织 ID。",
+            "example": 18
+          },
+          "org_name": {
+            "type": "string",
+            "description": "查询时对应的组织名称。",
+            "example": "春招冲刺群"
+          }
+        },
+        "required": [
+          "org_id",
+          "org_name"
+        ]
+      },
+      "OJTaskItemResp": {
+        "type": "object",
+        "description": "任务版本题目快照项。",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "任务题目快照主键 ID。",
+            "example": 9001
+          },
+          "sort_no": {
+            "type": "integer",
+            "format": "int32",
+            "description": "题目在任务中的顺序，从 1 开始。",
+            "example": 1
+          },
+          "platform": {
+            "$ref": "#/components/schemas/OJPlatform"
+          },
+          "input_title": {
+            "type": "string",
+            "description": "用户输入题目标题。",
+            "example": "Two Sum"
+          },
+          "input_mode": {
+            "type": "string",
+            "description": "任务题目输入模式，目前固定为 `title`。",
+            "example": "title"
+          },
+          "resolution_status": {
+            "$ref": "#/components/schemas/OJTaskItemResolutionStatus"
+          },
+          "resolution_note": {
+            "type": "string",
+            "description": "题目解析或 preflight 备注。",
+            "example": "awaiting_question_sync"
+          },
+          "resolved_question_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "已解析时绑定的本地题库主键。",
+            "example": 501
+          },
+          "resolved_question_code": {
+            "type": "string",
+            "description": "已解析时冻结的题目编码。",
+            "example": "two-sum"
+          },
+          "resolved_title_snapshot": {
+            "type": "string",
+            "description": "已解析时冻结的权威题目标题。",
+            "example": "Two Sum"
+          }
+        },
+        "required": [
+          "id",
+          "sort_no",
+          "platform",
+          "input_title",
+          "input_mode",
+          "resolution_status"
+        ]
+      },
+      "OJTaskExecutionResp": {
+        "type": "object",
+        "description": "execution 汇总详情。",
+        "properties": {
+          "execution_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "execution ID。",
+            "example": 301
+          },
+          "task_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "所属任务版本 ID。",
+            "example": 100
+          },
+          "trigger_type": {
+            "$ref": "#/components/schemas/OJTaskExecutionTriggerType"
+          },
+          "requested_by": {
+            "type": "integer",
+            "format": "int64",
+            "description": "请求执行的用户 ID。",
+            "example": 7
+          },
+          "status": {
+            "$ref": "#/components/schemas/OJTaskExecutionStatus"
+          },
+          "planned_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "计划执行时间，RFC3339 UTC。",
+            "example": "2026-03-15T09:00:00Z"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "开始执行时间。尚未开始时通常省略。",
+            "example": "2026-03-15T09:00:05Z"
+          },
+          "finished_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "结束执行时间。尚未结束时通常省略。",
+            "example": "2026-03-15T09:00:18Z"
+          },
+          "error_message": {
+            "type": "string",
+            "description": "执行失败时记录的错误消息。",
+            "example": "batch insert execution user items failed"
+          },
+          "total_user_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "本次 execution 命中的去重用户总数。",
+            "example": 120
+          },
+          "completed_user_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "全部题目完成的用户数。",
+            "example": 47
+          },
+          "pending_user_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "仍有待完成题的用户数。",
+            "example": 73
+          },
+          "total_item_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "execution_user_item 总数。",
+            "example": 360
+          },
+          "completed_item_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "结果为 completed 的题目快照数。",
+            "example": 154
+          },
+          "pending_item_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "结果为 pending 的题目快照数。",
+            "example": 206
+          }
+        },
+        "required": [
+          "execution_id",
+          "task_id",
+          "trigger_type",
+          "requested_by",
+          "status",
+          "planned_at",
+          "total_user_count",
+          "completed_user_count",
+          "pending_user_count",
+          "total_item_count",
+          "completed_item_count",
+          "pending_item_count"
+        ]
+      },
+      "OJTaskListItemResp": {
+        "type": "object",
+        "description": "任务列表项。汇总了版本自身字段与当前 execution 汇总字段。",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "任务版本 ID。",
+            "example": 103
+          },
+          "root_task_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "版本链根任务 ID。首版本等于自身 task_id。",
+            "example": 100
+          },
+          "parent_task_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "父版本任务 ID。首版本为空。",
+            "example": 100
+          },
+          "version_no": {
+            "type": "integer",
+            "format": "int32",
+            "description": "版本号，从 1 开始递增。",
+            "example": 2
+          },
+          "title": {
+            "type": "string",
+            "description": "任务标题。",
+            "example": "春招冲刺 - 高频热题 v2"
+          },
+          "description": {
+            "type": "string",
+            "description": "任务描述。",
+            "example": "新增一道力扣题，调整执行时间"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/OJTaskMode"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OJTaskStatus"
+          },
+          "execute_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "计划执行时间。立即任务通常省略。",
+            "example": "2026-03-22T02:00:00Z"
+          },
+          "created_by": {
+            "type": "integer",
+            "format": "int64",
+            "description": "创建人用户 ID。",
+            "example": 7
+          },
+          "updated_by": {
+            "type": "integer",
+            "format": "int64",
+            "description": "最后更新人用户 ID。",
+            "example": 7
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "创建时间，RFC3339 UTC。",
+            "example": "2026-03-15T09:30:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "更新时间，RFC3339 UTC。",
+            "example": "2026-03-15T09:30:00Z"
+          },
+          "execution_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "当前版本唯一 execution ID。",
+            "example": 303
+          },
+          "execution_status": {
+            "$ref": "#/components/schemas/OJTaskExecutionStatus"
+          },
+          "total_user_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "execution 去重用户总数。",
+            "example": 0
+          },
+          "completed_user_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "全部题目完成的用户数。",
+            "example": 0
+          },
+          "pending_user_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "仍有待完成题的用户数。",
+            "example": 0
+          },
+          "total_item_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "execution_user_item 总数。",
+            "example": 0
+          },
+          "completed_item_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "已完成题目快照数。",
+            "example": 0
+          },
+          "pending_item_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "待完成题目快照数。",
+            "example": 0
+          },
+          "org_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "关联组织数量。",
+            "example": 3
+          },
+          "item_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "题单题目数量。",
+            "example": 4
+          }
+        },
+        "required": [
+          "task_id",
+          "root_task_id",
+          "version_no",
+          "title",
+          "description",
+          "mode",
+          "status",
+          "created_by",
+          "updated_by",
+          "created_at",
+          "updated_at",
+          "execution_id",
+          "execution_status",
+          "total_user_count",
+          "completed_user_count",
+          "pending_user_count",
+          "total_item_count",
+          "completed_item_count",
+          "pending_item_count",
+          "org_count",
+          "item_count"
+        ]
+      },
+      "OJTaskDetailResp": {
+        "type": "object",
+        "description": "任务版本详情响应。",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "任务版本 ID。",
+            "example": 100
+          },
+          "root_task_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "版本链根任务 ID。",
+            "example": 100
+          },
+          "parent_task_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "父版本任务 ID。首版本为空。",
+            "example": 99
+          },
+          "version_no": {
+            "type": "integer",
+            "format": "int32",
+            "description": "版本号。",
+            "example": 1
+          },
+          "title": {
+            "type": "string",
+            "description": "任务标题。",
+            "example": "春招冲刺 - 高频热题"
+          },
+          "description": {
+            "type": "string",
+            "description": "任务描述。",
+            "example": "适合本周训练营成员的基础热题清单"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/OJTaskMode"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OJTaskStatus"
+          },
+          "execute_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "计划执行时间。立即任务通常省略。",
+            "example": "2026-03-22T02:00:00Z"
+          },
+          "created_by": {
+            "type": "integer",
+            "format": "int64",
+            "description": "创建人 ID。",
+            "example": 7
+          },
+          "updated_by": {
+            "type": "integer",
+            "format": "int64",
+            "description": "最后更新人 ID。",
+            "example": 7
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "创建时间。",
+            "example": "2026-03-15T09:00:00Z"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "更新时间。",
+            "example": "2026-03-15T09:00:00Z"
+          },
+          "orgs": {
+            "type": "array",
+            "description": "当前版本关联组织列表。",
+            "items": {
+              "$ref": "#/components/schemas/OJTaskOrgItemResp"
+            }
+          },
+          "items": {
+            "type": "array",
+            "description": "当前版本题单快照列表。",
+            "items": {
+              "$ref": "#/components/schemas/OJTaskItemResp"
+            }
+          },
+          "current_execution": {
+            "$ref": "#/components/schemas/OJTaskExecutionResp"
+          }
+        },
+        "required": [
+          "task_id",
+          "root_task_id",
+          "version_no",
+          "title",
+          "description",
+          "mode",
+          "status",
+          "created_by",
+          "updated_by",
+          "created_at",
+          "updated_at",
+          "orgs",
+          "items"
+        ]
+      },
+      "OJTaskVersionItemResp": {
+        "type": "object",
+        "description": "版本链中的单个版本摘要。",
+        "properties": {
+          "task_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "任务版本 ID。",
+            "example": 103
+          },
+          "root_task_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "版本链根任务 ID。",
+            "example": 100
+          },
+          "parent_task_id": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true,
+            "description": "父版本任务 ID。",
+            "example": 100
+          },
+          "version_no": {
+            "type": "integer",
+            "format": "int32",
+            "description": "版本号。",
+            "example": 2
+          },
+          "title": {
+            "type": "string",
+            "description": "任务标题。",
+            "example": "春招冲刺 - 高频热题 v2"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/OJTaskMode"
+          },
+          "status": {
+            "$ref": "#/components/schemas/OJTaskStatus"
+          },
+          "execute_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "计划执行时间。立即版本通常省略。",
+            "example": "2026-03-22T02:00:00Z"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "版本创建时间。",
+            "example": "2026-03-15T09:30:00Z"
+          },
+          "execution_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "当前版本唯一 execution ID。",
+            "example": 303
+          },
+          "execution_status": {
+            "$ref": "#/components/schemas/OJTaskExecutionStatus"
+          }
+        },
+        "required": [
+          "task_id",
+          "root_task_id",
+          "version_no",
+          "title",
+          "mode",
+          "status",
+          "created_at",
+          "execution_id",
+          "execution_status"
+        ]
+      },
+      "OJTaskVersionListResp": {
+        "type": "object",
+        "description": "版本链响应。",
+        "properties": {
+          "root_task_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "版本链根任务 ID。",
+            "example": 100
+          },
+          "versions": {
+            "type": "array",
+            "description": "当前用户可见的版本摘要列表，按 `version_no DESC` 排序。",
+            "items": {
+              "$ref": "#/components/schemas/OJTaskVersionItemResp"
+            }
+          }
+        },
+        "required": [
+          "root_task_id",
+          "versions"
+        ]
+      },
+      "OJTaskExecutionUserOrgResp": {
+        "type": "object",
+        "description": "execution 用户命中的组织快照。",
+        "properties": {
+          "org_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "组织 ID。",
+            "example": 18
+          },
+          "org_name_snapshot": {
+            "type": "string",
+            "description": "执行时冻结的组织名称快照。",
+            "example": "春招冲刺群"
+          }
+        },
+        "required": [
+          "org_id",
+          "org_name_snapshot"
+        ]
+      },
+      "OJTaskExecutionUserItemResp": {
+        "type": "object",
+        "description": "execution 单用户的题目结果快照。",
+        "properties": {
+          "task_item_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "任务题目快照 ID。",
+            "example": 9003
+          },
+          "sort_no": {
+            "type": "integer",
+            "format": "int32",
+            "description": "题目顺序。",
+            "example": 3
+          },
+          "platform": {
+            "$ref": "#/components/schemas/OJPlatform"
+          },
+          "input_title": {
+            "type": "string",
+            "description": "用户输入题目标题。",
+            "example": "数列求值"
+          },
+          "resolution_status": {
+            "$ref": "#/components/schemas/OJTaskItemResolutionStatus"
+          },
+          "resolution_note": {
+            "type": "string",
+            "description": "解析备注。",
+            "example": "preflight_resolution_failed"
+          },
+          "resolved_question_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "已解析时绑定的本地题库主键。",
+            "example": 701
+          },
+          "resolved_question_code": {
+            "type": "string",
+            "description": "已解析时冻结的题目编码。",
+            "example": "3498"
+          },
+          "resolved_title_snapshot": {
+            "type": "string",
+            "description": "已解析时冻结的权威题目标题。",
+            "example": "数列求值"
+          },
+          "result_status": {
+            "$ref": "#/components/schemas/OJTaskExecutionUserItemResultStatus"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/OJTaskExecutionUserItemPendingReason"
+          }
+        },
+        "required": [
+          "task_item_id",
+          "sort_no",
+          "platform",
+          "input_title",
+          "resolution_status",
+          "result_status"
+        ]
+      },
+      "OJTaskExecutionUserSummaryResp": {
+        "type": "object",
+        "description": "execution 用户分页摘要项。",
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "系统用户 ID。",
+            "example": 12
+          },
+          "user_uuid_snapshot": {
+            "type": "string",
+            "description": "执行时冻结的用户 UUID。",
+            "example": "2ad7a80a-f63b-4c90-b8ff-9db55d2a1001"
+          },
+          "username_snapshot": {
+            "type": "string",
+            "description": "执行时冻结的用户名。",
+            "example": "alice"
+          },
+          "avatar_snapshot": {
+            "type": "string",
+            "description": "执行时冻结的头像 URL。",
+            "example": "https://cdn.example.com/avatar/alice.png"
+          },
+          "user_status_snapshot": {
+            "type": "integer",
+            "format": "int32",
+            "description": "执行时冻结的用户状态快照。当前仓库约定：1=active，2=disabled，3=deleted_soft。",
+            "example": 1
+          },
+          "completed_item_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "该用户完成题数。",
+            "example": 1
+          },
+          "pending_item_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "该用户待完成题数。",
+            "example": 2
+          },
+          "all_completed": {
+            "type": "boolean",
+            "description": "是否全部题目都完成。",
+            "example": false
+          },
+          "orgs": {
+            "type": "array",
+            "description": "该用户在本次 execution 中命中的组织快照列表。",
+            "items": {
+              "$ref": "#/components/schemas/OJTaskExecutionUserOrgResp"
+            }
+          }
+        },
+        "required": [
+          "user_id",
+          "user_uuid_snapshot",
+          "username_snapshot",
+          "avatar_snapshot",
+          "user_status_snapshot",
+          "completed_item_count",
+          "pending_item_count",
+          "all_completed",
+          "orgs"
+        ]
+      },
+      "OJTaskExecutionUserDetailResp": {
+        "type": "object",
+        "description": "execution 单用户完整快照详情。",
+        "properties": {
+          "user_id": {
+            "type": "integer",
+            "format": "int64",
+            "description": "系统用户 ID。",
+            "example": 12
+          },
+          "user_uuid_snapshot": {
+            "type": "string",
+            "description": "执行时冻结的用户 UUID。",
+            "example": "2ad7a80a-f63b-4c90-b8ff-9db55d2a1001"
+          },
+          "username_snapshot": {
+            "type": "string",
+            "description": "执行时冻结的用户名。",
+            "example": "alice"
+          },
+          "avatar_snapshot": {
+            "type": "string",
+            "description": "执行时冻结的头像 URL。",
+            "example": "https://cdn.example.com/avatar/alice.png"
+          },
+          "user_status_snapshot": {
+            "type": "integer",
+            "format": "int32",
+            "description": "执行时冻结的用户状态快照。1=active，2=disabled，3=deleted_soft。",
+            "example": 1
+          },
+          "completed_item_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "完成题数。",
+            "example": 1
+          },
+          "pending_item_count": {
+            "type": "integer",
+            "format": "int32",
+            "description": "待完成题数。",
+            "example": 2
+          },
+          "all_completed": {
+            "type": "boolean",
+            "description": "是否已全部完成。",
+            "example": false
+          },
+          "orgs": {
+            "type": "array",
+            "description": "命中的组织快照列表。",
+            "items": {
+              "$ref": "#/components/schemas/OJTaskExecutionUserOrgResp"
+            }
+          },
+          "completed_items": {
+            "type": "array",
+            "description": "结果为 completed 的题目列表。",
+            "items": {
+              "$ref": "#/components/schemas/OJTaskExecutionUserItemResp"
+            }
+          },
+          "pending_items": {
+            "type": "array",
+            "description": "结果为 pending 的题目列表。",
+            "items": {
+              "$ref": "#/components/schemas/OJTaskExecutionUserItemResp"
+            }
+          }
+        },
+        "required": [
+          "user_id",
+          "user_uuid_snapshot",
+          "username_snapshot",
+          "avatar_snapshot",
+          "user_status_snapshot",
+          "completed_item_count",
+          "pending_item_count",
+          "all_completed",
+          "orgs",
+          "completed_items",
+          "pending_items"
+        ]
+      },
+      "PageDataOJTaskList": {
+        "type": "object",
+        "description": "任务列表分页数据。",
+        "properties": {
+          "list": {
+            "type": "array",
+            "description": "当前页任务版本列表。",
+            "items": {
+              "$ref": "#/components/schemas/OJTaskListItemResp"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "满足条件的总记录数。",
+            "example": 2
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32",
+            "description": "当前页码。",
+            "example": 1
+          },
+          "page_size": {
+            "type": "integer",
+            "format": "int32",
+            "description": "每页条数。",
+            "example": 10
+          }
+        },
+        "required": [
+          "list",
+          "total",
+          "page",
+          "page_size"
+        ]
+      },
+      "PageDataOJTaskExecutionUsers": {
+        "type": "object",
+        "description": "execution 用户分页数据。",
+        "properties": {
+          "list": {
+            "type": "array",
+            "description": "当前页用户快照列表。",
+            "items": {
+              "$ref": "#/components/schemas/OJTaskExecutionUserSummaryResp"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64",
+            "description": "满足条件的总用户快照数。",
+            "example": 2
+          },
+          "page": {
+            "type": "integer",
+            "format": "int32",
+            "description": "当前页码。",
+            "example": 1
+          },
+          "page_size": {
+            "type": "integer",
+            "format": "int32",
+            "description": "每页条数。",
+            "example": 20
+          }
+        },
+        "required": [
+          "list",
+          "total",
+          "page",
+          "page_size"
+        ]
+      },
+      "BizResponseOJTaskCreate": {
+        "type": "object",
+        "description": "创建、提前执行、派生、重试成功时的 BizResponse。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/OJTaskCreateResp"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1773568850123
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizResponseOJTaskAnalyze": {
+        "type": "object",
+        "description": "题目分析成功响应。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/OJTaskAnalyzeResp"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1773568799123
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizResponseOJTaskDetail": {
+        "type": "object",
+        "description": "任务详情成功响应。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/OJTaskDetailResp"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1773568830123
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizResponseOJTaskVersionList": {
+        "type": "object",
+        "description": "版本链查询成功响应。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/OJTaskVersionListResp"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1773568880123
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizResponseOJTaskExecution": {
+        "type": "object",
+        "description": "execution 汇总详情成功响应。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/OJTaskExecutionResp"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1773568890123
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizResponseOJTaskExecutionUserDetail": {
+        "type": "object",
+        "description": "execution 单用户详情成功响应。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/OJTaskExecutionUserDetailResp"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1773568910123
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizPageResponseOJTaskList": {
+        "type": "object",
+        "description": "任务列表分页成功响应。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PageDataOJTaskList"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1773568870123
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizPageResponseOJTaskExecutionUsers": {
+        "type": "object",
+        "description": "execution 用户分页成功响应。",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "format": "int32",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/PageDataOJTaskExecutionUsers"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1773568900123
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      }
+    },
+    "examples": {
+      "LegacyTokenRequired": {
+        "summary": "JWTAuth 拦截：缺少 access token",
+        "value": {
+          "code": 11005,
+          "data": {
+            "message": "Access token is required",
+            "reload": true
+          },
+          "error": "Access token is required"
+        }
+      },
+      "ActiveUserUnauthorized": {
+        "summary": "ActiveUserMW 拦截：账号已禁用",
+        "value": {
+          "code": 11000,
+          "success": false,
+          "message": "账号已禁用",
+          "data": null,
+          "timestamp": 1773568802123
+        }
+      },
+      "PermissionDenied": {
+        "summary": "缺少组织能力 `oj.task.manage`",
+        "value": {
+          "code": 11006,
+          "success": false,
+          "message": "权限不足",
+          "data": null,
+          "timestamp": 1773568803123
+        }
+      },
+      "InvalidParams": {
+        "summary": "路径参数非法，例如 id=0 或非数字",
+        "value": {
+          "code": 10001,
+          "success": false,
+          "message": "参数错误",
+          "data": null,
+          "timestamp": 1773568804123
+        }
+      },
+      "BindFailedPage": {
+        "summary": "分页参数绑定失败",
+        "value": {
+          "code": 10002,
+          "success": false,
+          "message": "Key: 'OJTaskListReq.Page' Error:Field validation for 'Page' failed on the 'min' tag",
+          "data": null,
+          "timestamp": 1773568805123
+        }
+      },
+      "BindFailedExecutionUsers": {
+        "summary": "执行用户分页参数绑定失败",
+        "value": {
+          "code": 10002,
+          "success": false,
+          "message": "Key: 'OJTaskExecutionUserListReq.PageSize' Error:Field validation for 'PageSize' failed on the 'max' tag",
+          "data": null,
+          "timestamp": 1773568806123
+        }
+      },
+      "OJTaskNotFound": {
+        "summary": "任务版本不存在",
+        "value": {
+          "code": 40101,
+          "success": false,
+          "message": "OJ任务不存在",
+          "data": null,
+          "timestamp": 1773568807123
+        }
+      },
+      "OJTaskNotEditable": {
+        "summary": "任务版本已被 claim 或并非 scheduled 待执行版本",
+        "value": {
+          "code": 40102,
+          "success": false,
+          "message": "该 OJ 任务版本当前不可修改",
+          "data": null,
+          "timestamp": 1773568808123
+        }
+      },
+      "OJTaskExecuteAtFutureRequired": {
+        "summary": "定时任务缺少未来时间 execute_at",
+        "value": {
+          "code": 40103,
+          "success": false,
+          "message": "execute_at 必须是未来时间",
+          "data": null,
+          "timestamp": 1773568809123
+        }
+      },
+      "OJTaskQuestionNotFound": {
+        "summary": "题目不存在或平台编码非法",
+        "value": {
+          "code": 40104,
+          "success": false,
+          "message": "任务题目不存在",
+          "data": null,
+          "timestamp": 1773568811123
+        }
+      },
+      "OJTaskVisibleDenied": {
+        "summary": "当前用户对该版本无可见权限",
+        "value": {
+          "code": 40105,
+          "success": false,
+          "message": "无权查看该 OJ 任务",
+          "data": null,
+          "timestamp": 1773568812123
+        }
+      },
+      "OJTaskDeleted": {
+        "summary": "任务版本已被逻辑删除",
+        "value": {
+          "code": 40106,
+          "success": false,
+          "message": "该 OJ 任务已删除",
+          "data": null,
+          "timestamp": 1773568813123
+        }
+      },
+      "OJTaskExecutionNotFound": {
+        "summary": "execution 不存在，或不属于当前 task_id",
+        "value": {
+          "code": 40107,
+          "success": false,
+          "message": "OJ任务执行记录不存在",
+          "data": null,
+          "timestamp": 1773568814123
+        }
+      },
+      "OJTaskRetryNotAllowed": {
+        "summary": "execution 尚未结束，不能重试",
+        "value": {
+          "code": 40102,
+          "success": false,
+          "message": "仅已完成或已失败的版本允许重试",
+          "data": null,
+          "timestamp": 1773568815123
+        }
+      },
+      "UserNotFound": {
+        "summary": "该 execution 下不存在对应用户快照",
+        "value": {
+          "code": 20001,
+          "success": false,
+          "message": "用户不存在",
+          "data": null,
+          "timestamp": 1773568816123
+        }
+      }
+    }
+  }
+}

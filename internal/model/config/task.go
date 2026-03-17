@@ -17,14 +17,31 @@ type Task struct {
 	LeetcodeQuestionBankWarmupEnabled        bool   `json:"leetcode_question_bank_warmup_enabled" yaml:"leetcode_question_bank_warmup_enabled"`
 	LeetcodeQuestionBankWarmupBatchSize      int    `json:"leetcode_question_bank_warmup_batch_size" yaml:"leetcode_question_bank_warmup_batch_size"`
 	LeetcodeQuestionBankWarmupLockTTLSeconds int    `json:"leetcode_question_bank_warmup_lock_ttl_seconds" yaml:"leetcode_question_bank_warmup_lock_ttl_seconds"`
-	LuoguSyncUserIntervalSeconds             int    `json:"luogu_sync_user_interval_seconds" yaml:"luogu_sync_user_interval_seconds"`       // 洛谷用户间隔秒数
-	LeetcodeSyncUserIntervalSeconds          int    `json:"leetcode_sync_user_interval_seconds" yaml:"leetcode_sync_user_interval_seconds"` // 力扣用户间隔秒数
-	LeetcodeSyncIntervalSeconds              int    `json:"leetcode_sync_interval_seconds" yaml:"leetcode_sync_interval_seconds"`           // 力扣全量同步间隔秒数
-	RankingSyncIntervalSeconds               int    `json:"ranking_sync_interval_seconds" yaml:"ranking_sync_interval_seconds"`             // 排行榜同步间隔秒数
-	OJDailyStatsRepairCron                   string `json:"oj_daily_stats_repair_cron" yaml:"oj_daily_stats_repair_cron"`                   // 刷题曲线聚合修复 cron
-	OJDailyStatsRepairBatchSize              int    `json:"oj_daily_stats_repair_batch_size" yaml:"oj_daily_stats_repair_batch_size"`       // 每轮修复批次大小
-	OJDailyStatsRepairWindowDays             int    `json:"oj_daily_stats_repair_window_days" yaml:"oj_daily_stats_repair_window_days"`     // 重建最近窗口天数
-	ImageOrphanCleanupCron                   string `json:"image_orphan_cleanup_cron" yaml:"image_orphan_cleanup_cron"`                     // 孤儿图片清理 cron 表达式，默认 @daily
+	LuoguSyncUserIntervalSeconds             int    `json:"luogu_sync_user_interval_seconds" yaml:"luogu_sync_user_interval_seconds"`         // 洛谷用户间隔秒数
+	LeetcodeSyncUserIntervalSeconds          int    `json:"leetcode_sync_user_interval_seconds" yaml:"leetcode_sync_user_interval_seconds"`   // 力扣用户间隔秒数
+	LeetcodeSyncIntervalSeconds              int    `json:"leetcode_sync_interval_seconds" yaml:"leetcode_sync_interval_seconds"`             // 力扣全量同步间隔秒数
+	LanqiaoSyncUserIntervalSeconds           int    `json:"lanqiao_sync_user_interval_seconds" yaml:"lanqiao_sync_user_interval_seconds"`     // 蓝桥用户间隔秒数
+	LanqiaoSyncIntervalSeconds               int    `json:"lanqiao_sync_interval_seconds" yaml:"lanqiao_sync_interval_seconds"`               // 蓝桥增量同步间隔秒数
+	LanqiaoSyncRecentLimit                   int    `json:"lanqiao_sync_recent_limit" yaml:"lanqiao_sync_recent_limit"`                       // 蓝桥增量同步抓取条数
+	LanqiaoStatsRefreshCron                  string `json:"lanqiao_stats_refresh_cron" yaml:"lanqiao_stats_refresh_cron"`                     // 蓝桥 -1 统计刷新 cron
+	LanqiaoFailureThreshold                  int    `json:"lanqiao_failure_threshold" yaml:"lanqiao_failure_threshold"`                       // 蓝桥连续失败阈值
+	LanqiaoFailureCounterTTLSeconds          int    `json:"lanqiao_failure_counter_ttl_seconds" yaml:"lanqiao_failure_counter_ttl_seconds"`   // 蓝桥失败计数 TTL
+	LanqiaoDisableTTLSeconds                 int    `json:"lanqiao_disable_ttl_seconds" yaml:"lanqiao_disable_ttl_seconds"`                   // 蓝桥自动禁用 TTL
+	LanqiaoSubmissionDedupTTLSeconds         int    `json:"lanqiao_submission_dedup_ttl_seconds" yaml:"lanqiao_submission_dedup_ttl_seconds"` // 蓝桥增量提交去重 TTL
+	RankingSyncIntervalSeconds               int    `json:"ranking_sync_interval_seconds" yaml:"ranking_sync_interval_seconds"`               // 排行榜同步间隔秒数
+	OJDailyStatsRepairCron                   string `json:"oj_daily_stats_repair_cron" yaml:"oj_daily_stats_repair_cron"`                     // 刷题曲线聚合修复 cron
+	OJDailyStatsRepairBatchSize              int    `json:"oj_daily_stats_repair_batch_size" yaml:"oj_daily_stats_repair_batch_size"`         // 每轮修复批次大小
+	OJDailyStatsRepairWindowDays             int    `json:"oj_daily_stats_repair_window_days" yaml:"oj_daily_stats_repair_window_days"`       // 重建最近窗口天数
+	OJTaskDispatchEnabled                    bool   `json:"oj_task_dispatch_enabled" yaml:"oj_task_dispatch_enabled"`                         // OJ 任务扫描器开关
+	OJTaskDispatchIntervalSeconds            int    `json:"oj_task_dispatch_interval_seconds" yaml:"oj_task_dispatch_interval_seconds"`       // OJ 任务扫描周期
+	OJTaskDispatchBatchSize                  int    `json:"oj_task_dispatch_batch_size" yaml:"oj_task_dispatch_batch_size"`                   // 每轮扫描批次大小
+	OJTaskDispatchWorkerCount                int    `json:"oj_task_dispatch_worker_count" yaml:"oj_task_dispatch_worker_count"`               // 执行 worker 数
+	OJTaskAnalyzeFuzzyLimit                  int    `json:"oj_task_analyze_fuzzy_limit" yaml:"oj_task_analyze_fuzzy_limit"`                   // Analyze 模糊候选上限
+	OJTaskPreflightEnabled                   bool   `json:"oj_task_preflight_enabled" yaml:"oj_task_preflight_enabled"`                       // 是否启用执行前题目预检
+	OJTaskPreflightFailOpen                  bool   `json:"oj_task_preflight_fail_open" yaml:"oj_task_preflight_fail_open"`                   // 预检失败是否保留 pending 而非转 invalid
+	OJTaskSnapshotInsertBatchSize            int    `json:"oj_task_snapshot_insert_batch_size" yaml:"oj_task_snapshot_insert_batch_size"`     // 快照批量写入大小
+	OJTaskExecutionLockTTLSeconds            int    `json:"oj_task_execution_lock_ttl_seconds" yaml:"oj_task_execution_lock_ttl_seconds"`     // 执行级锁 TTL
+	ImageOrphanCleanupCron                   string `json:"image_orphan_cleanup_cron" yaml:"image_orphan_cleanup_cron"`                       // 孤儿图片清理 cron 表达式，默认 @daily
 
 	// DisabledUserCleanupEnabled 是否启用禁用账号清理任务
 	DisabledUserCleanupEnabled bool `json:"disabled_user_cleanup_enabled" yaml:"disabled_user_cleanup_enabled"` // 是否启用禁用账号清理

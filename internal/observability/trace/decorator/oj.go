@@ -30,6 +30,16 @@ func (t *tracedOJService) BindOJAccount(
 	})
 }
 
+func (t *tracedOJService) BindLanqiaoAccount(
+	ctx context.Context,
+	userID uint,
+	req *request.BindLanqiaoAccountReq,
+) (*resp.BindOJAccountResp, error) {
+	return runTraced(ctx, "oj", "BindLanqiaoAccount", func(inner context.Context) (*resp.BindOJAccountResp, error) {
+		return t.next.BindLanqiaoAccount(inner, userID, req)
+	})
+}
+
 func (t *tracedOJService) GetRankingList(
 	ctx context.Context,
 	userID uint,
@@ -44,8 +54,8 @@ func (t *tracedOJService) GetUserStats(
 	ctx context.Context,
 	userID uint,
 	req *request.OJStatsReq,
-) (*resp.BindOJAccountResp, error) {
-	return runTraced(ctx, "oj", "GetUserStats", func(inner context.Context) (*resp.BindOJAccountResp, error) {
+) (*resp.OJStatsResp, error) {
+	return runTraced(ctx, "oj", "GetUserStats", func(inner context.Context) (*resp.OJStatsResp, error) {
 		return t.next.GetUserStats(inner, userID, req)
 	})
 }
@@ -66,6 +76,14 @@ func (t *tracedOJService) SyncAllLuoguUsers(ctx context.Context) error {
 
 func (t *tracedOJService) SyncAllLeetcodeUsers(ctx context.Context) error {
 	return runTracedErr(ctx, "oj", "SyncAllLeetcodeUsers", t.next.SyncAllLeetcodeUsers)
+}
+
+func (t *tracedOJService) SyncAllLanqiaoUsers(ctx context.Context) error {
+	return runTracedErr(ctx, "oj", "SyncAllLanqiaoUsers", t.next.SyncAllLanqiaoUsers)
+}
+
+func (t *tracedOJService) RefreshAllLanqiaoSubmissionStats(ctx context.Context) error {
+	return runTracedErr(ctx, "oj", "RefreshAllLanqiaoSubmissionStats", t.next.RefreshAllLanqiaoSubmissionStats)
 }
 
 func (t *tracedOJService) RebuildRankingCaches(ctx context.Context) error {
