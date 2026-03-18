@@ -626,6 +626,16 @@ func (u *UserService) AssignRole(
 	return nil
 }
 
+// buildUserRoleMatrix 构建用户角色矩阵，包含以下步骤：
+// 1. 验证输入参数有效性
+// 2. 获取目标用户信息，验证用户存在
+// 3. 验证操作者对目标组织具有分配角色的权限
+// 4. 获取目标用户在组织中的成员状态，验证为 active
+// 5. 决定操作者在用户角色矩阵中的级别（超级管理员 > 组织管理员 > 成员）
+// 6. 获取目标用户在组织中已分配的角色列表
+// 7. 获取系统中所有启用的角色列表，并根据预定义规则排序（如超级管理员角色始终靠前）
+// 8. 构建角色矩阵项列表，标记每个角色是否已分配给目标用户，以及是否可分配（基于操作者级别和角色级别的比较）
+// 9. 返回构建结果，包括角色矩阵数据和辅助映射（如角色ID到矩阵项的映射）以供后续使用
 func (u *UserService) buildUserRoleMatrix(
 	ctx context.Context,
 	operatorID, targetUserID, orgID uint,
@@ -724,10 +734,12 @@ func (u *UserService) buildUserRoleMatrix(
 	}, nil
 }
 
+// resolveOperatorRoleMatrixLevel 决定操作者在用户角色矩阵中的级别，优先级为：超级管理员 > 组织管理员 > 成员
 func (u *UserService) resolveOperatorRoleMatrixLevel(
 	ctx context.Context,
 	operatorID, orgID uint,
 ) (userRoleMatrixLevel, error) {
+	// 1. 获取操作者的全局角色，判断是否包含超级管理员角色
 	globalRoles, err := u.roleRepo.GetUserGlobalRoles(ctx, operatorID)
 	if err != nil {
 		return "", bizerrors.Wrap(bizerrors.CodeDBError, err)
@@ -738,6 +750,7 @@ func (u *UserService) resolveOperatorRoleMatrixLevel(
 		}
 	}
 
+	// 2. 获取操作者在当前组织的角色，判断是否包含组织管理员角色
 	org, err := u.orgRepo.GetByID(ctx, orgID)
 	if err != nil {
 		return "", bizerrors.Wrap(bizerrors.CodeDBError, err)
@@ -749,6 +762,7 @@ func (u *UserService) resolveOperatorRoleMatrixLevel(
 		return userRoleMatrixLevelOrgAdmin, nil
 	}
 
+	// 3. 获取操作者在当前组织的角色，判断是否包含成员角色
 	orgRoles, err := u.roleRepo.GetUserRolesByOrg(ctx, operatorID, orgID)
 	if err != nil {
 		return "", bizerrors.Wrap(bizerrors.CodeDBError, err)
@@ -761,6 +775,7 @@ func (u *UserService) resolveOperatorRoleMatrixLevel(
 	return userRoleMatrixLevelMember, nil
 }
 
+// userRoleMatrixLevelForRole 根据角色 code 映射到矩阵级别
 func userRoleMatrixLevelForRole(roleCode string) userRoleMatrixLevel {
 	switch roleCode {
 	case consts.RoleCodeSuperAdmin:
@@ -772,13 +787,16 @@ func userRoleMatrixLevelForRole(roleCode string) userRoleMatrixLevel {
 	}
 }
 
+// userRoleMatrixAssignable 根据操作者矩阵级别和目标角色，判断是否可分配，并返回不可分配的原因
 func userRoleMatrixAssignable(
 	operatorLevel userRoleMatrixLevel,
 	roleCode string,
 ) (bool, string) {
+	// 超级管理员角色不可分配，只能由系统自动赋予，且不受矩阵规则限制
 	if roleCode == consts.RoleCodeSuperAdmin {
 		return false, userRoleMatrixDisabledReasonGlobalRoleOnly
 	}
+	// 组织管理员角色不可分配，只能由系统自动赋予，且不受矩阵规则限制
 	roleLevel := userRoleMatrixLevelForRole(roleCode)
 	if operatorLevel == userRoleMatrixLevelMember && roleLevel == userRoleMatrixLevelOrgAdmin {
 		return false, userRoleMatrixDisabledReasonHigherMatrixLevel
