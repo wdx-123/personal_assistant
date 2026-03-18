@@ -68,7 +68,7 @@ const (
 )
 
 const (
-	userRoleMatrixDisabledReasonGlobalRoleOnly    = "global_role_only" // 全局角色专用，无法分配组织角色
+	userRoleMatrixDisabledReasonGlobalRoleOnly    = "global_role_only"    // 全局角色专用，无法分配组织角色
 	userRoleMatrixDisabledReasonHigherMatrixLevel = "higher_matrix_level" // 存在更高矩阵级别角色
 )
 

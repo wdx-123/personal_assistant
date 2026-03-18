@@ -32,7 +32,7 @@ func (ctrl *OJTaskCtrl) AnalyzeTaskTitles(c *gin.Context) {
 		response.BizFailWithError(err, c)
 		return
 	}
-	response.BizOkWithData(out, c)                          
+	response.BizOkWithData(out, c)
 }
 
 // CreateTask 创建 OJTask
