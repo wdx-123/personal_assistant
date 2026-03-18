@@ -257,6 +257,35 @@ Casbin 使用 `gorm-adapter`，策略持久化在 `casbin_rule`。
 1. 已用于权限页“一次性渲染树结构和当前选中态”。
 2. 前端无需再额外调用独立的菜单/API/ capability 查询接口拼装配置态数据。
 
+### 8.3 用户角色矩阵接口
+
+- `GET /system/user/{id}/role_matrix?org_id={orgID}`
+
+该接口用于“给用户分配角色”弹窗的一次性渲染，当前返回：
+
+- `assigned_role_ids`
+- `operator_matrix_level`
+- `roles[]`
+
+其中 `roles[]` 的每一项固定包含：
+
+- `id`
+- `name`
+- `code`
+- `is_builtin`
+- `matrix_level`
+- `assignable`
+- `disabled_reason`
+
+当前实现语义：
+
+1. 这是一份组织内角色分配的只读矩阵，不参与角色权限配置页。
+2. 读写两条链路都先走 `AuthorizationService.AuthorizeOrgCapability(..., org.member.assign_role)`。
+3. 操作者层级只认三档：`super_admin / org_admin / member`。
+4. 自定义角色全部按 `member` 层处理，彼此平级。
+5. `super_admin` 仍是全局角色，只允许绑定到 `org_id=0`；因此在该接口中会返回，但固定 `assignable=false`、`disabled_reason=global_role_only`。
+6. `AssignRole` 会复用同一套矩阵规则校验 `role_ids`，避免前端可见与后端可写不一致。
+
 ---
 
 ## 9. API 生命周期与权限关系清理

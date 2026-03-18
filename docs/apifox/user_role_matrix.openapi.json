@@ -1,0 +1,329 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "personal_assistant - 用户角色矩阵接口",
+    "version": "1.0.0",
+    "description": "用于获取“给用户分配角色”弹窗的一次性渲染数据。\n\n接口说明：\n1. 路由为 GET /system/user/{id}/role_matrix。\n2. 位于受保护的 SystemGroup，下游会经过 JWTAuth、ActiveUserMW、PermissionMiddleware。\n3. 读写两条链路都复用同一套角色矩阵规则：先校验 org.member.assign_role 能力，再按 super_admin / org_admin / member 三档层级决定哪些角色可分配。\n4. super_admin 仍是全局角色，只允许绑定到 org_id=0；因此在当前接口中会返回，但固定 assignable=false、disabled_reason=global_role_only。\n5. 自定义角色全部按 member 层处理，彼此平级。"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:9000",
+      "description": "本地开发环境（请按实际服务地址修改）"
+    }
+  ],
+  "tags": [
+    {
+      "name": "系统-用户角色分配",
+      "description": "用户组织内角色分配矩阵相关接口"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    },
+    {
+      "AccessTokenHeader": []
+    }
+  ],
+  "paths": {
+    "/system/user/{id}/role_matrix": {
+      "get": {
+        "tags": [
+          "系统-用户角色分配"
+        ],
+        "summary": "获取用户角色分配矩阵",
+        "description": "返回指定用户在指定组织下的角色分配矩阵，只读用于前端弹窗渲染。\n\n返回字段：\n- assigned_role_ids：目标用户当前已绑定角色 ID 列表\n- operator_matrix_level：当前操作者的矩阵层级（super_admin / org_admin / member）\n- roles：所有可展示的启用角色，附带 assignable 与 disabled_reason",
+        "operationId": "GetUserRoleMatrix",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "目标用户 ID",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 23
+          },
+          {
+            "name": "org_id",
+            "in": "query",
+            "required": true,
+            "description": "目标组织 ID",
+            "schema": {
+              "type": "integer",
+              "format": "int64",
+              "minimum": 1
+            },
+            "example": 8
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功/业务失败均可能返回 HTTP 200，需结合 code 判断",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizResponseUserRoleMatrix"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizResponseError"
+                    }
+                  ]
+                },
+                "examples": {
+                  "查询成功": {
+                    "summary": "返回角色矩阵",
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "assigned_role_ids": [
+                          3
+                        ],
+                        "operator_matrix_level": "org_admin",
+                        "roles": [
+                          {
+                            "id": 1,
+                            "name": "系统超级管理员",
+                            "code": "super_admin",
+                            "is_builtin": true,
+                            "matrix_level": "super_admin",
+                            "assignable": false,
+                            "disabled_reason": "global_role_only"
+                          },
+                          {
+                            "id": 2,
+                            "name": "组织管理员",
+                            "code": "org_admin",
+                            "is_builtin": true,
+                            "matrix_level": "org_admin",
+                            "assignable": true
+                          },
+                          {
+                            "id": 3,
+                            "name": "普通成员",
+                            "code": "member",
+                            "is_builtin": true,
+                            "matrix_level": "member",
+                            "assignable": true
+                          },
+                          {
+                            "id": 7,
+                            "name": "题单管理员",
+                            "code": "task_manager",
+                            "is_builtin": false,
+                            "matrix_level": "member",
+                            "assignable": true
+                          }
+                        ]
+                      },
+                      "timestamp": 1771812000001
+                    }
+                  },
+                  "无分配能力": {
+                    "summary": "没有 org.member.assign_role 能力",
+                    "value": {
+                      "code": 11006,
+                      "success": false,
+                      "message": "权限不足",
+                      "data": null,
+                      "timestamp": 1771812000002
+                    }
+                  },
+                  "成员非活跃": {
+                    "summary": "目标用户不是该组织 active 成员",
+                    "value": {
+                      "code": 30009,
+                      "success": false,
+                      "message": "成员非 active 状态，禁止改角色",
+                      "data": null,
+                      "timestamp": 1771812000003
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未登录、Token 无效或账号被禁用等认证拦截",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizResponseError"
+                },
+                "example": {
+                  "code": 11000,
+                  "success": false,
+                  "message": "未授权访问",
+                  "data": null,
+                  "timestamp": 1771812000004
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      },
+      "AccessTokenHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-access-token"
+      }
+    },
+    "schemas": {
+      "BizResponseUserRoleMatrix": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/UserRoleMatrixItem"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1771812000001
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "BizResponseError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 11006
+          },
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "权限不足"
+          },
+          "data": {
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1771812000002
+          }
+        },
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ]
+      },
+      "UserRoleMatrixItem": {
+        "type": "object",
+        "properties": {
+          "assigned_role_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          "operator_matrix_level": {
+            "type": "string",
+            "enum": [
+              "super_admin",
+              "org_admin",
+              "member"
+            ]
+          },
+          "roles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UserRoleMatrixRoleItem"
+            }
+          }
+        },
+        "required": [
+          "assigned_role_ids",
+          "operator_matrix_level",
+          "roles"
+        ]
+      },
+      "UserRoleMatrixRoleItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "name": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "is_builtin": {
+            "type": "boolean"
+          },
+          "matrix_level": {
+            "type": "string",
+            "enum": [
+              "super_admin",
+              "org_admin",
+              "member"
+            ]
+          },
+          "assignable": {
+            "type": "boolean"
+          },
+          "disabled_reason": {
+            "type": "string",
+            "enum": [
+              "global_role_only",
+              "higher_matrix_level"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "code",
+          "is_builtin",
+          "matrix_level",
+          "assignable"
+        ]
+      }
+    }
+  }
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"sort"
 	"strings"
 	"time"
 
@@ -56,6 +57,24 @@ func NewUserService(
 			repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
 		),
 	}
+}
+
+type userRoleMatrixLevel string
+
+const (
+	userRoleMatrixLevelSuperAdmin userRoleMatrixLevel = "super_admin"
+	userRoleMatrixLevelOrgAdmin   userRoleMatrixLevel = "org_admin"
+	userRoleMatrixLevelMember     userRoleMatrixLevel = "member"
+)
+
+const (
+	userRoleMatrixDisabledReasonGlobalRoleOnly    = "global_role_only" // 全局角色专用，无法分配组织角色
+	userRoleMatrixDisabledReasonHigherMatrixLevel = "higher_matrix_level" // 存在更高矩阵级别角色
+)
+
+type userRoleMatrixBuildResult struct {
+	response      *resp.UserRoleMatrixItem
+	roleItemsByID map[uint]resp.UserRoleMatrixRoleItem
 }
 
 // Register 注册
@@ -544,57 +563,45 @@ func (u *UserService) GetUserRoles(
 	return u.roleRepo.GetUserRolesByOrg(ctx, userID, orgID)
 }
 
+// GetUserRoleMatrix 获取用户角色分配矩阵
+func (u *UserService) GetUserRoleMatrix(
+	ctx context.Context,
+	operatorID, targetUserID, orgID uint,
+) (*resp.UserRoleMatrixItem, error) {
+	result, err := u.buildUserRoleMatrix(ctx, operatorID, targetUserID, orgID)
+	if err != nil {
+		return nil, err
+	}
+	return result.response, nil
+}
+
 // AssignRole 分配角色
 func (u *UserService) AssignRole(
 	ctx context.Context,
 	operatorID uint,
 	req *request.AssignUserRoleReq,
 ) error {
-	// 检查用户是否存在
-	user, err := u.userRepo.GetByID(ctx, req.UserID)
+	if req == nil || req.UserID == 0 || req.OrgID == 0 {
+		return bizerrors.New(bizerrors.CodeInvalidParams)
+	}
+
+	matrix, err := u.buildUserRoleMatrix(ctx, operatorID, req.UserID, req.OrgID)
 	if err != nil {
-		return bizerrors.Wrap(bizerrors.CodeDBError, err)
-	}
-	if user == nil {
-		return bizerrors.New(bizerrors.CodeUserNotFound)
-	}
-
-	if u.authorizationService == nil {
-		return bizerrors.NewWithMsg(bizerrors.CodeInternalError, "授权服务未初始化")
-	}
-
-	// 权限检查：只有组织管理员或具有 OrgMemberAssignRole 能力的用户才能分配角色
-	if err := u.authorizationService.AuthorizeOrgCapability(
-		ctx,
-		operatorID,
-		req.OrgID,
-		consts.CapabilityCodeOrgMemberAssignRole,
-	); err != nil {
 		return err
-	}
-
-	active, err := u.orgMemberRepo.IsUserActiveInOrg(ctx, req.UserID, req.OrgID)
-	if err != nil {
-		return bizerrors.Wrap(bizerrors.CodeDBError, err)
-	}
-	if !active {
-		return bizerrors.NewWithMsg(bizerrors.CodeOrgMemberStatusConflict, "成员非 active 状态，禁止改角色")
 	}
 
 	validRoleIDs := make([]uint, 0, len(req.RoleIDs))
 	for _, roleID := range req.RoleIDs {
-		if roleID == 0 {
-			continue
-		}
-		role, err := u.roleRepo.GetByID(ctx, roleID)
-		if err != nil {
-			return bizerrors.Wrap(bizerrors.CodeDBError, err)
-		}
-		if role == nil || role.ID == 0 {
+		roleItem, ok := matrix.roleItemsByID[roleID]
+		if !ok {
 			return bizerrors.New(bizerrors.CodeRoleNotFound)
+		}
+		if !roleItem.Assignable {
+			return bizerrors.NewWithMsg(bizerrors.CodePermissionDenied, "无权分配所选角色")
 		}
 		validRoleIDs = append(validRoleIDs, roleID)
 	}
+	validRoleIDs = normalizeUserRoleIDs(validRoleIDs)
 
 	if err := u.txRunner.InTx(ctx, func(tx any) error {
 		txRoleRepo := u.roleRepo.WithTx(tx)
@@ -617,6 +624,213 @@ func (u *UserService) AssignRole(
 		}
 	}
 	return nil
+}
+
+func (u *UserService) buildUserRoleMatrix(
+	ctx context.Context,
+	operatorID, targetUserID, orgID uint,
+) (*userRoleMatrixBuildResult, error) {
+	if operatorID == 0 || targetUserID == 0 || orgID == 0 {
+		return nil, bizerrors.New(bizerrors.CodeInvalidParams)
+	}
+
+	targetUser, err := u.userRepo.GetByID(ctx, targetUserID)
+	if err != nil {
+		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	if targetUser == nil {
+		return nil, bizerrors.New(bizerrors.CodeUserNotFound)
+	}
+
+	if u.authorizationService == nil {
+		return nil, bizerrors.NewWithMsg(bizerrors.CodeInternalError, "授权服务未初始化")
+	}
+	if err := u.authorizationService.AuthorizeOrgCapability(
+		ctx,
+		operatorID,
+		orgID,
+		consts.CapabilityCodeOrgMemberAssignRole,
+	); err != nil {
+		return nil, err
+	}
+
+	active, err := u.orgMemberRepo.IsUserActiveInOrg(ctx, targetUserID, orgID)
+	if err != nil {
+		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	if !active {
+		return nil, bizerrors.NewWithMsg(bizerrors.CodeOrgMemberStatusConflict, "成员非 active 状态，禁止改角色")
+	}
+
+	operatorLevel, err := u.resolveOperatorRoleMatrixLevel(ctx, operatorID, orgID)
+	if err != nil {
+		return nil, err
+	}
+
+	assignedRoles, err := u.roleRepo.GetUserRolesByOrg(ctx, targetUserID, orgID)
+	if err != nil {
+		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	activeRoles, err := u.roleRepo.GetActiveRoles(ctx)
+	if err != nil {
+		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	sort.SliceStable(activeRoles, func(i, j int) bool {
+		left := activeRoles[i]
+		right := activeRoles[j]
+		if left == nil || right == nil {
+			return left != nil
+		}
+		leftWeight := userRoleMatrixSortWeight(left.Code)
+		rightWeight := userRoleMatrixSortWeight(right.Code)
+		if leftWeight != rightWeight {
+			return leftWeight < rightWeight
+		}
+		return left.ID < right.ID
+	})
+
+	roleItems := make([]resp.UserRoleMatrixRoleItem, 0, len(activeRoles))
+	roleItemsByID := make(map[uint]resp.UserRoleMatrixRoleItem, len(activeRoles))
+	for _, role := range activeRoles {
+		if role == nil || role.ID == 0 {
+			continue
+		}
+
+		matrixLevel := userRoleMatrixLevelForRole(role.Code)
+		assignable, disabledReason := userRoleMatrixAssignable(operatorLevel, role.Code)
+		roleItem := resp.UserRoleMatrixRoleItem{
+			ID:          role.ID,
+			Name:        role.Name,
+			Code:        role.Code,
+			IsBuiltin:   consts.IsBuiltinRole(role.Code),
+			MatrixLevel: string(matrixLevel),
+			Assignable:  assignable,
+		}
+		if !assignable {
+			roleItem.DisabledReason = disabledReason
+		}
+
+		roleItems = append(roleItems, roleItem)
+		roleItemsByID[role.ID] = roleItem
+	}
+
+	return &userRoleMatrixBuildResult{
+		response: &resp.UserRoleMatrixItem{
+			AssignedRoleIDs:     collectUserRoleIDs(assignedRoles),
+			OperatorMatrixLevel: string(operatorLevel),
+			Roles:               roleItems,
+		},
+		roleItemsByID: roleItemsByID,
+	}, nil
+}
+
+func (u *UserService) resolveOperatorRoleMatrixLevel(
+	ctx context.Context,
+	operatorID, orgID uint,
+) (userRoleMatrixLevel, error) {
+	globalRoles, err := u.roleRepo.GetUserGlobalRoles(ctx, operatorID)
+	if err != nil {
+		return "", bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	for _, role := range globalRoles {
+		if role != nil && role.Code == consts.RoleCodeSuperAdmin {
+			return userRoleMatrixLevelSuperAdmin, nil
+		}
+	}
+
+	org, err := u.orgRepo.GetByID(ctx, orgID)
+	if err != nil {
+		return "", bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	if org == nil {
+		return "", bizerrors.New(bizerrors.CodeOrgNotFound)
+	}
+	if org.OwnerID == operatorID {
+		return userRoleMatrixLevelOrgAdmin, nil
+	}
+
+	orgRoles, err := u.roleRepo.GetUserRolesByOrg(ctx, operatorID, orgID)
+	if err != nil {
+		return "", bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	for _, role := range orgRoles {
+		if role != nil && role.Code == consts.RoleCodeOrgAdmin {
+			return userRoleMatrixLevelOrgAdmin, nil
+		}
+	}
+	return userRoleMatrixLevelMember, nil
+}
+
+func userRoleMatrixLevelForRole(roleCode string) userRoleMatrixLevel {
+	switch roleCode {
+	case consts.RoleCodeSuperAdmin:
+		return userRoleMatrixLevelSuperAdmin
+	case consts.RoleCodeOrgAdmin:
+		return userRoleMatrixLevelOrgAdmin
+	default:
+		return userRoleMatrixLevelMember
+	}
+}
+
+func userRoleMatrixAssignable(
+	operatorLevel userRoleMatrixLevel,
+	roleCode string,
+) (bool, string) {
+	if roleCode == consts.RoleCodeSuperAdmin {
+		return false, userRoleMatrixDisabledReasonGlobalRoleOnly
+	}
+	roleLevel := userRoleMatrixLevelForRole(roleCode)
+	if operatorLevel == userRoleMatrixLevelMember && roleLevel == userRoleMatrixLevelOrgAdmin {
+		return false, userRoleMatrixDisabledReasonHigherMatrixLevel
+	}
+	return true, ""
+}
+
+func userRoleMatrixSortWeight(roleCode string) int {
+	switch roleCode {
+	case consts.RoleCodeSuperAdmin:
+		return 0
+	case consts.RoleCodeOrgAdmin:
+		return 1
+	case consts.RoleCodeMember:
+		return 2
+	default:
+		return 3
+	}
+}
+
+func collectUserRoleIDs(roles []*entity.Role) []uint {
+	ids := make([]uint, 0, len(roles))
+	for _, role := range roles {
+		if role == nil || role.ID == 0 {
+			continue
+		}
+		ids = append(ids, role.ID)
+	}
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+	return ids
+}
+
+func normalizeUserRoleIDs(roleIDs []uint) []uint {
+	if len(roleIDs) == 0 {
+		return nil
+	}
+	seen := make(map[uint]struct{}, len(roleIDs))
+	result := make([]uint, 0, len(roleIDs))
+	for _, roleID := range roleIDs {
+		if roleID == 0 {
+			continue
+		}
+		if _, ok := seen[roleID]; ok {
+			continue
+		}
+		seen[roleID] = struct{}{}
+		result = append(result, roleID)
+	}
+	if len(result) == 0 {
+		return nil
+	}
+	return result
 }
 
 // DeactivateAccount 主动注销账号（等同禁用）
