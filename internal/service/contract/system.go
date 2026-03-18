@@ -73,6 +73,7 @@ type UserServiceContract interface {
 	GetUserList(ctx context.Context, req *request.UserListReq) (*resp.PageDataUser, error)
 	GetUserDetail(ctx context.Context, id uint) (*entity.User, error)
 	GetUserRoles(ctx context.Context, userID, orgID uint) ([]*entity.Role, error)
+	GetUserRoleMatrix(ctx context.Context, operatorID, targetUserID, orgID uint) (*resp.UserRoleMatrixItem, error)
 	AssignRole(ctx context.Context, operatorID uint, req *request.AssignUserRoleReq) error
 
 	// DeactivateAccount 注销账号

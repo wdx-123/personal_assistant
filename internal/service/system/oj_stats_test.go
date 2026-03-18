@@ -63,6 +63,27 @@ func TestBuildLanqiaoSyncAlertReturnsAlertWhenDisabled(t *testing.T) {
 	}
 }
 
+func TestBuildLanqiaoSyncAlertReturnsCredentialInvalidAlert(t *testing.T) {
+	setupOJStatsRedis(t, 3)
+	if err := global.Redis.Set(context.Background(), rediskey.LanqiaoSyncDisableKey(1), lanqiaoSyncAlertReasonCredentialInvalid, time.Hour).Err(); err != nil {
+		t.Fatalf("seed disable flag error = %v", err)
+	}
+
+	alert := (&OJService{}).buildLanqiaoSyncAlert(context.Background(), 1)
+	if alert == nil {
+		t.Fatal("buildLanqiaoSyncAlert() = nil, want alert")
+	}
+	if alert.Reason != lanqiaoSyncAlertReasonCredentialInvalid {
+		t.Fatalf("Reason = %q, want %q", alert.Reason, lanqiaoSyncAlertReasonCredentialInvalid)
+	}
+	if alert.Message != lanqiaoSyncAlertCredentialInvalidMessage {
+		t.Fatalf("Message = %q, want %q", alert.Message, lanqiaoSyncAlertCredentialInvalidMessage)
+	}
+	if !alert.SyncDisabled {
+		t.Fatalf("SyncDisabled = %t, want true", alert.SyncDisabled)
+	}
+}
+
 func TestBuildLanqiaoSyncAlertReturnsStatusCheckFailedOnRedisError(t *testing.T) {
 	srv := setupOJStatsRedis(t, 3)
 	srv.Close()
@@ -138,6 +159,42 @@ func TestGetUserStatsLanqiaoReturnsAlert(t *testing.T) {
 	}
 	if out.LanqiaoSyncAlert.Reason != lanqiaoSyncAlertReasonSyncDisabled {
 		t.Fatalf("Reason = %q, want %q", out.LanqiaoSyncAlert.Reason, lanqiaoSyncAlertReasonSyncDisabled)
+	}
+}
+
+func TestGetUserStatsLanqiaoReturnsCredentialInvalidAlert(t *testing.T) {
+	setupOJStatsRedis(t, 3)
+	if err := global.Redis.Set(context.Background(), rediskey.LanqiaoSyncDisableKey(1), lanqiaoSyncAlertReasonCredentialInvalid, time.Hour).Err(); err != nil {
+		t.Fatalf("seed disable reason error = %v", err)
+	}
+
+	svc := &OJService{
+		lanqiaoRepo: &stubOJStatsLanqiaoDetailRepository{
+			detail: &entity.LanqiaoUserDetail{
+				MODEL:              entity.MODEL{ID: 9},
+				MaskedPhone:        "138****8000",
+				SubmitSuccessCount: 11,
+				SubmitFailedCount:  2,
+				UserID:             1,
+			},
+		},
+		lanqiaoUserQuestionRepo: &stubOJStatsLanqiaoQuestionRepository{
+			passedCount: 7,
+		},
+	}
+
+	out, err := svc.GetUserStats(context.Background(), 1, &request.OJStatsReq{Platform: "lanqiao"})
+	if err != nil {
+		t.Fatalf("GetUserStats() error = %v", err)
+	}
+	if out.LanqiaoSyncAlert == nil {
+		t.Fatal("LanqiaoSyncAlert = nil, want alert")
+	}
+	if out.LanqiaoSyncAlert.Reason != lanqiaoSyncAlertReasonCredentialInvalid {
+		t.Fatalf("Reason = %q, want %q", out.LanqiaoSyncAlert.Reason, lanqiaoSyncAlertReasonCredentialInvalid)
+	}
+	if out.LanqiaoSyncAlert.Message != lanqiaoSyncAlertCredentialInvalidMessage {
+		t.Fatalf("Message = %q, want %q", out.LanqiaoSyncAlert.Message, lanqiaoSyncAlertCredentialInvalidMessage)
 	}
 }
 

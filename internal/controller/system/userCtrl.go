@@ -285,16 +285,60 @@ func (u *UserCtrl) GetUserRoles(c *gin.Context) {
 	response.BizOkWithData(list, c)
 }
 
+// GetUserRoleMatrix 获取用户角色分配矩阵
+func (u *UserCtrl) GetUserRoleMatrix(c *gin.Context) {
+	id := util.ParseUint(c.Param("id"))
+	if id == 0 {
+		response.BizFailWithMessage("ID无效", c)
+		return
+	}
+
+	var query request.GetUserRoleMatrixQuery
+	if err := c.ShouldBindQuery(&query); err != nil {
+		global.Log.Error("获取用户角色矩阵参数绑定失败", zap.Error(err))
+		response.BizFailWithCodeMsg(bizerrors.CodeInvalidParams, "参数错误", c)
+		return
+	}
+	if query.OrgID == 0 {
+		response.BizFailWithCodeMsg(bizerrors.CodeInvalidParams, "必须指定组织ID", c)
+		return
+	}
+
+	operatorID := jwt.GetUserID(c)
+	matrix, err := u.userService.GetUserRoleMatrix(c.Request.Context(), operatorID, uint(id), query.OrgID)
+	if err != nil {
+		global.Log.Error(
+			"获取用户角色矩阵失败",
+			zap.Uint("operatorID", operatorID),
+			zap.Uint("targetUserID", uint(id)),
+			zap.Uint("orgID", query.OrgID),
+			zap.Error(err),
+		)
+		response.BizFailWithError(err, c)
+		return
+	}
+
+	response.BizOkWithData(matrix, c)
+}
+
 // AssignRole 分配角色
 func (u *UserCtrl) AssignRole(c *gin.Context) {
 	var req request.AssignUserRoleReq
 	if err := c.ShouldBindJSON(&req); err != nil {
+		global.Log.Error("分配角色参数绑定失败", zap.Error(err))
 		response.BizFailWithMessage("参数错误", c)
 		return
 	}
 
 	operatorID := jwt.GetUserID(c)
 	if err := u.userService.AssignRole(c.Request.Context(), operatorID, &req); err != nil {
+		global.Log.Error(
+			"分配角色失败",
+			zap.Uint("operatorID", operatorID),
+			zap.Uint("targetUserID", req.UserID),
+			zap.Uint("orgID", req.OrgID),
+			zap.Error(err),
+		)
 		response.BizFailWithError(err, c)
 		return
 	}

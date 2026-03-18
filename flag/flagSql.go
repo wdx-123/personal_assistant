@@ -513,6 +513,9 @@ func migrateOJTaskSchema(db *gorm.DB) error {
 	if err := backfillOJTaskItemSchema(db); err != nil {
 		return err
 	}
+	if err := relaxLegacyOJTaskItemColumns(db); err != nil {
+		return err
+	}
 	if err := dropIndexIfExists(db, "oj_task_items", "uk_oj_task_items_task_platform_code"); err != nil {
 		return err
 	}
@@ -631,6 +634,58 @@ func backfillOJTaskItemSchema(db *gorm.DB) error {
 		WHERE deleted_at IS NULL
 	`, inputTitleExpr, resolvedQuestionIDExpr, resolvedQuestionCodeExpr, resolvedTitleSnapshotExpr, resolutionStatusExpr)
 	return db.Exec(updateSQL).Error
+}
+
+func relaxLegacyOJTaskItemColumns(db *gorm.DB) error {
+	if !db.Migrator().HasTable("oj_task_items") {
+		return nil
+	}
+
+	hasQuestionCode, err := columnExists(db, "oj_task_items", "question_code")
+	if err != nil {
+		return err
+	}
+	if hasQuestionCode {
+		if err := db.Exec(`
+			UPDATE oj_task_items
+			SET question_code = COALESCE(NULLIF(question_code, ''), NULLIF(resolved_question_code, ''), '')
+			WHERE question_code = ''
+		`).Error; err != nil {
+			return err
+		}
+		// 旧列仍会留在历史库里；补默认值避免新口径插入时再次被 MySQL 拦截。
+		if err := db.Exec(`
+			ALTER TABLE oj_task_items
+			MODIFY COLUMN question_code varchar(64) NOT NULL DEFAULT '' COMMENT '平台题目编码'
+		`).Error; err != nil {
+			return err
+		}
+	}
+
+	hasPlatformQuestionID, err := columnExists(db, "oj_task_items", "platform_question_id")
+	if err != nil {
+		return err
+	}
+	if hasPlatformQuestionID {
+		if err := db.Exec(`
+			UPDATE oj_task_items
+			SET platform_question_id = CASE
+				WHEN COALESCE(platform_question_id, 0) > 0 THEN platform_question_id
+				ELSE COALESCE(resolved_question_id, 0)
+			END
+			WHERE COALESCE(platform_question_id, 0) = 0
+		`).Error; err != nil {
+			return err
+		}
+		if err := db.Exec(`
+			ALTER TABLE oj_task_items
+			MODIFY COLUMN platform_question_id bigint unsigned NOT NULL DEFAULT 0 COMMENT '本地题库主键ID'
+		`).Error; err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func syncOJQuestionIntakesFromTaskItems(db *gorm.DB) error {

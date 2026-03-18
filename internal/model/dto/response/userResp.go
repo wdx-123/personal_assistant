@@ -53,3 +53,21 @@ type PageDataUser struct {
 	Page     int             `json:"page"`
 	PageSize int             `json:"page_size"`
 }
+
+// UserRoleMatrixRoleItem 用户角色矩阵中的单个角色项
+type UserRoleMatrixRoleItem struct {
+	ID             uint   `json:"id"`
+	Name           string `json:"name"`
+	Code           string `json:"code"`
+	IsBuiltin      bool   `json:"is_builtin"`
+	MatrixLevel    string `json:"matrix_level"`
+	Assignable     bool   `json:"assignable"`
+	DisabledReason string `json:"disabled_reason,omitempty"`
+}
+
+// UserRoleMatrixItem 用户角色分配矩阵响应
+type UserRoleMatrixItem struct {
+	AssignedRoleIDs     []uint                   `json:"assigned_role_ids"`
+	OperatorMatrixLevel string                   `json:"operator_matrix_level"`
+	Roles               []UserRoleMatrixRoleItem `json:"roles"`
+}

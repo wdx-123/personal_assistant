@@ -36,8 +36,9 @@ func (u *UserRouter) InitUserAuthRouter(router *gin.RouterGroup) {
 	userRouter := router.Group("system/user")
 	userCtrl := controller.ApiGroupApp.SystemApiGroup.GetUserCtrl()
 	{
-		userRouter.GET("list", userCtrl.GetUserList)            // 获取用户列表
-		userRouter.POST("assign_role", userCtrl.AssignRole)     // 分配角色
+		userRouter.GET("list", userCtrl.GetUserList)        // 获取用户列表
+		userRouter.POST("assign_role", userCtrl.AssignRole) // 分配角色
+		userRouter.GET(":id/role_matrix", userCtrl.GetUserRoleMatrix)
 		userRouter.GET(":id/roles", userCtrl.GetUserRoles)      // 获取用户角色
 		userRouter.GET(":id", userCtrl.GetUserDetail)           // 获取用户详情
 		userRouter.PUT(":id/status", userCtrl.UpdateUserStatus) // 管理员 启用/禁用用户

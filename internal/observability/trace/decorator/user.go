@@ -85,6 +85,15 @@ func (t *tracedUserService) GetUserRoles(ctx context.Context, userID, orgID uint
 	})
 }
 
+func (t *tracedUserService) GetUserRoleMatrix(
+	ctx context.Context,
+	operatorID, targetUserID, orgID uint,
+) (*resp.UserRoleMatrixItem, error) {
+	return runTraced(ctx, "user", "GetUserRoleMatrix", func(inner context.Context) (*resp.UserRoleMatrixItem, error) {
+		return t.next.GetUserRoleMatrix(inner, operatorID, targetUserID, orgID)
+	})
+}
+
 func (t *tracedUserService) AssignRole(ctx context.Context, operatorID uint, req *request.AssignUserRoleReq) error {
 	return runTracedErr(ctx, "user", "AssignRole", func(inner context.Context) error {
 		return t.next.AssignRole(inner, operatorID, req)

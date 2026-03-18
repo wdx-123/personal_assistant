@@ -38,12 +38,16 @@ const (
 	defaultLanqiaoSubmissionDedupTTL  = 7 * 24 * time.Hour
 	defaultLanqiaoStatsRefreshCron    = "@daily"
 
-	lanqiaoSyncAlertReasonSyncDisabled      = "sync_disabled"
-	lanqiaoSyncAlertReasonStatusCheckFailed = "status_check_failed"
-	lanqiaoSyncAlertDisabledMessage         = "蓝桥同步已达到失败阈值，请更换账号或检查后端同步状态"
-	lanqiaoSyncAlertStatusCheckMessage      = "蓝桥同步状态检测失败，请检查后端同步状态"
+	lanqiaoSyncAlertReasonSyncDisabled       = "sync_disabled"
+	lanqiaoSyncAlertReasonCredentialInvalid  = "credential_invalid"
+	lanqiaoSyncAlertReasonStatusCheckFailed  = "status_check_failed"
+	lanqiaoSyncAlertDisabledMessage          = "蓝桥同步已达到失败阈值，请更换账号或检查后端同步状态"
+	lanqiaoSyncAlertCredentialInvalidMessage = "检测到蓝桥登录失效，已暂停自动同步，请重新绑定账号"
+	lanqiaoSyncAlertStatusCheckMessage       = "蓝桥同步状态检测失败，请检查后端同步状态"
+	lanqiaoCredentialInvalidBindMessage      = "蓝桥账号或密码不正确，请检查后重新绑定"
 )
 
+// BindLanqiaoAccount 绑定蓝桥账号
 func (s *OJService) BindLanqiaoAccount(
 	ctx context.Context,
 	userID uint,
@@ -218,7 +222,7 @@ func (s *OJService) RefreshAllLanqiaoSubmissionStats(ctx context.Context) error 
 				if stderrors.Is(err, redislock.ErrLockFailed) {
 					continue
 				}
-				s.recordLanqiaoSyncFailure(ctx, u.UserID, err)
+				s.handleLanqiaoSyncFailure(ctx, u.UserID, err)
 				global.Log.Error("failed to refresh lanqiao submission stats", zap.Uint("user_id", u.UserID), zap.Error(err))
 				continue
 			}
@@ -270,7 +274,7 @@ func (s *OJService) syncLanqiaoUsersWithRateLimit(
 				global.Log.Warn("skip syncing lanqiao user: lock held", zap.Uint("user_id", u.UserID))
 				continue
 			}
-			s.recordLanqiaoSyncFailure(ctx, u.UserID, err)
+			s.handleLanqiaoSyncFailure(ctx, u.UserID, err)
 			global.Log.Error("failed to sync lanqiao user", zap.Uint("user_id", u.UserID), zap.Error(err))
 			continue
 		}
@@ -539,16 +543,44 @@ func (s *OJService) buildActiveUserSetFromLanqiaoDetails(
 	return s.buildActiveUserSet(ctx, userIDs)
 }
 
+// classifyLanqiaoRemoteError 分类蓝桥远程错误
+func classifyLanqiaoRemoteError(err error) string {
+	// 1. 如果错误为空，则返回空字符串
+	if err == nil {
+		return ""
+	}
+	// 2. 如果错误不是 RemoteHTTPError，则返回空字符串
+	var remoteErr *lq.RemoteHTTPError
+	if !stderrors.As(err, &remoteErr) || remoteErr == nil {
+		return ""
+	}
+	// 3. 根据状态码分类错误
+	switch remoteErr.StatusCode {
+	// 4. 如果状态码为 401 或 403，则返回蓝桥账号无效
+	case 401, 403:
+		return lanqiaoSyncAlertReasonCredentialInvalid
+	case 400:
+		if isLanqiaoLoginErrorMessage(remoteErr.Message) || isLanqiaoLoginErrorMessage(remoteErr.Body) {
+			return lanqiaoSyncAlertReasonCredentialInvalid
+		}
+	}
+	return ""
+}
+
+func isLanqiaoLoginErrorMessage(raw string) bool {
+	raw = strings.ToLower(strings.TrimSpace(raw))
+	if raw == "" {
+		return false
+	}
+	return strings.Contains(raw, "[login]") || strings.Contains(raw, "lanqiao login http 400")
+}
+
 func (s *OJService) wrapLanqiaoRemoteError(err error) error {
 	if err == nil {
 		return nil
 	}
-	var remoteErr *lq.RemoteHTTPError
-	if stderrors.As(err, &remoteErr) {
-		if remoteErr.StatusCode == 401 || remoteErr.StatusCode == 403 {
-			return bizerrors.NewWithMsg(bizerrors.CodeOJCredentialInvalid, "蓝桥账号或密码不正确")
-		}
-		return bizerrors.Wrap(bizerrors.CodeOJSyncFailed, err)
+	if classifyLanqiaoRemoteError(err) == lanqiaoSyncAlertReasonCredentialInvalid {
+		return bizerrors.NewWithMsg(bizerrors.CodeOJCredentialInvalid, lanqiaoCredentialInvalidBindMessage)
 	}
 	return bizerrors.Wrap(bizerrors.CodeOJSyncFailed, err)
 }
@@ -589,19 +621,70 @@ func (s *OJService) clearLanqiaoFailureCounter(ctx context.Context, userID uint)
 	}
 }
 
-func (s *OJService) isLanqiaoSyncDisabled(ctx context.Context, userID uint) (bool, error) {
-	if global.Redis == nil || userID == 0 {
-		return false, nil
+func normalizeLanqiaoSyncDisableReason(reason string) string {
+	reason = strings.ToLower(strings.TrimSpace(reason))
+	switch reason {
+	case lanqiaoSyncAlertReasonCredentialInvalid:
+		return lanqiaoSyncAlertReasonCredentialInvalid
+	case "", "1", lanqiaoSyncAlertReasonSyncDisabled:
+		return lanqiaoSyncAlertReasonSyncDisabled
+	default:
+		// 兼容历史值和未知值，统一回落为普通停用。
+		return lanqiaoSyncAlertReasonSyncDisabled
 	}
-	exists, err := global.Redis.Exists(ctx, rediskey.LanqiaoSyncDisableKey(userID)).Result()
+}
+
+// getLanqiaoSyncDisableReason 获取蓝桥同步禁用原因
+func (s *OJService) getLanqiaoSyncDisableReason(ctx context.Context, userID uint) (string, error) {
+	if global.Redis == nil || userID == 0 {
+		return "", nil
+	}
+	reason, err := global.Redis.Get(ctx, rediskey.LanqiaoSyncDisableKey(userID)).Result()
+	if err != nil {
+		if stderrors.Is(err, redis.Nil) {
+			return "", nil
+		}
+		return "", err
+	}
+	return normalizeLanqiaoSyncDisableReason(reason), nil
+}
+
+// setLanqiaoSyncDisableReason 设置蓝桥同步禁用原因
+func (s *OJService) setLanqiaoSyncDisableReason(ctx context.Context, userID uint, reason string) error {
+	if global.Redis == nil || userID == 0 {
+		return nil
+	}
+	return global.Redis.Set(
+		ctx,
+		rediskey.LanqiaoSyncDisableKey(userID),
+		normalizeLanqiaoSyncDisableReason(reason),
+		resolveLanqiaoDisableTTL(),
+	).Err()
+}
+
+// isLanqiaoSyncDisabled 判断蓝桥同步是否禁用
+func (s *OJService) isLanqiaoSyncDisabled(ctx context.Context, userID uint) (bool, error) {
+	reason, err := s.getLanqiaoSyncDisableReason(ctx, userID)
 	if err != nil {
 		return false, err
 	}
-	return exists > 0, nil
+	return reason != "", nil
 }
 
-func (s *OJService) recordLanqiaoSyncFailure(ctx context.Context, userID uint, err error) {
+// handleLanqiaoSyncFailure 处理蓝桥同步失败
+func (s *OJService) handleLanqiaoSyncFailure(ctx context.Context, userID uint, err error) {
+	// 1. 如果 Redis 为空，或者用户 ID 为 0，或者错误为空，则返回
 	if global.Redis == nil || userID == 0 || err == nil {
+		return
+	}
+	// 2. 如果错误为蓝桥账号无效，则设置蓝桥同步禁用原因并清除失败计数器
+	if classifyLanqiaoRemoteError(err) == lanqiaoSyncAlertReasonCredentialInvalid {
+		if redisErr := s.setLanqiaoSyncDisableReason(ctx, userID, lanqiaoSyncAlertReasonCredentialInvalid); redisErr != nil {
+			global.Log.Error("failed to disable lanqiao sync after credential invalid", zap.Uint("user_id", userID), zap.Error(redisErr))
+			return
+		}
+		s.clearLanqiaoFailureCounter(ctx, userID)
+		global.Log.Warn("lanqiao sync disabled due to invalid credential", zap.Uint("user_id", userID), zap.Error(err))
 		return
 	}
 	failKey := rediskey.LanqiaoSyncFailKey(userID)
@@ -614,30 +697,38 @@ func (s *OJService) recordLanqiaoSyncFailure(ctx context.Context, userID uint, e
 	if failCount < int64(resolveLanqiaoFailureThreshold()) {
 		return
 	}
-	if err := global.Redis.Set(ctx, rediskey.LanqiaoSyncDisableKey(userID), "1", resolveLanqiaoDisableTTL()).Err(); err != nil {
-		global.Log.Error("failed to disable lanqiao sync", zap.Uint("user_id", userID), zap.Error(err))
+	if redisErr := s.setLanqiaoSyncDisableReason(ctx, userID, lanqiaoSyncAlertReasonSyncDisabled); redisErr != nil {
+		global.Log.Error("failed to disable lanqiao sync", zap.Uint("user_id", userID), zap.Error(redisErr))
 		return
 	}
-	_ = global.Redis.Del(ctx, failKey).Err()
+	s.clearLanqiaoFailureCounter(ctx, userID)
 	global.Log.Warn("lanqiao sync auto-disabled", zap.Uint("user_id", userID), zap.Error(err))
 }
 
+// buildLanqiaoSyncAlert 构建蓝桥同步告警
 func (s *OJService) buildLanqiaoSyncAlert(ctx context.Context, userID uint) *resp.LanqiaoSyncAlertResp {
 	if userID == 0 {
 		return nil
 	}
 
+	// 获取蓝桥同步失败阈值
 	threshold := resolveLanqiaoFailureThreshold()
 	if global.Redis == nil {
 		return buildLanqiaoStatusCheckFailedAlert(threshold)
 	}
 
-	syncDisabled, err := global.Redis.Exists(ctx, rediskey.LanqiaoSyncDisableKey(userID)).Result()
+	// 获取蓝桥同步禁用原因
+	disableReason, err := s.getLanqiaoSyncDisableReason(ctx, userID)
 	if err != nil {
 		s.logLanqiaoSyncAlertCheckError(userID, err)
 		return buildLanqiaoStatusCheckFailedAlert(threshold)
 	}
-	if syncDisabled > 0 {
+
+	// 根据禁用原因构建告警
+	switch disableReason {
+	case lanqiaoSyncAlertReasonCredentialInvalid:
+		return buildLanqiaoCredentialInvalidAlert(threshold)
+	case lanqiaoSyncAlertReasonSyncDisabled:
 		return buildLanqiaoSyncDisabledAlert(threshold)
 	}
 
@@ -655,6 +746,7 @@ func (s *OJService) buildLanqiaoSyncAlert(ctx context.Context, userID uint) *res
 	return nil
 }
 
+// logLanqiaoSyncAlertCheckError 记录蓝桥同步告警检查错误
 func (s *OJService) logLanqiaoSyncAlertCheckError(userID uint, err error) {
 	if err == nil || global.Log == nil {
 		return
@@ -662,6 +754,7 @@ func (s *OJService) logLanqiaoSyncAlertCheckError(userID uint, err error) {
 	global.Log.Error("failed to check lanqiao sync alert state", zap.Uint("user_id", userID), zap.Error(err))
 }
 
+// buildLanqiaoSyncDisabledAlert 构建蓝桥同步禁用告警
 func buildLanqiaoSyncDisabledAlert(threshold int) *resp.LanqiaoSyncAlertResp {
 	return &resp.LanqiaoSyncAlertResp{
 		Danger:           true,
@@ -672,6 +765,18 @@ func buildLanqiaoSyncDisabledAlert(threshold int) *resp.LanqiaoSyncAlertResp {
 	}
 }
 
+// buildLanqiaoCredentialInvalidAlert 构建蓝桥账号无效告警
+func buildLanqiaoCredentialInvalidAlert(threshold int) *resp.LanqiaoSyncAlertResp {
+	return &resp.LanqiaoSyncAlertResp{
+		Danger:           true,
+		Reason:           lanqiaoSyncAlertReasonCredentialInvalid,
+		Message:          lanqiaoSyncAlertCredentialInvalidMessage,
+		FailureThreshold: threshold,
+		SyncDisabled:     true,
+	}
+}
+
+// buildLanqiaoStatusCheckFailedAlert 构建蓝桥状态检查失败告警
 func buildLanqiaoStatusCheckFailedAlert(threshold int) *resp.LanqiaoSyncAlertResp {
 	return &resp.LanqiaoSyncAlertResp{
 		Danger:           true,
@@ -682,6 +787,7 @@ func buildLanqiaoStatusCheckFailedAlert(threshold int) *resp.LanqiaoSyncAlertRes
 	}
 }
 
+// extractLanqiaoSubmitStats 提取蓝桥提交统计
 func extractLanqiaoSubmitStats(out *lq.SolveStatsResponse) (int, int) {
 	if out == nil || out.Data.Stats == nil {
 		return 0, 0

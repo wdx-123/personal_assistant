@@ -57,6 +57,11 @@ type AssignUserRoleReq struct {
 	RoleIDs []uint `json:"role_ids" binding:"required"`
 }
 
+// GetUserRoleMatrixQuery 获取用户角色矩阵查询参数
+type GetUserRoleMatrixQuery struct {
+	OrgID uint `form:"org_id" binding:"required"`
+}
+
 // DeactivateAccountReq 主动注销（等同禁用）
 type DeactivateAccountReq struct {
 	Reason string `json:"reason" binding:"omitempty,max=200"`

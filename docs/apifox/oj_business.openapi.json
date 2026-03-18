@@ -417,8 +417,8 @@
                         "submit_failed_count": 17,
                         "lanqiao_sync_alert": {
                           "danger": true,
-                          "reason": "sync_disabled",
-                          "message": "蓝桥同步已达到失败阈值，请更换账号或检查后端同步状态",
+                          "reason": "credential_invalid",
+                          "message": "检测到蓝桥登录失效，已暂停自动同步，请重新绑定账号",
                           "failure_threshold": 3,
                           "sync_disabled": true
                         }
@@ -1057,9 +1057,10 @@
             "type": "string",
             "enum": [
               "sync_disabled",
+              "credential_invalid",
               "status_check_failed"
             ],
-            "description": "危险原因。\n- sync_disabled：蓝桥同步达到失败阈值或已被自动关闭\n- status_check_failed：后端无法完成蓝桥同步状态检测"
+            "description": "危险原因。\n- sync_disabled：蓝桥同步达到失败阈值或已被自动关闭\n- credential_invalid：检测到蓝桥登录失效，自动同步已暂停，需重新绑定\n- status_check_failed：后端无法完成蓝桥同步状态检测"
           },
           "message": {
             "type": "string",
