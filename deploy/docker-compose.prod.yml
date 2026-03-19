@@ -1,15 +1,23 @@
-version: "3.8"
-
 services:
   app:
     image: ${IMAGE_NAME}:${IMAGE_TAG}
     container_name: assist-backed-app
     restart: always
     pull_policy: always
-    ports:
-      - "9000:9000"
+    expose:
+      - "9000"
     volumes:
       - ./static:/app/static
       - ./log:/app/log
     env_file:
       - .env
+
+  web:
+    image: ${WEB_IMAGE_NAME}:${WEB_IMAGE_TAG}
+    container_name: assist-frontend-web
+    restart: always
+    pull_policy: always
+    depends_on:
+      - app
+    ports:
+      - "80:80"
