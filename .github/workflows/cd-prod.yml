@@ -18,7 +18,7 @@ env:
   IMAGE_NAME: ghcr.io/wdx-123/assist-backed
   DEPLOY_DIR: /opt/assist-backed
   DEFAULT_HEALTH_URL: http://127.0.0.1:9000/api/v1/health
-  DEFAULT_WEB_IMAGE_NAME: ghcr.io/wdx-123/personal-assistant-frontend
+  DEFAULT_WEB_IMAGE_NAME: ghcr.io/wdx-123/assist-frontend
   DEFAULT_WEB_IMAGE_TAG: latest
 
 jobs:
