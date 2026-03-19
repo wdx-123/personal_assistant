@@ -4,6 +4,8 @@ services:
     container_name: assist-backed-app
     restart: always
     pull_policy: always
+    ports:
+      - "9000:9000"
     expose:
       - "9000"
     volumes:
