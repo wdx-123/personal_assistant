@@ -14,7 +14,7 @@ services:
 
   web:
     image: ${WEB_IMAGE_NAME}:${WEB_IMAGE_TAG}
-    container_name: assist-frontend-web
+    container_name: assist-frontend
     restart: always
     pull_policy: always
     depends_on:
