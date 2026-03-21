@@ -386,6 +386,7 @@ func entityToUserDetail(user *entity.User) *resp.UserDetailItem {
 		Register:     int(user.Register),
 		Freeze:       user.Freeze,
 		Status:       int(user.Status),
+		IsSuperAdmin: user.IsSuperAdmin,
 		CreatedAt:    user.CreatedAt.Format(time.DateTime),
 		UpdatedAt:    user.UpdatedAt.Format(time.DateTime),
 		CurrentOrgID: user.CurrentOrgID,

@@ -326,7 +326,16 @@ func (s *OrgService) UpdateOrg(
 			return errors.New(errors.CodeOrgNotFound)
 		}
 		if isAllMembersBuiltinOrg(org) {
-			return errors.New(errors.CodeOrgBuiltinProtected)
+			if s.authorizationService == nil {
+				return errors.NewWithMsg(errors.CodeInternalError, "授权服务未初始化")
+			}
+			isSuperAdmin, err := s.authorizationService.IsSuperAdmin(ctx, userID)
+			if err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
+			}
+			if !isSuperAdmin {
+				return errors.New(errors.CodeOrgBuiltinProtected)
+			}
 		}
 
 		// 记录旧头像ID（后续若更换头像，用于软删除旧头像资源）。
@@ -1164,6 +1173,8 @@ func (s *OrgService) buildOrgReadModels(
 			Avatar:      org.Avatar,
 			AvatarID:    org.AvatarID,
 			OwnerID:     org.OwnerID,
+			IsBuiltin:   org.IsBuiltin,
+			BuiltinKey:  org.BuiltinKey,
 			MemberCount: counts[org.ID],
 			CreatedAt:   org.CreatedAt,
 			UpdatedAt:   org.UpdatedAt,

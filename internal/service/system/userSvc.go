@@ -59,6 +59,21 @@ func NewUserService(
 	}
 }
 
+func (u *UserService) populateUserSuperAdminFlag(ctx context.Context, user *entity.User) error {
+	if user == nil {
+		return nil
+	}
+	if u.authorizationService == nil {
+		return bizerrors.NewWithMsg(bizerrors.CodeInternalError, "授权服务未初始化")
+	}
+	isSuperAdmin, err := u.authorizationService.IsSuperAdmin(ctx, user.ID)
+	if err != nil {
+		return bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	user.IsSuperAdmin = isSuperAdmin
+	return nil
+}
+
 type userRoleMatrixLevel string
 
 const (
@@ -221,6 +236,9 @@ func (u *UserService) Register(
 	if err != nil {
 		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
 	}
+	if err := u.populateUserSuperAdminFlag(ctx, fullUser); err != nil {
+		return nil, err
+	}
 	return fullUser, nil
 }
 
@@ -256,6 +274,9 @@ func (u *UserService) PhoneLogin(
 		return nil, bizerrors.New(bizerrors.CodeUserDisabled)
 	}
 
+	if err := u.populateUserSuperAdminFlag(ctx, user); err != nil {
+		return nil, err
+	}
 	return user, nil
 }
 
@@ -354,6 +375,9 @@ func (u *UserService) UpdateProfile(
 	if err != nil {
 		return nil, err
 	}
+	if err := u.populateUserSuperAdminFlag(ctx, user); err != nil {
+		return nil, err
+	}
 	return user, nil
 }
 
@@ -450,6 +474,9 @@ func (u *UserService) ChangePhone(
 		return nil, errors.New("更新失败")
 	}
 
+	if err := u.populateUserSuperAdminFlag(ctx, user); err != nil {
+		return nil, err
+	}
 	return user, nil
 }
 
@@ -550,6 +577,9 @@ func (u *UserService) GetUserDetail(
 ) (*entity.User, error) {
 	user, err := u.userRepo.GetByID(ctx, id)
 	if err != nil {
+		return nil, err
+	}
+	if err := u.populateUserSuperAdminFlag(ctx, user); err != nil {
 		return nil, err
 	}
 	return user, nil

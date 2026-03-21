@@ -36,4 +36,6 @@ type User struct {
 
 	CurrentOrgID *uint `json:"current_org_id" gorm:"index;comment:'当前组织ID（可空）'"`
 	CurrentOrg   *Org  `json:"current_org,omitempty" gorm:"foreignKey:CurrentOrgID;references:ID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
+	// IsSuperAdmin 仅用于响应序列化，不持久化到数据库。
+	IsSuperAdmin bool `json:"is_super_admin" gorm:"-"`
 }

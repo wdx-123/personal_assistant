@@ -20,6 +20,7 @@ type UserDetailItem struct {
 	Register     int            `json:"register"`
 	Freeze       bool           `json:"freeze"`
 	Status       int            `json:"status"`
+	IsSuperAdmin bool           `json:"is_super_admin"`
 	DisabledAt   string         `json:"disabled_at,omitempty"`
 	CreatedAt    string         `json:"created_at"`
 	UpdatedAt    string         `json:"updated_at"`

@@ -1293,7 +1293,7 @@ func (s *OJService) GetRankingList(
 		return nil, err
 	}
 
-	list := buildRankingList(entries, int(start), platform, projectionMap)
+	list := buildRankingList(entries, int(start), platform, scope, projectionMap)
 	myRank, err := loadMyRank(ctx, key, userID)
 	if err != nil {
 		return nil, err
@@ -1317,6 +1317,19 @@ const (
 	rankingScopeAllMembers = "all_members"
 	rankingScopeOrg        = "org"
 )
+
+var rankingPlaceholderAvatarKeywords = []string{
+	"default-avatar",
+	"default_avatar",
+	"avatar-default",
+	"default-user",
+	"default_user",
+	"placeholder-avatar",
+	"placeholder_avatar",
+	"noavatar",
+	"no-avatar",
+	"usericon",
+}
 
 // normalizeRankingRequest 校验请求并规范分页与平台参数
 func normalizeRankingRequest(
@@ -1569,6 +1582,7 @@ func buildRankingList(
 	entries []rankingEntry,
 	start int,
 	platform string,
+	scope string,
 	projectionMap map[uint]*rankingcache.UserProjection,
 ) []*resp.OJRankingListItem {
 	list := make([]*resp.OJRankingListItem, 0, len(entries))
@@ -1581,9 +1595,9 @@ func buildRankingList(
 		if strings.TrimSpace(profile.Identifier) == "" {
 			continue
 		}
-		avatar := strings.TrimSpace(profile.Avatar)
+		avatar := sanitizeRankingAvatar(profile.Avatar)
 		if avatar == "" {
-			avatar = projection.Avatar
+			avatar = sanitizeRankingAvatar(projection.Avatar)
 		}
 		item := &resp.OJRankingListItem{
 			Rank:        start + len(list) + 1,
@@ -1591,6 +1605,15 @@ func buildRankingList(
 			RealName:    projection.Username,
 			Avatar:      avatar,
 			TotalPassed: entry.Score,
+		}
+		if scope == rankingScopeAllMembers &&
+			projection.CurrentOrgID != nil &&
+			*projection.CurrentOrgID > 0 &&
+			strings.TrimSpace(projection.CurrentOrgName) != "" {
+			item.CurrentOrg = &resp.OrgSimpleItem{
+				ID:   *projection.CurrentOrgID,
+				Name: strings.TrimSpace(projection.CurrentOrgName),
+			}
 		}
 		if platform == "luogu" {
 			item.PlatformDetails = &resp.OJRankingPlatformDetails{
@@ -1608,6 +1631,23 @@ func buildRankingList(
 		list = append(list, item)
 	}
 	return list
+}
+
+// sanitizeRankingAvatar only affects leaderboard responses so stored avatar values remain untouched.
+func sanitizeRankingAvatar(raw string) string {
+	avatar := strings.TrimSpace(raw)
+	if avatar == "" {
+		return ""
+	}
+
+	lowerAvatar := strings.ToLower(avatar)
+	for _, keyword := range rankingPlaceholderAvatarKeywords {
+		if strings.Contains(lowerAvatar, keyword) {
+			return ""
+		}
+	}
+
+	return avatar
 }
 
 // loadMyRank 获取当前用户在排行榜中的名次与分数
