@@ -11,6 +11,8 @@ type OrgWithMemberCount struct {
 	Avatar      string
 	AvatarID    *uint
 	OwnerID     uint
+	IsBuiltin   bool
+	BuiltinKey  *string
 	MemberCount int64
 	CreatedAt   time.Time
 	UpdatedAt   time.Time

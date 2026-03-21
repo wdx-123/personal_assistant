@@ -280,6 +280,8 @@ func readModelToOrgItem(org *readmodel.OrgWithMemberCount) *resp.OrgItem {
 		Avatar:      org.Avatar,
 		AvatarID:    org.AvatarID,
 		OwnerID:     org.OwnerID,
+		IsBuiltin:   org.IsBuiltin,
+		BuiltinKey:  org.BuiltinKey,
 		MemberCount: org.MemberCount,
 		CreatedAt:   org.CreatedAt.Format(time.DateTime),
 		UpdatedAt:   org.UpdatedAt.Format(time.DateTime),
