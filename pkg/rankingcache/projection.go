@@ -119,6 +119,11 @@ func ProjectionFromHash(userID uint, values map[string]string) (*UserProjection,
 	if userID == 0 || len(values) == 0 {
 		return nil, false
 	}
+	// 兼容旧版缓存：current_org 字段是后来加入的，如果 hash 里缺少这些字段，
+	// 说明当前缓存不是完整投影，需要回源读模型并回填 Redis。
+	if !hasProjectionOrgFields(values) {
+		return nil, false
+	}
 
 	out := &UserProjection{
 		UserID:         userID,
@@ -151,6 +156,15 @@ func ProjectionFromHash(userID uint, values map[string]string) (*UserProjection,
 		}
 	}
 	return out, true
+}
+
+func hasProjectionOrgFields(values map[string]string) bool {
+	if len(values) == 0 {
+		return false
+	}
+	_, hasOrgID := values[hashFieldCurrentOrgID]
+	_, hasOrgName := values[hashFieldCurrentOrgName]
+	return hasOrgID && hasOrgName
 }
 
 // Platform 返回指定平台的用户资料，默认为洛谷。

@@ -12,6 +12,7 @@ type OJRankingListItem struct {
 	RealName        string                    `json:"real_name"`
 	Avatar          string                    `json:"avatar"`
 	TotalPassed     int                       `json:"total_passed"`
+	CurrentOrg      *OrgSimpleItem            `json:"current_org,omitempty"`
 	PlatformDetails *OJRankingPlatformDetails `json:"platform_details,omitempty"`
 }
 
