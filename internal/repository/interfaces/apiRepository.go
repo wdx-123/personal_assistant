@@ -25,16 +25,16 @@ type APIRepository interface {
 	// - 0: 清空菜单绑定
 	// - >0: 迁移并绑定到指定菜单
 	UpdateWithMenu(ctx context.Context, api *entity.API, menuID *uint) error
-	// Delete 删除API
+	// Delete 归档API
 	Delete(ctx context.Context, id uint) error
 
 	// GetAPIList 获取API列表（分页，支持过滤）
 	GetAPIList(ctx context.Context, filter *request.ApiListFilter) ([]*entity.API, int64, error)
 	// GetAllAPIs 获取所有API
 	GetAllAPIs(ctx context.Context) ([]*entity.API, error)
-	// GetActiveAPIs 获取所有启用的API
+	// GetActiveAPIs 获取所有可投影的启用API
 	GetActiveAPIs(ctx context.Context) ([]*entity.API, error)
-	// ExistsByPathAndMethod 检查路径和方法组合是否存在
+	// ExistsByPathAndMethod 检查路径和方法组合是否存在（包含软删除记录）
 	ExistsByPathAndMethod(ctx context.Context, path, method string) (bool, error)
 	// GetMenuByAPIID 获取API归属菜单
 	GetMenuByAPIID(ctx context.Context, apiID uint) (*entity.Menu, error)

@@ -130,6 +130,9 @@ rate_limit:
     global_window_sec: 60    # 全局窗口：60 秒
     user_limit: 10           # 用户：每窗口最多 10 次上传请求
     user_window_sec: 60      # 用户窗口：60 秒
+  oj_bind:
+    limit: 3                 # 每个平台 10 秒内最多 3 次绑定请求
+    window_sec: 10           # 滑动窗口大小：10 秒
 
 # 爬虫服务配置 (Infrastructure)
 crawler:

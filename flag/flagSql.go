@@ -94,6 +94,9 @@ func SQL() error {
 	if err := migrateOJTaskSchema(db); err != nil {
 		return err
 	}
+	if err := migrateAPILifecycleData(db); err != nil {
+		return err
+	}
 
 	return migrateOrgMemberLifecycleData(db)
 }
@@ -798,6 +801,18 @@ func columnExists(db *gorm.DB, tableName, columnName string) (bool, error) {
 		return false, err
 	}
 	return count > 0, nil
+}
+
+func migrateAPILifecycleData(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&entity.API{}) {
+		return nil
+	}
+	return db.Session(&gorm.Session{NewDB: true}).
+		Unscoped().
+		Model(&entity.API{}).
+		Where("sync_state = '' OR sync_state IS NULL").
+		Update("sync_state", consts.APISyncStateRegistered).
+		Error
 }
 
 func ensureAllMembersOrg(db *gorm.DB) (uint, error) {

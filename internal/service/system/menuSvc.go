@@ -330,7 +330,7 @@ func (s *MenuService) BindAPIs(ctx context.Context, menuID uint, apiIDs []uint) 
 		seen[apiID] = struct{}{}
 
 		api, err := s.apiRepo.GetByID(ctx, apiID)
-		if err == nil && api != nil && api.ID > 0 {
+		if err == nil && api != nil && api.ID > 0 && isProjectableAPI(api) {
 			validAPIIDs = append(validAPIIDs, apiID)
 		}
 	}

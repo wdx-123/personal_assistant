@@ -42,6 +42,8 @@ func InitConfig(path string) {
 	viper.SetDefault("messaging.oj_question_upsert_topic", "oj_question_upsert")
 	viper.SetDefault("messaging.oj_question_upsert_group", "oj_question_upsert_group")
 	viper.SetDefault("messaging.oj_question_upsert_consumer", "oj_question_upsert_consumer")
+	viper.SetDefault("rate_limit.oj_bind.limit", 3)
+	viper.SetDefault("rate_limit.oj_bind.window_sec", 10)
 	viper.SetDefault("observability.propagation.enabled", true)
 	viper.SetDefault("observability.propagation.request_id_header", "X-Request-ID")
 	viper.SetDefault("observability.propagation.parse_w3c", true)
@@ -262,6 +264,12 @@ func InitConfig(path string) {
 	// 绑定文件上传相关配置到环境变量
 	_ = viper.BindEnv("upload.size", "UPLOAD_SIZE")
 	_ = viper.BindEnv("upload.path", "UPLOAD_PATH")
+	_ = viper.BindEnv("rate_limit.upload.global_limit", "RATE_LIMIT_UPLOAD_GLOBAL_LIMIT")
+	_ = viper.BindEnv("rate_limit.upload.global_window_sec", "RATE_LIMIT_UPLOAD_GLOBAL_WINDOW_SEC")
+	_ = viper.BindEnv("rate_limit.upload.user_limit", "RATE_LIMIT_UPLOAD_USER_LIMIT")
+	_ = viper.BindEnv("rate_limit.upload.user_window_sec", "RATE_LIMIT_UPLOAD_USER_WINDOW_SEC")
+	_ = viper.BindEnv("rate_limit.oj_bind.limit", "RATE_LIMIT_OJ_BIND_LIMIT")
+	_ = viper.BindEnv("rate_limit.oj_bind.window_sec", "RATE_LIMIT_OJ_BIND_WINDOW_SEC")
 
 	// 绑定网站信息相关配置到环境变量
 	_ = viper.BindEnv("website.logo", "WEBSITE_LOGO")

@@ -27,6 +27,7 @@ var (
 	// 上传限流器（由 core.InitUploadRateLimiters 初始化）
 	UploadGlobalLimiter *ratelimit.Limiter // 上传接口全局限流器
 	UploadUserLimiter   *ratelimit.Limiter // 上传接口用户级限流器
+	OJBindLimiters      map[string]*ratelimit.SlidingWindowLimiter
 	SensitiveDataCodec  *sensitivedata.Codec
 
 	// 观测基础设施后端

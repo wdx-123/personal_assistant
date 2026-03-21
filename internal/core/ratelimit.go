@@ -55,3 +55,28 @@ func InitUploadRateLimiters() {
 		zap.Int("user_limit", userLimit),
 		zap.Int("user_window_sec", userWindow))
 }
+
+// InitOJBindRateLimiters 初始化 OJ 绑定接口滑动窗口限流器。
+func InitOJBindRateLimiters() {
+	cfg := global.Config.RateLimit.OJBind
+
+	limit := cfg.Limit
+	if limit <= 0 {
+		limit = 3
+	}
+	windowSec := cfg.WindowSec
+	if windowSec <= 0 {
+		windowSec = 10
+	}
+
+	window := time.Duration(windowSec) * time.Second
+	global.OJBindLimiters = map[string]*ratelimit.SlidingWindowLimiter{
+		"leetcode": ratelimit.NewSlidingWindowLimiter(global.Redis, "ratelimit:oj_bind:leetcode", limit, window),
+		"luogu":    ratelimit.NewSlidingWindowLimiter(global.Redis, "ratelimit:oj_bind:luogu", limit, window),
+		"lanqiao":  ratelimit.NewSlidingWindowLimiter(global.Redis, "ratelimit:oj_bind:lanqiao", limit, window),
+	}
+
+	global.Log.Info("OJ 绑定限流器初始化完成",
+		zap.Int("limit", limit),
+		zap.Int("window_sec", windowSec))
+}

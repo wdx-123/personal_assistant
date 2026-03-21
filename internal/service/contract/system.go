@@ -163,7 +163,7 @@ type ApiServiceContract interface {
 	CreateAPI(ctx context.Context, req *request.CreateApiReq) error
 	UpdateAPI(ctx context.Context, id uint, req *request.UpdateApiReq) error
 	DeleteAPI(ctx context.Context, id uint) error
-	SyncAPI(ctx context.Context, deleteRemoved bool) (added, updated, disabled int, total int, err error)
+	SyncAPI(ctx context.Context, deleteRemoved bool) (added, restored, markedMissing, archived int, total int, err error)
 }
 
 type MenuServiceContract interface {

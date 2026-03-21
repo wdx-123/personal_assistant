@@ -32,10 +32,18 @@ type PageData struct {
 
 // BizResult 构建响应并返回
 func BizResult(code errors.BizCode, data any, message string, c *gin.Context) {
+	BizResultWithStatus(http.StatusOK, code, data, message, c)
+}
+
+// BizResultWithStatus 构建响应并返回指定 HTTP 状态码。
+func BizResultWithStatus(httpStatus int, code errors.BizCode, data any, message string, c *gin.Context) {
+	if httpStatus <= 0 {
+		httpStatus = http.StatusOK
+	}
 	if c != nil {
 		c.Set(contextid.GinKeyErrorCode, code.Int())
 	}
-	c.JSON(http.StatusOK, BizResponse{
+	c.JSON(httpStatus, BizResponse{
 		Code:      code.Int(),
 		Success:   code == errors.CodeSuccess,
 		Message:   message,

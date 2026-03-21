@@ -242,6 +242,10 @@ func NewConfig() *Config {
 			UserLimit:       viper.GetInt("rate_limit.upload.user_limit"),
 			UserWindowSec:   viper.GetInt("rate_limit.upload.user_window_sec"),
 		},
+		OJBind: OJBindRateLimit{
+			Limit:     viper.GetInt("rate_limit.oj_bind.limit"),
+			WindowSec: viper.GetInt("rate_limit.oj_bind.window_sec"),
+		},
 	}
 
 	_messaging := &Messaging{

@@ -3,6 +3,7 @@ package system
 import (
 	"context"
 
+	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository/interfaces"
@@ -28,7 +29,9 @@ func (m *menuRepository) WithTx(tx any) interfaces.MenuRepository {
 // 基础CRUD操作
 func (m *menuRepository) GetByID(ctx context.Context, id uint) (*entity.Menu, error) {
 	var menu entity.Menu
-	err := m.db.WithContext(ctx).Preload("APIs").First(&menu, id).Error
+	err := m.db.WithContext(ctx).
+		Preload("APIs", registeredAPIWhereClause(""), consts.APISyncStateRegistered, 1).
+		First(&menu, id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -37,7 +40,10 @@ func (m *menuRepository) GetByID(ctx context.Context, id uint) (*entity.Menu, er
 
 func (m *menuRepository) GetByCode(ctx context.Context, code string) (*entity.Menu, error) {
 	var menu entity.Menu
-	err := m.db.WithContext(ctx).Where("code = ?", code).Preload("APIs").First(&menu).Error
+	err := m.db.WithContext(ctx).
+		Where("code = ?", code).
+		Preload("APIs", registeredAPIWhereClause(""), consts.APISyncStateRegistered, 1).
+		First(&menu).Error
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +119,7 @@ func (m *menuRepository) GetAllMenus(
 func (m *menuRepository) GetAllMenusWithAPIs(ctx context.Context) ([]*entity.Menu, error) {
 	var menus []*entity.Menu
 	err := m.db.WithContext(ctx).
-		Preload("APIs").
+		Preload("APIs", registeredAPIWhereClause(""), consts.APISyncStateRegistered, 1).
 		Order("sort ASC, id ASC").
 		Find(&menus).Error
 	return menus, err
@@ -239,12 +245,12 @@ func (m *menuRepository) ReplaceMenuAPIsSingleBinding(
 // GetMenuAPIs 获取菜单关联的API列表
 func (m *menuRepository) GetMenuAPIs(ctx context.Context, menuID uint) ([]*entity.API, error) {
 	var apis []*entity.API
-	err := m.db.WithContext(ctx).
+	query := m.db.WithContext(ctx).
 		Table("apis").
 		Joins("JOIN menu_apis ON apis.id = menu_apis.api_id").
-		Where("menu_apis.menu_id = ? AND apis.deleted_at IS NULL", menuID).
-		Find(&apis).Error
-	return apis, err
+		Where("menu_apis.menu_id = ? AND apis.deleted_at IS NULL", menuID)
+	query = applyRegisteredAPIFilter(query, "apis")
+	return apis, query.Find(&apis).Error
 }
 
 // GetAPIMenus 获取API所属的菜单列表
@@ -267,13 +273,13 @@ func (m *menuRepository) GetAPIIDsByMenuIDs(
 	if len(menuIDs) == 0 {
 		return apiIDs, nil
 	}
-	err := m.db.WithContext(ctx).
+	query := m.db.WithContext(ctx).
 		Table("apis").
 		Joins("JOIN menu_apis ON apis.id = menu_apis.api_id").
 		Where("menu_apis.menu_id IN ? AND apis.deleted_at IS NULL", menuIDs).
-		Distinct().
-		Pluck("apis.id", &apiIDs).Error
-	return apiIDs, err
+		Distinct()
+	query = applyRegisteredAPIFilter(query, "apis")
+	return apiIDs, query.Pluck("apis.id", &apiIDs).Error
 }
 
 // 角色菜单关系查询
@@ -312,12 +318,12 @@ func (m *menuRepository) GetMenusByUserID(
 // 权限同步相关
 func (m *menuRepository) GetAllMenuAPIRelations(ctx context.Context) ([]map[string]interface{}, error) {
 	var relations []map[string]interface{}
-	err := m.db.WithContext(ctx).
+	query := m.db.WithContext(ctx).
 		Table("menu_apis").
 		Select("menus.code as menu_code, apis.path, apis.method").
 		Joins("JOIN menus ON menu_apis.menu_id = menus.id").
 		Joins("JOIN apis ON menu_apis.api_id = apis.id").
-		Where("menus.deleted_at IS NULL AND apis.deleted_at IS NULL").
-		Find(&relations).Error
-	return relations, err
+		Where("menus.deleted_at IS NULL AND apis.deleted_at IS NULL")
+	query = applyRegisteredAPIFilter(query, "apis")
+	return relations, query.Find(&relations).Error
 }

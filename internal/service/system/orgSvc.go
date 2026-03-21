@@ -89,6 +89,9 @@ func (s *OrgService) GetOrgList(
 	if err != nil {
 		return nil, 0, errors.Wrap(errors.CodeDBError, err)
 	}
+	if err := s.maskOrgInviteCodes(ctx, userID, items); err != nil {
+		return nil, 0, err
+	}
 	return items, total, nil
 }
 
@@ -133,6 +136,9 @@ func (s *OrgService) GetOrgDetail(
 	}
 	if len(items) == 0 {
 		return nil, errors.New(errors.CodeOrgNotFound)
+	}
+	if err := s.maskOrgInviteCodes(ctx, userID, items); err != nil {
+		return nil, err
 	}
 	return items[0], nil
 }
@@ -1164,4 +1170,42 @@ func (s *OrgService) buildOrgReadModels(
 		})
 	}
 	return items, nil
+}
+
+func (s *OrgService) maskOrgInviteCodes(
+	ctx context.Context,
+	userID uint,
+	items []*readmodel.OrgWithMemberCount,
+) error {
+	for _, item := range items {
+		if item == nil || item.ID == 0 {
+			continue
+		}
+		canView, err := s.canViewOrgInviteCode(ctx, userID, item.ID)
+		if err != nil {
+			return err
+		}
+		if !canView {
+			item.Code = ""
+		}
+	}
+	return nil
+}
+
+func (s *OrgService) canViewOrgInviteCode(
+	ctx context.Context,
+	userID, orgID uint,
+) (bool, error) {
+	if s.authorizationService == nil {
+		return false, errors.NewWithMsg(errors.CodeInternalError, "授权服务未初始化")
+	}
+	err := s.authorizationService.AuthorizeOrgCapability(ctx, userID, orgID, consts.CapabilityCodeOrgMemberInvite)
+	if err == nil {
+		return true, nil
+	}
+	bizErr := errors.FromError(err)
+	if bizErr != nil && bizErr.Code == errors.CodePermissionDenied {
+		return false, nil
+	}
+	return false, err
 }

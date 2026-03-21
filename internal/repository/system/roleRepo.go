@@ -249,12 +249,12 @@ func (r *roleRepository) GetRoleAPIIDs(
 	roleID uint,
 ) ([]uint, error) {
 	var apiIDs []uint
-	err := r.db.WithContext(ctx).
+	query := r.db.WithContext(ctx).
 		Table("apis").
 		Joins("JOIN role_apis ON apis.id = role_apis.api_id").
-		Where("role_apis.role_id = ? AND apis.deleted_at IS NULL", roleID).
-		Pluck("apis.id", &apiIDs).Error
-	return apiIDs, err
+		Where("role_apis.role_id = ? AND apis.deleted_at IS NULL", roleID)
+	query = applyRegisteredAPIFilter(query, "apis")
+	return apiIDs, query.Pluck("apis.id", &apiIDs).Error
 }
 
 // ClearRoleAPIs 清空角色的所有API直绑关联
@@ -429,14 +429,14 @@ func (r *roleRepository) GetAllRoleMenuRelations(ctx context.Context) ([]map[str
 // GetAllRoleAPIRelations 获取所有角色与直绑API关联关系（用于Casbin同步）
 func (r *roleRepository) GetAllRoleAPIRelations(ctx context.Context) ([]map[string]interface{}, error) {
 	var relations []map[string]interface{}
-	err := r.db.WithContext(ctx).
+	query := r.db.WithContext(ctx).
 		Table("role_apis").
 		Select("roles.code as role_code, apis.path, apis.method").
 		Joins("JOIN roles ON role_apis.role_id = roles.id").
 		Joins("JOIN apis ON role_apis.api_id = apis.id").
-		Where("roles.deleted_at IS NULL AND apis.deleted_at IS NULL").
-		Find(&relations).Error
-	return relations, err
+		Where("roles.deleted_at IS NULL AND apis.deleted_at IS NULL")
+	query = applyRegisteredAPIFilter(query, "apis")
+	return relations, query.Find(&relations).Error
 }
 
 func (r *roleRepository) GetAllUserOrgRoleRelations(
