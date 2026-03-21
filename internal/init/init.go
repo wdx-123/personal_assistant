@@ -59,6 +59,8 @@ func Init() {
 	core.InitStorage()
 	// 初始化上传限流器（依赖 Redis）
 	core.InitUploadRateLimiters()
+	// 初始化 OJ 绑定限流器（依赖 Redis）
+	core.InitOJBindRateLimiters()
 	// 初始化flag
 	flag.InitFlag()
 	// 初始化Repository层

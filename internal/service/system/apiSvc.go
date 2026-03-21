@@ -4,8 +4,10 @@ import (
 	"context"
 	stderrors "errors"
 	"strings"
+	"time"
 
 	"personal_assistant/global"
+	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository"
@@ -56,6 +58,7 @@ func (s *ApiService) GetAPIList(
 	filter.Method = strings.TrimSpace(filter.Method)
 	filter.Keyword = strings.TrimSpace(filter.Keyword)
 	filter.MenuName = strings.TrimSpace(filter.MenuName)
+	filter.SyncState = strings.TrimSpace(filter.SyncState)
 
 	if filter.MenuName != "" {
 		matchedCount, err := s.menuRepo.CountByNameLike(ctx, filter.MenuName)
@@ -126,10 +129,11 @@ func (s *ApiService) CreateAPI(ctx context.Context, req *request.CreateApiReq) e
 	}
 
 	api := &entity.API{
-		Path:   path,
-		Method: method,
-		Detail: req.Detail,
-		Status: status,
+		Path:      path,
+		Method:    method,
+		Detail:    req.Detail,
+		Status:    status,
+		SyncState: consts.APISyncStateRegistered,
 	}
 	// 创建API并关联菜单，发布权限变更事件
 	return s.txRunner.InTx(ctx, func(tx any) error {
@@ -232,20 +236,18 @@ func (s *ApiService) DeleteAPI(ctx context.Context, id uint) error {
 	})
 }
 
-// SyncAPI 同步路由到API表
-// 从 Gin 引擎扫描所有已注册路由，新增的插入，已移除的禁用或删除
-// SyncAPI 同步路由与数据库API记录
-// deleteRemoved: true-删除不存在的API, false-仅禁用
-// 返回: 新增数、更新数、禁用数、总数、错误
+// SyncAPI 同步路由与数据库API记录。
+// deleteRemoved 参数仅保留兼容性，当前不再执行物理删除。
 func (s *ApiService) SyncAPI(
 	ctx context.Context,
 	deleteRemoved bool,
-) (added, updated, disabled int, total int, err error) {
+) (added, restored, markedMissing, archived int, total int, err error) {
+	_ = deleteRemoved
 	if global.Router == nil {
-		return 0, 0, 0, 0, errors.New(errors.CodeInternalError)
+		return 0, 0, 0, 0, 0, errors.New(errors.CodeInternalError)
 	}
 
-	// 构建当前路由集合 (path:method 格式，与项目权限风格一致)
+	now := time.Now()
 	routes := global.Router.Routes()
 	pathMethodSet := make(map[string]bool)
 	for _, r := range routes {
@@ -258,7 +260,7 @@ func (s *ApiService) SyncAPI(
 	// 获取数据库已有API，构建映射
 	allAPIs, err := s.apiRepo.GetAllAPIs(ctx)
 	if err != nil {
-		return 0, 0, 0, 0, errors.Wrap(errors.CodeDBError, err)
+		return 0, 0, 0, 0, 0, errors.Wrap(errors.CodeDBError, err)
 	}
 	existingMap := make(map[string]*entity.API)
 	for _, api := range allAPIs {
@@ -266,77 +268,106 @@ func (s *ApiService) SyncAPI(
 		existingMap[key] = api
 	}
 
-	changed := false
+	projectionChanged := false
 	if err := s.txRunner.InTx(ctx, func(tx any) error {
 		txAPIRepo := s.apiRepo.WithTx(tx)
-		txMenuRepo := s.menuRepo.WithTx(tx)
-		txRoleRepo := s.roleRepo.WithTx(tx)
 
-		// 遍历路由：数据库中不存在则新增，已存在则跳过（不自动恢复启用，启用由管理员手动操作）
 		for _, r := range routes {
 			if r.Method == "" || r.Path == "" {
 				continue
 			}
 			key := r.Path + ":" + r.Method
-			if _, ok := existingMap[key]; ok {
+			if api, ok := existingMap[key]; ok {
+				if api.SyncState == consts.APISyncStateArchived {
+					continue
+				}
+				needUpdate := false
+				if api.SyncState == consts.APISyncStateMissing {
+					api.SyncState = consts.APISyncStateRegistered
+					restored++
+					needUpdate = true
+					projectionChanged = true
+				} else if strings.TrimSpace(api.SyncState) == "" {
+					api.SyncState = consts.APISyncStateRegistered
+					needUpdate = true
+				}
+				if api.LastSeenAt == nil || !api.LastSeenAt.Equal(now) {
+					api.LastSeenAt = &now
+					needUpdate = true
+				}
+				if needUpdate {
+					if err := txAPIRepo.Update(ctx, api); err != nil {
+						return errors.Wrap(errors.CodeDBError, err)
+					}
+				}
 				continue
 			}
+
+			existingAPI, getErr := txAPIRepo.GetByPathAndMethod(ctx, r.Path, r.Method)
+			if getErr != nil && !stderrors.Is(getErr, gorm.ErrRecordNotFound) {
+				return errors.Wrap(errors.CodeDBError, getErr)
+			}
+			if getErr == nil && existingAPI != nil {
+				if existingAPI.DeletedAt.Valid || existingAPI.SyncState != consts.APISyncStateRegistered {
+					existingAPI.SyncState = consts.APISyncStateRegistered
+					restored++
+					projectionChanged = true
+				} else if strings.TrimSpace(existingAPI.SyncState) == "" {
+					existingAPI.SyncState = consts.APISyncStateRegistered
+				}
+				existingAPI.LastSeenAt = &now
+				existingAPI.DeletedAt = gorm.DeletedAt{}
+				if err := txAPIRepo.Update(ctx, existingAPI); err != nil {
+					return errors.Wrap(errors.CodeDBError, err)
+				}
+				existingMap[key] = existingAPI
+				continue
+			}
+
 			newAPI := &entity.API{
-				Path:   r.Path,
-				Method: r.Method,
-				Detail: "",
-				Status: 1,
+				Path:       r.Path,
+				Method:     r.Method,
+				Detail:     "",
+				Status:     1,
+				SyncState:  consts.APISyncStateRegistered,
+				LastSeenAt: &now,
 			}
 			if err := txAPIRepo.Create(ctx, newAPI); err != nil {
 				return errors.Wrap(errors.CodeDBError, err)
 			}
 			added++
-			changed = true
+			projectionChanged = true
 		}
 
-		// 处理数据库中已不存在于路由的API
 		for _, api := range allAPIs {
 			key := api.Path + ":" + api.Method
 			if pathMethodSet[key] {
 				continue
 			}
-			if deleteRemoved {
-				if err := txMenuRepo.RemoveAPIFromAllMenus(ctx, api.ID); err != nil {
-					return errors.Wrap(errors.CodeDBError, err)
-				}
-				if err := txRoleRepo.RemoveAPIFromAllRoles(ctx, api.ID); err != nil {
-					return errors.Wrap(errors.CodeDBError, err)
-				}
-				if err := txAPIRepo.Delete(ctx, api.ID); err != nil {
-					return errors.Wrap(errors.CodeDBError, err)
-				}
-				changed = true
+			if api.SyncState == consts.APISyncStateArchived || api.SyncState == consts.APISyncStateMissing {
 				continue
 			}
-			if api.Status == 1 {
-				api.Status = 0
-				if err := txAPIRepo.Update(ctx, api); err != nil {
-					return errors.Wrap(errors.CodeDBError, err)
-				}
-				disabled++
-				changed = true
+			api.SyncState = consts.APISyncStateMissing
+			if err := txAPIRepo.Update(ctx, api); err != nil {
+				return errors.Wrap(errors.CodeDBError, err)
 			}
+			markedMissing++
+			projectionChanged = true
 		}
 
-		if changed && s.permissionProjectionSvc != nil {
+		if projectionChanged && s.permissionProjectionSvc != nil {
 			if err := s.permissionProjectionSvc.PublishPermissionGraphChangedInTx(ctx, tx, "api", 0); err != nil {
 				return errors.Wrap(errors.CodeDBError, err)
 			}
 		}
 		return nil
 	}); err != nil {
-		return added, updated, disabled, 0, err
+		return added, restored, markedMissing, archived, 0, err
 	}
 
-	// 重新获取总数
 	allAPIs, _ = s.apiRepo.GetAllAPIs(ctx)
 	total = len(allAPIs)
-	return added, updated, disabled, total, nil
+	return added, restored, markedMissing, archived, total, nil
 }
 
 func collectAPIIDs(apis []*entity.API) []uint {

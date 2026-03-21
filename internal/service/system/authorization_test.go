@@ -29,6 +29,7 @@ import (
 
 type authorizationTestEnv struct {
 	db            *gorm.DB
+	repoGroup     *repository.Group
 	enforcer      *casbinlib.Enforcer
 	authorization *AuthorizationService
 	projection    *PermissionProjectionService
@@ -104,6 +105,7 @@ func newAuthorizationTestEnv(t *testing.T) *authorizationTestEnv {
 
 	return &authorizationTestEnv{
 		db:            db,
+		repoGroup:     repoGroup,
 		enforcer:      enforcer,
 		authorization: authorizationService,
 		projection:    projectionService,

@@ -34,12 +34,13 @@ func (c *ApiCtrl) GetAPIList(ctx *gin.Context) {
 	}
 
 	filter := &request.ApiListFilter{
-		Page:     req.Page,
-		PageSize: req.PageSize,
-		Status:   req.Status,
-		Method:   req.Method,
-		Keyword:  req.Keyword,
-		MenuName: req.MenuName,
+		Page:      req.Page,
+		PageSize:  req.PageSize,
+		Status:    req.Status,
+		Method:    req.Method,
+		Keyword:   req.Keyword,
+		MenuName:  req.MenuName,
+		SyncState: req.SyncState,
 	}
 
 	list, menuMap, total, err := c.apiService.GetAPIList(ctx.Request.Context(), filter)
@@ -131,17 +132,18 @@ func (c *ApiCtrl) DeleteAPI(ctx *gin.Context) {
 func (c *ApiCtrl) SyncAPI(ctx *gin.Context) {
 	var req request.SyncApiReq
 	_ = ctx.ShouldBindJSON(&req)
-	added, updated, disabled, total, err := c.apiService.SyncAPI(ctx.Request.Context(), req.DeleteRemoved)
+	added, restored, markedMissing, archived, total, err := c.apiService.SyncAPI(ctx.Request.Context(), req.DeleteRemoved)
 	if err != nil {
 		global.Log.Error("同步API失败", zap.Error(err))
 		response.BizFailWithError(err, ctx)
 		return
 	}
 	response.BizOkWithDetailed(&resp.SyncApiResp{
-		Added:    added,
-		Updated:  updated,
-		Disabled: disabled,
-		Total:    total,
+		Added:         added,
+		Restored:      restored,
+		MarkedMissing: markedMissing,
+		Archived:      archived,
+		Total:         total,
 	}, "同步成功", ctx)
 }
 
@@ -158,14 +160,16 @@ func entityToApiItem(api *entity.API, menu *entity.Menu) *resp.ApiItem {
 		menuName = menu.Name
 	}
 	return &resp.ApiItem{
-		ID:        api.ID,
-		Path:      api.Path,
-		Method:    api.Method,
-		Detail:    api.Detail,
-		Status:    api.Status,
-		MenuID:    menuID,
-		MenuName:  menuName,
-		CreatedAt: api.CreatedAt,
-		UpdatedAt: api.UpdatedAt,
+		ID:         api.ID,
+		Path:       api.Path,
+		Method:     api.Method,
+		Detail:     api.Detail,
+		Status:     api.Status,
+		SyncState:  api.SyncState,
+		LastSeenAt: api.LastSeenAt,
+		MenuID:     menuID,
+		MenuName:   menuName,
+		CreatedAt:  api.CreatedAt,
+		UpdatedAt:  api.UpdatedAt,
 	}
 }

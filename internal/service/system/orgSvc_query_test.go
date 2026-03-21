@@ -157,6 +157,80 @@ func TestOrgServiceGetOrgDetailAllowsSuperAdminWithoutMembership(t *testing.T) {
 	if item.ID != org.ID {
 		t.Fatalf("org id = %d, want %d", item.ID, org.ID)
 	}
+	if item.Code != org.Code {
+		t.Fatalf("invite code = %q, want %q", item.Code, org.Code)
+	}
+}
+
+func TestOrgServiceGetOrgListMasksInviteCodeWithoutCapability(t *testing.T) {
+	env := newAuthorizationTestEnv(t)
+	requester := createUser(t, env, "00000014")
+	org := createOrg(t, env, 11)
+
+	seedOrgMember(t, env, org.ID, org.OwnerID, consts.OrgMemberStatusActive)
+	seedOrgMember(t, env, org.ID, requester.ID, consts.OrgMemberStatusActive)
+	grantOrgCapability(t, env, requester.ID, org.ID, "org_updater", consts.CapabilityCodeOrgManageUpdate)
+
+	items, _, err := env.orgService.GetOrgList(context.Background(), requester.ID, 1, 10, "")
+	if err != nil {
+		t.Fatalf("GetOrgList() error = %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("list len = %d, want 1", len(items))
+	}
+	if items[0].Code != "" {
+		t.Fatalf("invite code should be masked, got %q", items[0].Code)
+	}
+}
+
+func TestOrgServiceGetOrgDetailReturnsInviteCodeForInviteCapability(t *testing.T) {
+	env := newAuthorizationTestEnv(t)
+	requester := createUser(t, env, "00000015")
+	org := createOrg(t, env, 11)
+
+	seedOrgMember(t, env, org.ID, org.OwnerID, consts.OrgMemberStatusActive)
+	seedOrgMember(t, env, org.ID, requester.ID, consts.OrgMemberStatusActive)
+	grantOrgCapability(t, env, requester.ID, org.ID, "org_inviter", consts.CapabilityCodeOrgMemberInvite)
+
+	item, err := env.orgService.GetOrgDetail(context.Background(), requester.ID, org.ID)
+	if err != nil {
+		t.Fatalf("GetOrgDetail() error = %v", err)
+	}
+	if item.Code != org.Code {
+		t.Fatalf("invite code = %q, want %q", item.Code, org.Code)
+	}
+}
+
+func TestOrgServiceGetOrgDetailMasksInviteCodeForUpdateOnlyOperator(t *testing.T) {
+	env := newAuthorizationTestEnv(t)
+	requester := createUser(t, env, "00000016")
+	org := createOrg(t, env, 11)
+
+	seedOrgMember(t, env, org.ID, org.OwnerID, consts.OrgMemberStatusActive)
+	seedOrgMember(t, env, org.ID, requester.ID, consts.OrgMemberStatusActive)
+	grantOrgCapability(t, env, requester.ID, org.ID, "org_updater", consts.CapabilityCodeOrgManageUpdate)
+
+	item, err := env.orgService.GetOrgDetail(context.Background(), requester.ID, org.ID)
+	if err != nil {
+		t.Fatalf("GetOrgDetail() error = %v", err)
+	}
+	if item.Code != "" {
+		t.Fatalf("invite code should be masked, got %q", item.Code)
+	}
+}
+
+func TestOrgServiceGetOrgDetailAllowsOwnerToSeeInviteCode(t *testing.T) {
+	env := newAuthorizationTestEnv(t)
+	org := createOrg(t, env, 11)
+	seedOrgMember(t, env, org.ID, org.OwnerID, consts.OrgMemberStatusActive)
+
+	item, err := env.orgService.GetOrgDetail(context.Background(), org.OwnerID, org.ID)
+	if err != nil {
+		t.Fatalf("GetOrgDetail() error = %v", err)
+	}
+	if item.Code != org.Code {
+		t.Fatalf("invite code = %q, want %q", item.Code, org.Code)
+	}
 }
 
 func seedOrgMember(

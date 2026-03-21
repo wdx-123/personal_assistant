@@ -60,10 +60,11 @@ func NewLimiter(
 
 // Result 限流判断结果
 type Result struct {
-	Allowed   bool  // 是否放行
-	Current   int64 // 当前窗口内已请求次数
-	Limit     int   // 窗口内最大请求数
-	Remaining int   // 剩余可用次数
+	Allowed    bool          // 是否放行
+	Current    int64         // 当前窗口内已请求次数
+	Limit      int           // 窗口内最大请求数
+	Remaining  int           // 剩余可用次数
+	RetryAfter time.Duration // 建议客户端重试等待时间
 }
 
 // Allow 判断指定标识的请求是否放行
@@ -91,9 +92,17 @@ func (l *Limiter) Allow(ctx context.Context, identifier string) (*Result, error)
 	}
 
 	return &Result{
-		Allowed:   allowed,
-		Current:   current,
-		Limit:     l.limit,
-		Remaining: remaining,
+		Allowed:    allowed,
+		Current:    current,
+		Limit:      l.limit,
+		Remaining:  remaining,
+		RetryAfter: retryAfterForFixedWindow(allowed, time.Duration(windowSec)*time.Second),
 	}, nil
+}
+
+func retryAfterForFixedWindow(allowed bool, window time.Duration) time.Duration {
+	if allowed || window <= 0 {
+		return 0
+	}
+	return window
 }

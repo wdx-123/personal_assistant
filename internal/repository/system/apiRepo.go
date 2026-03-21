@@ -3,6 +3,7 @@ package system
 import (
 	"context"
 
+	"personal_assistant/internal/model/consts"
 	"personal_assistant/internal/model/dto/request"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository/interfaces"
@@ -37,7 +38,7 @@ func (a *apiRepository) GetByID(ctx context.Context, id uint) (*entity.API, erro
 }
 func (a *apiRepository) GetByPathAndMethod(ctx context.Context, path, method string) (*entity.API, error) {
 	var api entity.API
-	err := a.db.WithContext(ctx).Where("path = ? AND method = ?", path, method).First(&api).Error
+	err := a.db.WithContext(ctx).Unscoped().Where("path = ? AND method = ?", path, method).First(&api).Error
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +60,7 @@ func (a *apiRepository) CreateWithMenu(ctx context.Context, api *entity.API, men
 }
 
 func (a *apiRepository) Update(ctx context.Context, api *entity.API) error {
-	return a.db.WithContext(ctx).Save(api).Error
+	return a.db.WithContext(ctx).Unscoped().Save(api).Error
 }
 
 // UpdateWithMenu 更新API并按三态更新菜单绑定（事务）
@@ -95,7 +96,14 @@ func (a *apiRepository) UpdateWithMenu(
 }
 
 func (a *apiRepository) Delete(ctx context.Context, id uint) error {
-	return a.db.WithContext(ctx).Delete(&entity.API{}, id).Error
+	return a.db.WithContext(ctx).
+		Model(&entity.API{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"sync_state":   consts.APISyncStateArchived,
+			"status":       0,
+			"last_seen_at": nil,
+		}).Error
 }
 
 // 业务相关查询
@@ -125,6 +133,7 @@ func (a *apiRepository) GetAPIList(ctx context.Context, filter *request.ApiListF
 			keywordLike := "%" + filter.Keyword + "%"
 			query = query.Where("(apis.path LIKE ? OR apis.detail LIKE ?)", keywordLike, keywordLike)
 		}
+		query = applyAPISyncStateFilter(query, "apis", filter.SyncState)
 	}
 
 	if err := query.Count(&total).Error; err != nil {
@@ -160,12 +169,16 @@ func (a *apiRepository) GetAllAPIs(ctx context.Context) ([]*entity.API, error) {
 
 func (a *apiRepository) GetActiveAPIs(ctx context.Context) ([]*entity.API, error) {
 	var apis []*entity.API
-	err := a.db.WithContext(ctx).Where("status = ?", 1).Find(&apis).Error
+	err := applyRegisteredAPIFilter(a.db.WithContext(ctx).Model(&entity.API{}), "apis").Find(&apis).Error
 	return apis, err
 }
 func (a *apiRepository) ExistsByPathAndMethod(ctx context.Context, path, method string) (bool, error) {
 	var count int64
-	err := a.db.WithContext(ctx).Model(&entity.API{}).Where("path = ? AND method = ?", path, method).Count(&count).Error
+	err := a.db.WithContext(ctx).
+		Unscoped().
+		Model(&entity.API{}).
+		Where("path = ? AND method = ?", path, method).
+		Count(&count).Error
 	return count > 0, err
 }
 
@@ -229,36 +242,42 @@ func (a *apiRepository) GetMenusByAPIIDs(
 
 func (a *apiRepository) GetAPIsByUserID(ctx context.Context, userID, orgID uint) ([]*entity.API, error) {
 	var apis []*entity.API
-	err := a.db.WithContext(ctx).
+	query := a.db.WithContext(ctx).
 		Table("apis").
 		Joins("JOIN menu_apis ON apis.id = menu_apis.api_id").
 		Joins("JOIN role_menus ON menu_apis.menu_id = role_menus.menu_id").
-		Joins("JOIN user_org_roles ON role_menus.role_id = user_org_roles.role_id").
+		Joins("JOIN user_org_roles ON role_menus.role_id = user_org_roles.role_id")
+	query = applyRegisteredAPIFilter(query, "apis").
 		Where("user_org_roles.user_id = ? AND user_org_roles.org_id = ? AND apis.deleted_at IS NULL", userID, orgID).
-		Distinct().
-		Find(&apis).Error
-	return apis, err
+		Distinct()
+	return apis, query.Find(&apis).Error
 }
 
 func (a *apiRepository) GetAPIsByRoleID(ctx context.Context, roleID uint) ([]*entity.API, error) {
 	var apis []*entity.API
-	err := a.db.WithContext(ctx).
+	query := a.db.WithContext(ctx).
 		Table("apis").
 		Joins("JOIN menu_apis ON apis.id = menu_apis.api_id").
-		Joins("JOIN role_menus ON menu_apis.menu_id = role_menus.menu_id").
-		Where("role_menus.role_id = ? AND apis.deleted_at IS NULL", roleID).
-		Find(&apis).Error
-	return apis, err
+		Joins("JOIN role_menus ON menu_apis.menu_id = role_menus.menu_id")
+	query = applyRegisteredAPIFilter(query, "apis").
+		Where("role_menus.role_id = ? AND apis.deleted_at IS NULL", roleID)
+	return apis, query.Find(&apis).Error
 }
 
 func (a *apiRepository) CheckUserAPIPermission(ctx context.Context, userID, orgID uint, path, method string) (bool, error) {
 	var count int64
-	err := a.db.WithContext(ctx).
+	query := a.db.WithContext(ctx).
 		Table("apis").
 		Joins("JOIN menu_apis ON apis.id = menu_apis.api_id").
 		Joins("JOIN role_menus ON menu_apis.menu_id = role_menus.menu_id").
-		Joins("JOIN user_org_roles ON role_menus.role_id = user_org_roles.role_id").
-		Where("user_org_roles.user_id = ? AND user_org_roles.org_id = ? AND apis.path = ? AND apis.method = ? AND apis.deleted_at IS NULL", userID, orgID, path, method).
-		Count(&count).Error
-	return count > 0, err
+		Joins("JOIN user_org_roles ON role_menus.role_id = user_org_roles.role_id")
+	query = applyRegisteredAPIFilter(query, "apis").
+		Where(
+			"user_org_roles.user_id = ? AND user_org_roles.org_id = ? AND apis.path = ? AND apis.method = ? AND apis.deleted_at IS NULL",
+			userID,
+			orgID,
+			path,
+			method,
+		)
+	return count > 0, query.Count(&count).Error
 }

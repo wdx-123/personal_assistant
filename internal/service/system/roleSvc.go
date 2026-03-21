@@ -466,7 +466,7 @@ func (s *RoleService) filterValidAPIIDs(ctx context.Context, apiIDs []uint) ([]u
 			}
 			return nil, errors.Wrap(errors.CodeDBError, err)
 		}
-		if api != nil && api.ID > 0 {
+		if api != nil && api.ID > 0 && isProjectableAPI(api) {
 			validAPIIDs = append(validAPIIDs, apiID)
 		}
 	}

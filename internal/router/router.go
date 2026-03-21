@@ -76,9 +76,10 @@ func InitRouter() *gin.Engine {
 	BusinessGroup.Use(middleware.JWTAuth())
 	BusinessGroup.Use(middleware.ActiveUserMW())
 	uploadRateLimitMW := middleware.UploadRateLimitMiddleware(global.UploadGlobalLimiter, global.UploadUserLimiter)
+	ojBindRateLimitMW := middleware.OJBindRateLimitMiddleware(global.OJBindLimiters)
 	{
 		// OJ 相关路由
-		systemRouter.InitOJRouter(BusinessGroup)
+		systemRouter.InitOJRouter(BusinessGroup, ojBindRateLimitMW)
 		// OJ 任务相关路由
 		systemRouter.InitOJTaskRouter(BusinessGroup)
 		// 图片路由：登录即可访问，上传接口额外挂载限流中间件（全局+用户级双层限流）
