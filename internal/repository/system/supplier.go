@@ -7,7 +7,9 @@ import (
 	"gorm.io/gorm"
 )
 
+// Supplier 用于集中提供当前模块依赖对象。
 type Supplier interface {
+	GetAIRepository() interfaces.AIRepository
 	GetUserRepository() interfaces.UserRepository
 	GetJWTRepository() interfaces.JWTRepository
 	GetRoleRepository() interfaces.RoleRepository
@@ -39,6 +41,7 @@ type Supplier interface {
 // SetUp 工厂函数，统一管理 - 现在支持配置驱动
 func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 	var gormDB *gorm.DB
+	var aiRepo interfaces.AIRepository
 	var userRepo interfaces.UserRepository
 	var jwtRepo interfaces.JWTRepository
 	var roleRepo interfaces.RoleRepository
@@ -70,6 +73,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 	case adapter.MySQL:
 		if db, ok := factoryConfig.Connection.(*gorm.DB); ok {
 			gormDB = db
+			aiRepo = NewAIRepository(db)
 			userRepo = NewUserRepository(db)
 			jwtRepo = NewJwtRepository(db)
 			roleRepo = NewRoleRepository(db)
@@ -107,6 +111,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 		// 默认MySQL
 		if db, ok := factoryConfig.Connection.(*gorm.DB); ok {
 			gormDB = db
+			aiRepo = NewAIRepository(db)
 			userRepo = NewUserRepository(db)
 			jwtRepo = NewJwtRepository(db)
 			roleRepo = NewRoleRepository(db)
@@ -137,6 +142,7 @@ func SetUp(factoryConfig *adapter.FactoryConfig) Supplier {
 	}
 	return &RepositorySupplier{
 		db:                             gormDB,
+		aiRepository:                   aiRepo,
 		userRepository:                 userRepo,
 		jwtRepository:                  jwtRepo,
 		roleRepository:                 roleRepo,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"mime/multipart"
 
+	streamsse "personal_assistant/internal/infrastructure/sse"
 	eventdto "personal_assistant/internal/model/dto/event"
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
@@ -15,6 +16,7 @@ import (
 	"github.com/mojocn/base64Captcha"
 )
 
+// JWTServiceContract 定义当前服务对外暴露的能力契约。
 type JWTServiceContract interface {
 	IssueLoginTokens(ctx context.Context, user entity.User) (*resp.LoginResponse, string, int64, *erro.JWTError)
 	IsInBlacklist(jwt string) bool
@@ -22,6 +24,7 @@ type JWTServiceContract interface {
 	JoinInBlacklist(ctx context.Context, jwtList entity.JwtBlacklist) error
 }
 
+// AuthorizationServiceContract 定义当前服务对外暴露的能力契约。
 type AuthorizationServiceContract interface {
 	// GetUserRoles 获取用户角色
 	GetUserRoles(ctx context.Context, userID uint) ([]entity.Role, error)
@@ -35,6 +38,7 @@ type AuthorizationServiceContract interface {
 	AuthorizeOrgCapability(ctx context.Context, operatorID, orgID uint, capabilityCode string) error
 }
 
+// PermissionProjectionServiceContract 定义当前服务对外暴露的能力契约。
 type PermissionProjectionServiceContract interface {
 	// RebuildAll 重建所有权限投影
 	RebuildAll(ctx context.Context) error
@@ -54,16 +58,19 @@ type PermissionProjectionServiceContract interface {
 	HandlePermissionProjectionEvent(ctx context.Context, event *eventdto.PermissionProjectionEvent) error
 }
 
+// BaseServiceContract 定义当前服务对外暴露的能力契约。
 type BaseServiceContract interface {
 	GetCaptcha(store base64Captcha.Store) (string, string, error)
 	VerifyAndSendEmailCode(ctx *gin.Context, store base64Captcha.Store, req *request.SendEmailVerificationCodeReq) error
 }
 
+// HealthServiceContract 定义当前服务对外暴露的能力契约。
 type HealthServiceContract interface {
 	Health(ctx context.Context) (*resp.HealthResponse, error)
 	Ping(ctx context.Context) (*resp.PingResponse, error)
 }
 
+// UserServiceContract 定义当前服务对外暴露的能力契约。
 type UserServiceContract interface {
 	Register(ctx context.Context, req *request.RegisterReq) (*entity.User, error)
 	PhoneLogin(ctx context.Context, req *request.LoginReq) (*entity.User, error)
@@ -86,6 +93,7 @@ type UserServiceContract interface {
 	CleanupDisabledUsers(ctx context.Context) (int, error)
 }
 
+// OrgServiceContract 定义当前服务对外暴露的能力契约。
 type OrgServiceContract interface {
 	GetOrgList(ctx context.Context, userID uint, page, pageSize int, keyword string) ([]*readmodel.OrgWithMemberCount, int64, error)
 	GetOrgDetail(ctx context.Context, userID uint, orgID uint) (*readmodel.OrgWithMemberCount, error)
@@ -108,6 +116,7 @@ type OrgServiceContract interface {
 	RecoverMember(ctx context.Context, operatorID, orgID, targetUserID uint, reason string) error
 }
 
+// OJServiceContract 定义当前服务对外暴露的能力契约。
 type OJServiceContract interface {
 	BindOJAccount(ctx context.Context, userID uint, req *request.BindOJAccountReq) (*resp.BindOJAccountResp, error)
 	BindLanqiaoAccount(ctx context.Context, userID uint, req *request.BindLanqiaoAccountReq) (*resp.BindOJAccountResp, error)
@@ -123,6 +132,7 @@ type OJServiceContract interface {
 	HandleLeetcodeBindSignal(ctx context.Context, userID uint) error
 }
 
+// OJTaskServiceContract 定义当前服务对外暴露的能力契约。
 type OJTaskServiceContract interface {
 	AnalyzeTaskTitles(ctx context.Context, req *request.AnalyzeOJTaskTitlesReq) (*resp.OJTaskAnalyzeResp, error)
 	CreateTask(ctx context.Context, operatorID uint, req *request.CreateOJTaskReq) (*resp.OJTaskCreateResp, error)
@@ -142,6 +152,7 @@ type OJTaskServiceContract interface {
 	HandleQuestionUpserted(ctx context.Context, event *eventdto.QuestionUpsertedEvent) error
 }
 
+// OJDailyStatsProjectionServiceContract 定义当前服务对外暴露的能力契约。
 type OJDailyStatsProjectionServiceContract interface {
 	PublishOJDailyStatsProjectionEvent(ctx context.Context, event *eventdto.OJDailyStatsProjectionEvent) error
 	HandleOJDailyStatsProjectionEvent(ctx context.Context, event *eventdto.OJDailyStatsProjectionEvent) error
@@ -149,6 +160,7 @@ type OJDailyStatsProjectionServiceContract interface {
 	RepairRecentWindow(ctx context.Context) error
 }
 
+// CacheProjectionServiceContract 定义当前服务对外暴露的能力契约。
 type CacheProjectionServiceContract interface {
 	// HandleCacheProjectionEvent 处理缓存投影事件，根据事件类型和数据更新对应的缓存状态，确保系统内的缓存数据与底层数据源保持一致。
 	HandleCacheProjectionEvent(ctx context.Context, event *eventdto.CacheProjectionEvent) error
@@ -157,6 +169,7 @@ type CacheProjectionServiceContract interface {
 	RebuildAll(ctx context.Context) error
 }
 
+// ApiServiceContract 定义当前服务对外暴露的能力契约。
 type ApiServiceContract interface {
 	GetAPIList(ctx context.Context, filter *request.ApiListFilter) ([]*entity.API, map[uint]*entity.Menu, int64, error)
 	GetAPIByID(ctx context.Context, id uint) (*entity.API, *entity.Menu, error)
@@ -166,6 +179,7 @@ type ApiServiceContract interface {
 	SyncAPI(ctx context.Context, deleteRemoved bool) (added, restored, markedMissing, archived int, total int, err error)
 }
 
+// MenuServiceContract 定义当前服务对外暴露的能力契约。
 type MenuServiceContract interface {
 	GetMenuTree(ctx context.Context) ([]*resp.MenuItem, error)
 	GetMyMenus(ctx context.Context, userID uint, orgID *uint) ([]*resp.MenuItem, error)
@@ -177,6 +191,7 @@ type MenuServiceContract interface {
 	BindAPIs(ctx context.Context, menuID uint, apiIDs []uint) error
 }
 
+// RoleServiceContract 定义当前服务对外暴露的能力契约。
 type RoleServiceContract interface {
 	GetRoleList(ctx context.Context, filter *request.RoleListFilter) ([]*entity.Role, int64, error)
 	CreateRole(ctx context.Context, req *request.CreateRoleReq) error
@@ -186,6 +201,7 @@ type RoleServiceContract interface {
 	GetRoleMenuAPIMap(ctx context.Context, roleID uint, maxLevel *int) (*resp.RoleMenuAPIMappingItem, error)
 }
 
+// ImageServiceContract 定义当前服务对外暴露的能力契约。
 type ImageServiceContract interface {
 	Upload(ctx context.Context, files []*multipart.FileHeader, req *request.UploadImageReq, uploaderID uint) ([]resp.ImageItem, error)
 	Delete(ctx context.Context, ids []uint) error
@@ -193,6 +209,7 @@ type ImageServiceContract interface {
 	CleanOrphanFiles(ctx context.Context) error
 }
 
+// ObservabilityServiceContract 定义当前服务对外暴露的能力契约。
 type ObservabilityServiceContract interface {
 	QueryMetrics(ctx context.Context, req *request.ObservabilityMetricsQueryReq) (*resp.ObservabilityMetricsQueryResp, error)
 	QueryRuntimeMetrics(ctx context.Context, req *request.ObservabilityRuntimeMetricQueryReq) (*resp.ObservabilityRuntimeMetricQueryResp, error)
@@ -208,6 +225,18 @@ type ObservabilityServiceContract interface {
 	QueryTrace(ctx context.Context, req *request.ObservabilityTraceQueryReq) (*resp.ObservabilityTraceSummaryQueryResp, error)
 }
 
+// AIServiceContract 定义当前服务对外暴露的能力契约。
+type AIServiceContract interface {
+	CreateConversation(ctx context.Context, userID uint, req *request.CreateAssistantConversationReq) (*resp.AssistantConversationResp, error)
+	ListConversations(ctx context.Context, userID uint) ([]*resp.AssistantConversationResp, error)
+	ListMessages(ctx context.Context, userID uint, conversationID string) ([]*resp.AssistantMessageResp, error)
+	DeleteConversation(ctx context.Context, userID uint, conversationID string) error
+	StreamConversation(ctx context.Context, userID uint, conversationID string, req *request.StreamAssistantMessageReq, writer streamsse.StreamWriter) error
+	SubmitDecision(ctx context.Context, userID uint, conversationID, interruptID string, req *request.SubmitAssistantDecisionReq) (*resp.AssistantInterruptDecisionAcceptedResp, error)
+	RevokeUserSessions(ctx context.Context, userID uint, reason string) int
+}
+
+// Supplier 用于集中提供当前模块依赖对象。
 type Supplier interface {
 	GetJWTSvc() JWTServiceContract
 	GetAuthorizationSvc() AuthorizationServiceContract
@@ -225,4 +254,5 @@ type Supplier interface {
 	GetObservabilitySvc() ObservabilityServiceContract
 	GetCacheProjectionSvc() CacheProjectionServiceContract
 	GetOJDailyStatsProjectionSvc() OJDailyStatsProjectionServiceContract
+	GetAISvc() AIServiceContract
 }

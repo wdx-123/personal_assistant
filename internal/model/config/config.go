@@ -20,10 +20,24 @@ type Config struct {
 	Crawler       Crawler       `json:"crawler" yaml:"crawler"`
 	Task          Task          `json:"task" yaml:"task"`                   // 定时任务配置
 	Messaging     Messaging     `json:"messaging" yaml:"messaging"`         // 消息队列配置
+	SSE           SSE           `json:"sse" yaml:"sse"`                     // SSE 实时推送配置
 	RateLimit     RateLimit     `json:"rate_limit" yaml:"rate_limit"`       // 限流配置
 	Observability Observability `json:"observability" yaml:"observability"` // 观测基础设施配置
 }
 
+// NewConfig 负责创建并返回当前对象所需的实例。
+// 参数：
+//   - 无。
+//
+// 返回值：
+//   - *Config：当前函数返回的目标对象；失败时可能为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func NewConfig() *Config {
 	// Redis配置初始化
 	_redis := &Redis{
@@ -283,6 +297,19 @@ func NewConfig() *Config {
 		),
 	}
 
+	_sse := &SSE{
+		HeartbeatIntervalSeconds: viper.GetInt("sse.heartbeat_interval_seconds"),
+		WriteTimeoutSeconds:      viper.GetInt("sse.write_timeout_seconds"),
+		QueueCapacity:            viper.GetInt("sse.queue_capacity"),
+		MaxConnectionsPerSubject: viper.GetInt("sse.max_connections_per_subject"),
+		ReplayLimit:              viper.GetInt("sse.replay_limit"),
+		AllowedOrigins:           viper.GetStringSlice("sse.allowed_origins"),
+		DrainTimeoutSeconds:      viper.GetInt("sse.drain_timeout_seconds"),
+		PubSubChannelPrefix:      viper.GetString("sse.pubsub_channel_prefix"),
+		ReplayStreamPrefix:       viper.GetString("sse.replay_stream_prefix"),
+		AIRuntimeMode:            viper.GetString("sse.ai_runtime_mode"),
+	}
+
 	_observability := &Observability{
 		Enabled:     viper.GetBool("observability.enabled"),
 		ServiceName: viper.GetString("observability.service_name"),
@@ -354,11 +381,25 @@ func NewConfig() *Config {
 		Crawler:       *_crawler,
 		Task:          *_task,
 		Messaging:     *_messaging,
+		SSE:           *_sse,
 		RateLimit:     *_rateLimit,
 		Observability: *_observability,
 	}
 }
 
+// getCrawlerAPIPrefix 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - key：当前函数需要消费的输入参数。
+//
+// 返回值：
+//   - string：当前函数生成或返回的字符串结果。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func getCrawlerAPIPrefix(key string) string {
 	if !viper.IsSet(key) {
 		return "/v2"

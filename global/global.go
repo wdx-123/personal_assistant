@@ -1,6 +1,7 @@
 package global
 
 import (
+	streaminfra "personal_assistant/internal/infrastructure/sse"
 	"personal_assistant/internal/model/config"
 	obsmetrics "personal_assistant/pkg/observability/metrics"
 	obstrace "personal_assistant/pkg/observability/trace"
@@ -33,4 +34,7 @@ var (
 	// 观测基础设施后端
 	ObservabilityMetrics obsmetrics.MetricsBackend // 观测指标后端
 	ObservabilityTraces  obstrace.TraceBackend     // 全链路追踪后端
+
+	// SSE 实时推送基础设施
+	StreamInfra *streaminfra.Infrastructure
 )

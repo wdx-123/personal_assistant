@@ -17,7 +17,7 @@ func initServer(address string, router *gin.Engine) server {
 		Addr:           address,          // 设置服务器监听的地址
 		Handler:        router,           // 设置请求处理器（路由）
 		ReadTimeout:    10 * time.Minute, // 设置请求的读取超时时间为 10 分钟
-		WriteTimeout:   10 * time.Minute, // 设置响应的写入超时时间为 10 分钟
+		WriteTimeout:   0,                // SSE 通过单次写 deadline 控制，不使用全局写超时
 		MaxHeaderBytes: 1 << 20,          // 设置最大请求头的大小（1MB）
 	}
 }

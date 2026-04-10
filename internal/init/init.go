@@ -22,6 +22,7 @@ import (
 	"personal_assistant/internal/service/system"
 )
 
+// Init 负责初始化当前模块所需的运行时资源。
 func Init() {
 	// 尝试加载 .env 文件，
 	// 如果不存在也不报错（生产环境可能直接用环境变量）
@@ -53,6 +54,8 @@ func Init() {
 
 	// 连接redis
 	global.Redis = core.ConnectRedis()
+	// 初始化项目级 SSE 基础设施（依赖 Redis）
+	core.InitSSEInfrastructure()
 	// 初始化Casbin
 	core.InitCasbin()
 	// 初始化存储驱动（本地/七牛，七牛自动包装熔断器）

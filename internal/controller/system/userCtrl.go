@@ -18,13 +18,17 @@ import (
 	"go.uber.org/zap"
 )
 
+// UserCtrl 封装当前领域的控制器入口。
 type UserCtrl struct {
 	userService serviceContract.UserServiceContract
 	jwtService  serviceContract.JWTServiceContract
+	aiService   serviceContract.AIServiceContract
 }
 
 // Register 注册
 func (u *UserCtrl) Register(ctx *gin.Context) {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	var req request.RegisterReq
 	err := ctx.ShouldBindJSON(&req)
 	if err != nil {
@@ -34,6 +38,8 @@ func (u *UserCtrl) Register(ctx *gin.Context) {
 	}
 
 	// 执行注册
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	user, err := u.userService.Register(ctx.Request.Context(), &req)
 	if err != nil {
 		global.Log.Error(
@@ -49,11 +55,15 @@ func (u *UserCtrl) Register(ctx *gin.Context) {
 		zap.Uint("userID", user.ID))
 
 	// 注册成功后，直接生成 Token 并返回（自动登录）
+	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
+	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	u.TokenNext(ctx, *user)
 }
 
 // Login 登录接口
 func (u *UserCtrl) Login(ctx *gin.Context) {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	var req request.LoginReq
 	err := ctx.ShouldBindJSON(&req)
 	if err != nil {
@@ -65,6 +75,8 @@ func (u *UserCtrl) Login(ctx *gin.Context) {
 	}
 
 	// 执行手机号登录
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	user, err := u.userService.PhoneLogin(ctx, &req)
 	if err != nil {
 		global.Log.Error("手机号登录失败",
@@ -76,12 +88,32 @@ func (u *UserCtrl) Login(ctx *gin.Context) {
 		return
 	}
 
+	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
+	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	u.TokenNext(ctx, *user)
 }
 
+// TokenNext 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - c：调用方传入的目标对象或配置实例。
+//   - user：当前函数需要消费的输入参数。
+//
+// 返回值：
+//   - 无。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func (u *UserCtrl) TokenNext(c *gin.Context, user entity.User) {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	helper := response.NewAPIHelper(c, "LoginTokenNext")
 	loginResp, refreshToken, refreshExpiresAt, jwtErr := u.jwtService.IssueLoginTokens(c.Request.Context(), user)
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	if jwtErr != nil {
 		helper.CommonError(jwtErr.Message, jwtErr.Code, jwtErr.Err)
 		response.NewResponse[resp.AuthResponse, resp.AuthResponse](c).
@@ -101,6 +133,8 @@ func (u *UserCtrl) TokenNext(c *gin.Context, user entity.User) {
 		jwt.SetRefreshToken(c, refreshToken, maxAge)
 	}
 
+	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
+	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	response.NewResponse[resp.LoginResponse, resp.LoginResponse](c).
 		SetTrans(&resp.LoginResponse{}).
 		Success("登录成功", loginResp)
@@ -110,6 +144,7 @@ func (u *UserCtrl) TokenNext(c *gin.Context, user entity.User) {
 func (u *UserCtrl) Logout(c *gin.Context) {
 	// 读取必要信息（尽量复用已有的工具函数）
 	uid := jwt.GetUUID(c)
+	userID := jwt.GetUserID(c)
 	jwtStr := jwt.GetRefreshToken(c)
 
 	// 清除刷新令牌 Cookie（HttpOnly）
@@ -129,6 +164,9 @@ func (u *UserCtrl) Logout(c *gin.Context) {
 			entity.JwtBlacklist{JWT: jwtStr}); err != nil {
 			global.Log.Warn("加入刷新令牌黑名单失败", zap.Error(err))
 		}
+	}
+	if u.aiService != nil && userID > 0 {
+		u.aiService.RevokeUserSessions(c.Request.Context(), userID, "logout")
 	}
 
 	response.NewResponse[any, any](c).
@@ -211,6 +249,9 @@ func (u *UserCtrl) DeactivateAccount(c *gin.Context) {
 		response.BizFailWithError(err, c)
 		return
 	}
+	if u.aiService != nil {
+		u.aiService.RevokeUserSessions(c.Request.Context(), userID, "deactivate")
+	}
 	jwt.ClearRefreshToken(c)
 	response.BizOkWithMessage("账号已禁用", c)
 }
@@ -255,6 +296,8 @@ func (u *UserCtrl) GetUserDetail(c *gin.Context) {
 
 // GetUserRoles 获取用户在组织下的角色
 func (u *UserCtrl) GetUserRoles(c *gin.Context) {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	id := util.ParseUint(c.Param("id"))
 	if id == 0 {
 		response.BizFailWithMessage("ID无效", c)
@@ -266,6 +309,8 @@ func (u *UserCtrl) GetUserRoles(c *gin.Context) {
 		return
 	}
 
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	roles, err := u.userService.GetUserRoles(c.Request.Context(), uint(id), uint(orgID))
 	if err != nil {
 		response.BizFailWithError(err, c)
@@ -282,11 +327,15 @@ func (u *UserCtrl) GetUserRoles(c *gin.Context) {
 		}
 	}
 
+	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
+	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	response.BizOkWithData(list, c)
 }
 
 // GetUserRoleMatrix 获取用户角色分配矩阵
 func (u *UserCtrl) GetUserRoleMatrix(c *gin.Context) {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	id := util.ParseUint(c.Param("id"))
 	if id == 0 {
 		response.BizFailWithMessage("ID无效", c)
@@ -299,6 +348,8 @@ func (u *UserCtrl) GetUserRoleMatrix(c *gin.Context) {
 		response.BizFailWithCodeMsg(bizerrors.CodeInvalidParams, "参数错误", c)
 		return
 	}
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	if query.OrgID == 0 {
 		response.BizFailWithCodeMsg(bizerrors.CodeInvalidParams, "必须指定组织ID", c)
 		return
@@ -318,11 +369,15 @@ func (u *UserCtrl) GetUserRoleMatrix(c *gin.Context) {
 		return
 	}
 
+	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
+	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	response.BizOkWithData(matrix, c)
 }
 
 // AssignRole 分配角色
 func (u *UserCtrl) AssignRole(c *gin.Context) {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	var req request.AssignUserRoleReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		global.Log.Error("分配角色参数绑定失败", zap.Error(err))
@@ -330,6 +385,8 @@ func (u *UserCtrl) AssignRole(c *gin.Context) {
 		return
 	}
 
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	operatorID := jwt.GetUserID(c)
 	if err := u.userService.AssignRole(c.Request.Context(), operatorID, &req); err != nil {
 		global.Log.Error(
@@ -343,11 +400,15 @@ func (u *UserCtrl) AssignRole(c *gin.Context) {
 		return
 	}
 
+	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
+	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	response.BizOk(c)
 }
 
 // UpdateUserStatus 管理员启用/禁用账号
 func (u *UserCtrl) UpdateUserStatus(c *gin.Context) {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	id := util.ParseUint(c.Param("id"))
 	if id == 0 {
 		response.BizFailWithMessage("ID无效", c)
@@ -355,6 +416,8 @@ func (u *UserCtrl) UpdateUserStatus(c *gin.Context) {
 	}
 
 	var req request.AdminUpdateUserStatusReq
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BizFailWithMessage("参数错误", c)
 		return
@@ -366,6 +429,8 @@ func (u *UserCtrl) UpdateUserStatus(c *gin.Context) {
 		response.BizFailWithError(err, c)
 		return
 	}
+	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
+	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	response.BizOkWithMessage("用户状态更新成功", c)
 }
 
@@ -373,6 +438,8 @@ func (u *UserCtrl) UpdateUserStatus(c *gin.Context) {
 
 // entityToUserDetail 将用户实体转换为详情DTO
 func entityToUserDetail(user *entity.User) *resp.UserDetailItem {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	item := &resp.UserDetailItem{
 		ID:           user.ID,
 		UUID:         user.UUID.String(),
@@ -394,11 +461,15 @@ func entityToUserDetail(user *entity.User) *resp.UserDetailItem {
 	if user.DisabledAt != nil {
 		item.DisabledAt = user.DisabledAt.Format(time.DateTime)
 	}
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	if user.CurrentOrg != nil {
 		item.CurrentOrg = &resp.OrgSimpleItem{
 			ID:   user.CurrentOrg.ID,
 			Name: user.CurrentOrg.Name,
 		}
 	}
+	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
+	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	return item
 }

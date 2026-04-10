@@ -24,6 +24,9 @@ func SQL() error {
 	db := global.DB.Set("gorm:table_options", "ENGINE=InnoDB")
 
 	if err := db.AutoMigrate(
+		&entity.AIConversation{},          // AI 会话表
+		&entity.AIMessage{},               // AI 消息表
+		&entity.AIInterrupt{},             // AI 中断表
 		&entity.User{},                    // 用户表
 		&entity.Org{},                     // 组织表
 		&entity.OrgMember{},               // 组织成员状态表 - 身份上的
@@ -170,6 +173,8 @@ func seedBuiltinRoles() error {
 
 // seedBuiltinCapabilities 初始化系统内置 capability（幂等）。
 func seedBuiltinCapabilities() error {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	for _, seed := range consts.BuiltinCapabilitySeeds() {
 		record := entity.Capability{
 			Code:      seed.Code,
@@ -207,16 +212,22 @@ func seedBuiltinCapabilities() error {
 			return err
 		}
 	}
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	return nil
 }
 
 // seedBuiltinRoleCapabilities 确保组织管理员默认持有全部组织域 capability。
 func seedBuiltinRoleCapabilities() error {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	var orgAdmin entity.Role
 	if err := global.DB.Where("code = ?", consts.RoleCodeOrgAdmin).First(&orgAdmin).Error; err != nil {
 		return err
 	}
 
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	for _, code := range consts.BuiltinOrgAdminCapabilityCodes() {
 		var capability entity.Capability
 		if err := global.DB.Where("code = ?", code).First(&capability).Error; err != nil {
@@ -230,11 +241,15 @@ func seedBuiltinRoleCapabilities() error {
 			return err
 		}
 	}
+	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
+	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	return nil
 }
 
 // migrateOrgMemberLifecycleData 迁移组织成员生命周期相关的数据和结构，确保数据一致性和完整性
 func migrateOrgMemberLifecycleData(db *gorm.DB) error {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	if err := ensureLifecycleSchema(db); err != nil {
 		return err
 	}
@@ -259,6 +274,8 @@ func migrateOrgMemberLifecycleData(db *gorm.DB) error {
 	if err := deduplicateOrgMembers(db); err != nil {
 		return err
 	}
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	if err := ensureUniqueIndex(db, "org_members", "uk_org_member", "org_id", "user_id"); err != nil {
 		return err
 	}
@@ -283,6 +300,8 @@ func migrateOrgMemberLifecycleData(db *gorm.DB) error {
 		return err
 	}
 	// 历史 users.current_org_id=1 的用户仅补入全体成员组织，不再回写到 org_id=1。
+	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
+	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	return backfillUsersByCurrentOrgToOrgMembers(
 		db,
 		legacyCurrentOrgID,
@@ -295,6 +314,8 @@ func migrateOrgMemberLifecycleData(db *gorm.DB) error {
 // 说明：理论上 AutoMigrate 会自动补列，但在部分历史环境中可能出现“列未就绪即被查询”的情况，
 // 这里增加显式兜底，避免启动失败。
 func ensureLifecycleSchema(db *gorm.DB) error {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	if err := ensureColumn(db, &entity.User{}, "Status"); err != nil {
 		return err
 	}
@@ -304,6 +325,8 @@ func ensureLifecycleSchema(db *gorm.DB) error {
 	if err := ensureColumn(db, &entity.User{}, "DisabledBy"); err != nil {
 		return err
 	}
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	if err := ensureColumn(db, &entity.User{}, "DisabledReason"); err != nil {
 		return err
 	}
@@ -313,9 +336,26 @@ func ensureLifecycleSchema(db *gorm.DB) error {
 	if err := ensureColumn(db, &entity.Org{}, "BuiltinKey"); err != nil {
 		return err
 	}
+	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
+	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	return nil
 }
 
+// ensureColumn 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//   - model：当前函数需要消费的输入参数。
+//   - field：当前函数需要消费的输入参数。
+//
+// 返回值：
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func ensureColumn(db *gorm.DB, model any, field string) error {
 	// 使用全新 Session，避免复用链路上残留的 Statement/Table 状态，
 	// 导致 GORM 在 AddColumn 时错误地把目标表解析成历史上下文中的临时表名。
@@ -326,12 +366,29 @@ func ensureColumn(db *gorm.DB, model any, field string) error {
 	return migrator.AddColumn(model, field)
 }
 
+// normalizeOrgInviteCodes 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//
+// 返回值：
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func normalizeOrgInviteCodes(db *gorm.DB) error {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	var orgs []entity.Org
 	if err := db.Unscoped().Select("id", "code").Order("id ASC").Find(&orgs).Error; err != nil {
 		return err
 	}
 
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	usedCodes := make(map[string]struct{}, len(orgs))
 	for _, org := range orgs {
 		code := strings.TrimSpace(org.Code)
@@ -348,9 +405,25 @@ func normalizeOrgInviteCodes(db *gorm.DB) error {
 		}
 		usedCodes[code] = struct{}{}
 	}
+	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
+	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	return nil
 }
 
+// generateUniqueOrgCode 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - used：当前函数需要消费的输入参数。
+//
+// 返回值：
+//   - string：当前函数生成或返回的字符串结果。
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func generateUniqueOrgCode(used map[string]struct{}) (string, error) {
 	for i := 0; i < 10; i++ {
 		raw := strings.ToUpper(strings.ReplaceAll(uuid.Must(uuid.NewV4()).String(), "-", ""))
@@ -365,7 +438,22 @@ func generateUniqueOrgCode(used map[string]struct{}) (string, error) {
 	return "", fmt.Errorf("failed to generate unique org code")
 }
 
+// normalizeUserStatusWithFreeze 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//
+// 返回值：
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func normalizeUserStatusWithFreeze(db *gorm.DB) error {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	if err := ensureUsersStatusColumnsBeforeNormalize(db); err != nil {
 		return fmt.Errorf("ensure users lifecycle columns failed: %w", err)
 	}
@@ -377,6 +465,8 @@ func normalizeUserStatusWithFreeze(db *gorm.DB) error {
 	}
 
 	hasFreeze, err := columnExists(db, "users", "freeze")
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	if err != nil {
 		return err
 	}
@@ -384,6 +474,8 @@ func normalizeUserStatusWithFreeze(db *gorm.DB) error {
 		return nil
 	}
 
+	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
+	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	return db.Model(&entity.User{}).
 		Where("freeze = ? AND status = ?", true, consts.UserStatusActive).
 		Updates(map[string]any{
@@ -395,6 +487,8 @@ func normalizeUserStatusWithFreeze(db *gorm.DB) error {
 // ensureUsersStatusColumnsBeforeNormalize 在执行 status 相关数据修复前，确保列已存在。
 // 先走 GORM Migrator，再用 SQL 兜底，兼容历史库。
 func ensureUsersStatusColumnsBeforeNormalize(db *gorm.DB) error {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	if err := ensureColumn(db, &entity.User{}, "Freeze"); err != nil {
 		return err
 	}
@@ -412,6 +506,8 @@ func ensureUsersStatusColumnsBeforeNormalize(db *gorm.DB) error {
 	}
 
 	// SQL 兜底：防止个别环境下 HasColumn/AddColumn 未按预期生效。
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	if err := ensureMySQLColumnWithDDL(
 		db,
 		"users",
@@ -452,9 +548,27 @@ func ensureUsersStatusColumnsBeforeNormalize(db *gorm.DB) error {
 	); err != nil {
 		return err
 	}
+	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
+	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	return nil
 }
 
+// ensureMySQLColumnWithDDL 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//   - tableName：当前函数需要消费的输入参数。
+//   - columnName：当前函数需要消费的输入参数。
+//   - ddl：当前函数需要消费的输入参数。
+//
+// 返回值：
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func ensureMySQLColumnWithDDL(db *gorm.DB, tableName, columnName, ddl string) error {
 	exists, err := columnExists(db, tableName, columnName)
 	if err != nil {
@@ -473,10 +587,36 @@ func ensureMySQLColumnWithDDL(db *gorm.DB, tableName, columnName, ddl string) er
 	return nil
 }
 
+// cleanupSoftDeletedUserOrgRoles 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//
+// 返回值：
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func cleanupSoftDeletedUserOrgRoles(db *gorm.DB) error {
 	return db.Exec("DELETE FROM user_org_roles WHERE deleted_at IS NOT NULL").Error
 }
 
+// deduplicateUserOrgRoles 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//
+// 返回值：
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func deduplicateUserOrgRoles(db *gorm.DB) error {
 	return db.Exec(`
 		DELETE u1
@@ -489,6 +629,19 @@ func deduplicateUserOrgRoles(db *gorm.DB) error {
 	`).Error
 }
 
+// deduplicateOrgMembers 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//
+// 返回值：
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func deduplicateOrgMembers(db *gorm.DB) error {
 	return db.Exec(`
 		DELETE m1
@@ -500,7 +653,22 @@ func deduplicateOrgMembers(db *gorm.DB) error {
 	`).Error
 }
 
+// migrateOJTaskSchema 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//
+// 返回值：
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func migrateOJTaskSchema(db *gorm.DB) error {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	if err := ensureUniqueIndex(db, "oj_tasks", "uk_oj_tasks_root_version", "root_task_id", "version_no"); err != nil {
 		return err
 	}
@@ -534,6 +702,8 @@ func migrateOJTaskSchema(db *gorm.DB) error {
 	if err := ensureUniqueIndex(db, "oj_question_intakes", "uk_oj_question_intakes_task_item", "task_item_id"); err != nil {
 		return err
 	}
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	if err := ensureIndex(db, "oj_question_intakes", "idx_oj_question_intakes_platform_title_status", "platform", "input_title", "status"); err != nil {
 		return err
 	}
@@ -567,10 +737,27 @@ func migrateOJTaskSchema(db *gorm.DB) error {
 	if err := ensureIndex(db, "oj_task_execution_user_items", "idx_oj_task_execution_user_items_execution_user_status_reason", "execution_user_id", "result_status", "reason"); err != nil {
 		return err
 	}
+	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
+	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	return ensureIndex(db, "oj_task_execution_user_items", "idx_oj_task_execution_user_items_execution_user_result", "execution_id", "user_id", "result_status")
 }
 
+// backfillOJTaskItemSchema 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//
+// 返回值：
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func backfillOJTaskItemSchema(db *gorm.DB) error {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	if !db.Migrator().HasTable("oj_task_items") {
 		return nil
 	}
@@ -597,6 +784,8 @@ func backfillOJTaskItemSchema(db *gorm.DB) error {
 		inputTitleExpr = "COALESCE(NULLIF(input_title, ''), NULLIF(question_code, ''), '')"
 	}
 
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	resolvedQuestionIDExpr := "COALESCE(resolved_question_id, 0)"
 	if hasPlatformQuestionID {
 		resolvedQuestionIDExpr = "CASE WHEN COALESCE(resolved_question_id, 0) > 0 THEN resolved_question_id ELSE COALESCE(platform_question_id, 0) END"
@@ -636,10 +825,27 @@ func backfillOJTaskItemSchema(db *gorm.DB) error {
 			resolution_status = %s
 		WHERE deleted_at IS NULL
 	`, inputTitleExpr, resolvedQuestionIDExpr, resolvedQuestionCodeExpr, resolvedTitleSnapshotExpr, resolutionStatusExpr)
+	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
+	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	return db.Exec(updateSQL).Error
 }
 
+// relaxLegacyOJTaskItemColumns 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//
+// 返回值：
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func relaxLegacyOJTaskItemColumns(db *gorm.DB) error {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	if !db.Migrator().HasTable("oj_task_items") {
 		return nil
 	}
@@ -665,6 +871,8 @@ func relaxLegacyOJTaskItemColumns(db *gorm.DB) error {
 		}
 	}
 
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	hasPlatformQuestionID, err := columnExists(db, "oj_task_items", "platform_question_id")
 	if err != nil {
 		return err
@@ -688,13 +896,32 @@ func relaxLegacyOJTaskItemColumns(db *gorm.DB) error {
 		}
 	}
 
+	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
+	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	return nil
 }
 
+// syncOJQuestionIntakesFromTaskItems 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//
+// 返回值：
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func syncOJQuestionIntakesFromTaskItems(db *gorm.DB) error {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	if !db.Migrator().HasTable("oj_task_items") || !db.Migrator().HasTable("oj_question_intakes") {
 		return nil
 	}
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	return db.Exec(`
 		INSERT INTO oj_question_intakes (
 			task_id,
@@ -732,6 +959,22 @@ func syncOJQuestionIntakesFromTaskItems(db *gorm.DB) error {
 	`).Error
 }
 
+// ensureUniqueIndex 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//   - tableName：当前函数需要消费的输入参数。
+//   - indexName：当前函数需要消费的输入参数。
+//   - columns：当前函数需要消费的输入参数。
+//
+// 返回值：
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func ensureUniqueIndex(db *gorm.DB, tableName, indexName string, columns ...string) error {
 	exists, err := indexExists(db, tableName, indexName)
 	if err != nil {
@@ -745,6 +988,22 @@ func ensureUniqueIndex(db *gorm.DB, tableName, indexName string, columns ...stri
 	).Error
 }
 
+// ensureIndex 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//   - tableName：当前函数需要消费的输入参数。
+//   - indexName：当前函数需要消费的输入参数。
+//   - columns：当前函数需要消费的输入参数。
+//
+// 返回值：
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func ensureIndex(db *gorm.DB, tableName, indexName string, columns ...string) error {
 	exists, err := indexExists(db, tableName, indexName)
 	if err != nil {
@@ -758,6 +1017,21 @@ func ensureIndex(db *gorm.DB, tableName, indexName string, columns ...string) er
 	).Error
 }
 
+// dropIndexIfExists 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//   - tableName：当前函数需要消费的输入参数。
+//   - indexName：当前函数需要消费的输入参数。
+//
+// 返回值：
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func dropIndexIfExists(db *gorm.DB, tableName, indexName string) error {
 	exists, err := indexExists(db, tableName, indexName)
 	if err != nil {
@@ -769,6 +1043,22 @@ func dropIndexIfExists(db *gorm.DB, tableName, indexName string) error {
 	return db.Exec(fmt.Sprintf("DROP INDEX %s ON %s", indexName, tableName)).Error
 }
 
+// indexExists 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//   - tableName：当前函数需要消费的输入参数。
+//   - indexName：当前函数需要消费的输入参数。
+//
+// 返回值：
+//   - bool：表示当前操作是否成功、命中或可继续执行。
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func indexExists(db *gorm.DB, tableName, indexName string) (bool, error) {
 	var count int64
 	row := db.Raw(
@@ -786,6 +1076,22 @@ func indexExists(db *gorm.DB, tableName, indexName string) (bool, error) {
 	return count > 0, nil
 }
 
+// columnExists 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//   - tableName：当前函数需要消费的输入参数。
+//   - columnName：当前函数需要消费的输入参数。
+//
+// 返回值：
+//   - bool：表示当前操作是否成功、命中或可继续执行。
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func columnExists(db *gorm.DB, tableName, columnName string) (bool, error) {
 	var count int64
 	row := db.Raw(
@@ -803,6 +1109,19 @@ func columnExists(db *gorm.DB, tableName, columnName string) (bool, error) {
 	return count > 0, nil
 }
 
+// migrateAPILifecycleData 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//
+// 返回值：
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func migrateAPILifecycleData(db *gorm.DB) error {
 	if !db.Migrator().HasTable(&entity.API{}) {
 		return nil
@@ -815,7 +1134,23 @@ func migrateAPILifecycleData(db *gorm.DB) error {
 		Error
 }
 
+// ensureAllMembersOrg 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//
+// 返回值：
+//   - uint：当前函数返回的处理结果。
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func ensureAllMembersOrg(db *gorm.DB) (uint, error) {
+	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
+	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
 	var org entity.Org
 	key := consts.OrgBuiltinKeyAllMembers
 	queryDB := db.Session(&gorm.Session{NewDB: true}).Unscoped()
@@ -860,6 +1195,8 @@ func ensureAllMembersOrg(db *gorm.DB) (uint, error) {
 		return org.ID, nil
 	}
 
+	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
+	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	updates := map[string]any{
 		"is_builtin": true,
 	}
@@ -881,9 +1218,25 @@ func ensureAllMembersOrg(db *gorm.DB) (uint, error) {
 			return 0, err
 		}
 	}
+	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
+	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	return org.ID, nil
 }
 
+// generateAvailableOrgCodeFromDB 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//
+// 返回值：
+//   - string：当前函数生成或返回的字符串结果。
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func generateAvailableOrgCodeFromDB(db *gorm.DB) (string, error) {
 	for i := 0; i < 10; i++ {
 		code := "ORG-" + strings.ToUpper(strings.ReplaceAll(uuid.Must(uuid.NewV4()).String(), "-", ""))[:10]
@@ -898,6 +1251,19 @@ func generateAvailableOrgCodeFromDB(db *gorm.DB) (string, error) {
 	return "", fmt.Errorf("failed to generate org code from db")
 }
 
+// backfillOrgMembersFromRoleRelations 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//
+// 返回值：
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func backfillOrgMembersFromRoleRelations(db *gorm.DB) error {
 	return db.Exec(`
 		INSERT INTO org_members (
@@ -939,6 +1305,20 @@ func backfillUsersByCurrentOrgToOrgMembers(
 	`, targetOrgID, consts.OrgMemberStatusActive, string(joinSource), sourceCurrentOrgID).Error
 }
 
+// getMemberRoleID 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - db：调用方传入的目标对象或配置实例。
+//
+// 返回值：
+//   - uint：当前函数返回的处理结果。
+//   - error：处理失败原因；成功时为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func getMemberRoleID(db *gorm.DB) (uint, error) {
 	var memberRole entity.Role
 	if err := db.Session(&gorm.Session{NewDB: true}).

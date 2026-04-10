@@ -17,12 +17,26 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// Routers 定义当前文件中的核心数据结构或能力抽象。
 type Routers struct {
 	System system.RouterGroup
 }
 
 var GroupApp = new(Routers)
 
+// InitRouter 负责初始化当前模块所需的运行时资源。
+// 参数：
+//   - 无。
+//
+// 返回值：
+//   - *gin.Engine：当前函数返回的目标对象；失败时可能为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func InitRouter() *gin.Engine {
 	Router := gin.New()
 	// 应用核心中间件（日志、恢复、CORS）
@@ -31,12 +45,12 @@ func InitRouter() *gin.Engine {
 	mountStatic(Router)
 	// 配置并挂载会话中间件
 	attachSession(Router)
-	// 超时中间间
-	Router.Use(middleware.TimeoutMiddleware(30 * time.Second))
 
 	systemRouter := GroupApp.System
+	timeoutMW := middleware.TimeoutMiddleware(30 * time.Second)
 
 	PublicGroup := Router.Group("")
+	PublicGroup.Use(timeoutMW)
 	{
 		// 健康检查路由
 		systemRouter.InitHealthRouter(PublicGroup)
@@ -54,9 +68,10 @@ func InitRouter() *gin.Engine {
 	// 系统管理路由 - 需要JWT认证与权限管理
 	SystemGroup := Router.Group("")
 	permissionMW := middleware.NewPermissionMiddleware(service.GroupApp) // 获取实例
-	SystemGroup.Use(middleware.JWTAuth())                                // JWT认证
-	SystemGroup.Use(middleware.ActiveUserMW())                           // 账号活跃态校验
-	SystemGroup.Use(permissionMW.CheckPermission())                      // 权限中间件
+	SystemGroup.Use(timeoutMW)
+	SystemGroup.Use(middleware.JWTAuth())           // JWT认证
+	SystemGroup.Use(middleware.ActiveUserMW())      // 账号活跃态校验
+	SystemGroup.Use(permissionMW.CheckPermission()) // 权限中间件
 	{
 		// 路由管理(api管理)
 		systemRouter.InitApiRouter(SystemGroup)
@@ -73,11 +88,16 @@ func InitRouter() *gin.Engine {
 	}
 	// 业务路由组 - 需要JWT，但不需严格的权限控制
 	BusinessGroup := Router.Group("")
+	BusinessGroup.Use(timeoutMW)
 	BusinessGroup.Use(middleware.JWTAuth())
 	BusinessGroup.Use(middleware.ActiveUserMW())
+	BusinessSSEGroup := Router.Group("")
+	BusinessSSEGroup.Use(middleware.JWTAuth())
+	BusinessSSEGroup.Use(middleware.ActiveUserMW())
 	uploadRateLimitMW := middleware.UploadRateLimitMiddleware(global.UploadGlobalLimiter, global.UploadUserLimiter)
 	ojBindRateLimitMW := middleware.OJBindRateLimitMiddleware(global.OJBindLimiters)
 	{
+		systemRouter.InitAIRouter(BusinessGroup)
 		// OJ 相关路由
 		systemRouter.InitOJRouter(BusinessGroup, ojBindRateLimitMW)
 		// OJ 任务相关路由
@@ -88,6 +108,9 @@ func InitRouter() *gin.Engine {
 		systemRouter.InitOrgBusinessRouter(BusinessGroup)
 		// 用户业务路由：登录即可维护个人资料、登出
 		systemRouter.InitUserBusinessRouter(BusinessGroup)
+	}
+	{
+		systemRouter.InitAISSERouter(BusinessSSEGroup)
 	}
 	return Router
 }
