@@ -88,6 +88,12 @@ func SQL() error {
 	if err := seedBuiltinRoles(); err != nil {
 		return err
 	}
+	if err := seedBuiltinAssistantMenu(); err != nil {
+		return err
+	}
+	if err := seedBuiltinAssistantRoleMenus(); err != nil {
+		return err
+	}
 	if err := seedBuiltinCapabilities(); err != nil {
 		return err
 	}
@@ -103,6 +109,17 @@ func SQL() error {
 
 	return migrateOrgMemberLifecycleData(db)
 }
+
+const (
+	builtinAssistantMenuCode          = "console:assistant"
+	builtinAssistantMenuName          = "AI助手"
+	builtinAssistantMenuIcon          = "RobotOutlined"
+	builtinAssistantMenuRouteName     = "ConsoleAssistant"
+	builtinAssistantMenuRoutePath     = "/console/assistant"
+	builtinAssistantMenuComponentPath = "@/views/Console/Workbench/AssistantWorkbench.vue"
+	builtinAssistantMenuDesc          = "AI 助手工作台"
+	builtinAssistantMenuSort          = 15
+)
 
 // normalizeMenuAPISingleBinding 将同一 api_id 的多条菜单绑定裁剪为一条（保留最小 menu_id）。
 // func normalizeMenuAPISingleBinding() error {
@@ -168,6 +185,77 @@ func seedBuiltinRoles() error {
 		}
 		// 角色已存在且正常，跳过
 	}
+	return nil
+}
+
+// seedBuiltinAssistantMenu 确保 AI 助手菜单存在，便于前端把工作台入口纳入 RBAC 菜单权限。
+func seedBuiltinAssistantMenu() error {
+	record := entity.Menu{
+		ParentID:      0,
+		Name:          builtinAssistantMenuName,
+		Code:          builtinAssistantMenuCode,
+		Icon:          builtinAssistantMenuIcon,
+		Type:          2,
+		RouteName:     builtinAssistantMenuRouteName,
+		RoutePath:     builtinAssistantMenuRoutePath,
+		ComponentPath: builtinAssistantMenuComponentPath,
+		Status:        1,
+		Sort:          builtinAssistantMenuSort,
+		Desc:          builtinAssistantMenuDesc,
+	}
+
+	var existing entity.Menu
+	query := global.DB.Unscoped().
+		Where("code = ?", builtinAssistantMenuCode).
+		Or("route_path = ?", builtinAssistantMenuRoutePath)
+	if err := query.First(&existing).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return global.DB.Create(&record).Error
+		}
+		return err
+	}
+
+	updates := map[string]any{
+		"name":           builtinAssistantMenuName,
+		"code":           builtinAssistantMenuCode,
+		"icon":           builtinAssistantMenuIcon,
+		"type":           2,
+		"route_name":     builtinAssistantMenuRouteName,
+		"route_path":     builtinAssistantMenuRoutePath,
+		"component_path": builtinAssistantMenuComponentPath,
+		"status":         1,
+		"sort":           builtinAssistantMenuSort,
+		"desc":           builtinAssistantMenuDesc,
+	}
+	if existing.DeletedAt.Valid {
+		updates["deleted_at"] = nil
+	}
+
+	return global.DB.Unscoped().Model(&existing).Updates(updates).Error
+}
+
+// seedBuiltinAssistantRoleMenus 把 AI 助手菜单补给内置组织角色，维持当前“登录后可用”的默认体验。
+func seedBuiltinAssistantRoleMenus() error {
+	var assistantMenu entity.Menu
+	if err := global.DB.Where("code = ?", builtinAssistantMenuCode).First(&assistantMenu).Error; err != nil {
+		return err
+	}
+
+	roleCodes := []string{consts.RoleCodeOrgAdmin, consts.RoleCodeMember}
+	for _, roleCode := range roleCodes {
+		var role entity.Role
+		if err := global.DB.Where("code = ?", roleCode).First(&role).Error; err != nil {
+			return err
+		}
+		if err := global.DB.Exec(
+			"INSERT IGNORE INTO role_menus (role_id, menu_id) VALUES (?, ?)",
+			role.ID,
+			assistantMenu.ID,
+		).Error; err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
