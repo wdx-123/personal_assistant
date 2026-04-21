@@ -41,7 +41,6 @@ func SetUp(service *service.Group) Supplier {
 	cs.userCtrl = &UserCtrl{
 		userService: service.SystemServiceSupplier.GetUserSvc(),
 		jwtService:  service.SystemServiceSupplier.GetJWTSvc(),
-		aiService:   service.SystemServiceSupplier.GetAISvc(),
 	}
 	cs.orgCtrl = &OrgCtrl{
 		orgService: service.SystemServiceSupplier.GetOrgSvc(),

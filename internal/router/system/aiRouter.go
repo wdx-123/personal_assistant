@@ -26,11 +26,10 @@ func (r *AIRouter) InitAIRouter(router *gin.RouterGroup) {
 	aiRouter := router.Group("ai/conversations")
 	aiCtrl := controller.ApiGroupApp.SystemApiGroup.GetAICtrl()
 	{
-		aiRouter.POST("", aiCtrl.CreateConversation) // 创建会话
-		aiRouter.GET("", aiCtrl.ListConversations) // 获取会话列表
+		aiRouter.POST("", aiCtrl.CreateConversation)      // 创建会话
+		aiRouter.GET("", aiCtrl.ListConversations)        // 获取会话列表
 		aiRouter.GET(":id/messages", aiCtrl.ListMessages) // 获取某个会话下的消息列表
 		aiRouter.DELETE(":id", aiCtrl.DeleteConversation) // 删除指定会话
-		aiRouter.POST(":id/interrupts/:interrupt_id/decision", aiCtrl.SubmitDecision) // 提交决策
 	}
 }
 

@@ -232,8 +232,6 @@ type AIServiceContract interface {
 	ListMessages(ctx context.Context, userID uint, conversationID string) ([]*resp.AssistantMessageResp, error)
 	DeleteConversation(ctx context.Context, userID uint, conversationID string) error
 	StreamConversation(ctx context.Context, userID uint, conversationID string, req *request.StreamAssistantMessageReq, writer streamsse.StreamWriter) error
-	SubmitDecision(ctx context.Context, userID uint, conversationID, interruptID string, req *request.SubmitAssistantDecisionReq) (*resp.AssistantInterruptDecisionAcceptedResp, error)
-	RevokeUserSessions(ctx context.Context, userID uint, reason string) int
 }
 
 // Supplier 用于集中提供当前模块依赖对象。

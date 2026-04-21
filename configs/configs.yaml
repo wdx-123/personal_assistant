@@ -224,6 +224,26 @@ messaging:
   permission_projection_group: "permission_projection_group"
   permission_projection_consumer: "permission_projection_consumer"
   permission_policy_reload_channel: "permission_policy_reload"
+sse:
+  heartbeat_interval_seconds: 20
+  write_timeout_seconds: 10
+  queue_capacity: 64
+  max_connections_per_subject: 3
+  replay_limit: 100
+  drain_timeout_seconds: 15
+  pubsub_channel_prefix: "sse"
+  replay_stream_prefix: "sse:replay"
+  ai_runtime_mode: "eino"
+ai:
+  provider: "qwen"
+  api_key: ""
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  model: "qwen-plus"
+  by_azure: false
+  api_version: ""
+  system_prompt: "你是 personal_assistant 项目的 AI 助手。当前阶段只提供基础流式对话，不调用工具，不请求人工确认。请直接、准确地回答用户问题。"
+  temperature: 0.2
+  max_completion_tokens: 1200
 observability:
   enabled: true                      # 总开关
   service_name: "personal_assistant" # 服务名维度（需稳定）

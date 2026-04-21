@@ -3,11 +3,13 @@ package system
 import (
 	"context"
 	"errors"
+	"time"
 
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository/interfaces"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // AIGormRepository 定义当前领域访问持久化数据所需的仓储能力。
@@ -88,6 +90,21 @@ func (r *AIGormRepository) CreateConversation(ctx context.Context, conversation 
 func (r *AIGormRepository) GetConversationByID(ctx context.Context, conversationID string) (*entity.AIConversation, error) {
 	var conversation entity.AIConversation
 	if err := r.db.WithContext(ctx).Where("id = ?", conversationID).First(&conversation).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &conversation, nil
+}
+
+// GetConversationByIDForUpdate 在事务内锁定会话行，避免同一会话并发开启多条生成流。
+func (r *AIGormRepository) GetConversationByIDForUpdate(ctx context.Context, conversationID string) (*entity.AIConversation, error) {
+	var conversation entity.AIConversation
+	if err := r.db.WithContext(ctx).
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("id = ?", conversationID).
+		First(&conversation).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
@@ -271,6 +288,63 @@ func (r *AIGormRepository) GetInterruptByID(ctx context.Context, interruptID str
 		return nil, err
 	}
 	return &interrupt, nil
+}
+
+// GetInterruptByIDForUpdate 在事务内锁定 interrupt 行，避免并发决策或恢复同时推进。
+func (r *AIGormRepository) GetInterruptByIDForUpdate(
+	ctx context.Context,
+	interruptID string,
+) (*entity.AIInterrupt, error) {
+	var interrupt entity.AIInterrupt
+	if err := r.db.WithContext(ctx).
+		Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("interrupt_id = ?", interruptID).
+		First(&interrupt).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &interrupt, nil
+}
+
+// ListInterruptsByUserAndStatuses 返回某个用户指定状态下的 interrupt。
+func (r *AIGormRepository) ListInterruptsByUserAndStatuses(
+	ctx context.Context,
+	userID uint,
+	statuses []string,
+) ([]*entity.AIInterrupt, error) {
+	var interrupts []*entity.AIInterrupt
+	query := r.db.WithContext(ctx).Where("user_id = ?", userID)
+	if len(statuses) > 0 {
+		query = query.Where("status IN ?", statuses)
+	}
+	if err := query.Order("updated_at ASC").Find(&interrupts).Error; err != nil {
+		return nil, err
+	}
+	return interrupts, nil
+}
+
+// ListInterruptsForRecovery 返回达到恢复扫描条件的一批 interrupt。
+func (r *AIGormRepository) ListInterruptsForRecovery(
+	ctx context.Context,
+	statuses []string,
+	updatedBefore time.Time,
+	limit int,
+) ([]*entity.AIInterrupt, error) {
+	var interrupts []*entity.AIInterrupt
+	query := r.db.WithContext(ctx).
+		Where("updated_at <= ?", updatedBefore)
+	if len(statuses) > 0 {
+		query = query.Where("status IN ?", statuses)
+	}
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	if err := query.Order("updated_at ASC").Find(&interrupts).Error; err != nil {
+		return nil, err
+	}
+	return interrupts, nil
 }
 
 // UpdateInterrupt 负责更新当前场景对应的数据状态。

@@ -56,6 +56,8 @@ func Init() {
 	global.Redis = core.ConnectRedis()
 	// 初始化项目级 SSE 基础设施（依赖 Redis）
 	core.InitSSEInfrastructure()
+	// 初始化 AI runtime（依赖配置与 SSE 策略；失败会回退本地 runtime）
+	core.InitAI()
 	// 初始化Casbin
 	core.InitCasbin()
 	// 初始化存储驱动（本地/七牛，七牛自动包装熔断器）

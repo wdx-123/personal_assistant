@@ -34,7 +34,7 @@ func CORSMiddleware() gin.HandlerFunc {
 			// 	return true
 			// }
 			// return allowed[origin]
-			return true;
+			return true
 		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
 		AllowHeaders:     []string{"Origin", "X-Requested-With", "Content-Type", "Accept", "Authorization", "X-Csrf-Token", "x-access-token", "Cookie", "Set-Cookie"},

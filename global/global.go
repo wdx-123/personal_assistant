@@ -1,6 +1,7 @@
 package global
 
 import (
+	aidomain "personal_assistant/internal/domain/ai"
 	streaminfra "personal_assistant/internal/infrastructure/sse"
 	"personal_assistant/internal/model/config"
 	obsmetrics "personal_assistant/pkg/observability/metrics"
@@ -37,4 +38,7 @@ var (
 
 	// SSE 实时推送基础设施
 	StreamInfra *streaminfra.Infrastructure
+
+	// AI 运行时，由 core.InitAI 初始化，业务层只依赖 domain/ai.Runtime。
+	AIRuntime aidomain.Runtime
 )

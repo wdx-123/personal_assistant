@@ -22,7 +22,6 @@ import (
 type UserCtrl struct {
 	userService serviceContract.UserServiceContract
 	jwtService  serviceContract.JWTServiceContract
-	aiService   serviceContract.AIServiceContract
 }
 
 // Register 注册
@@ -144,7 +143,6 @@ func (u *UserCtrl) TokenNext(c *gin.Context, user entity.User) {
 func (u *UserCtrl) Logout(c *gin.Context) {
 	// 读取必要信息（尽量复用已有的工具函数）
 	uid := jwt.GetUUID(c)
-	userID := jwt.GetUserID(c)
 	jwtStr := jwt.GetRefreshToken(c)
 
 	// 清除刷新令牌 Cookie（HttpOnly）
@@ -165,10 +163,6 @@ func (u *UserCtrl) Logout(c *gin.Context) {
 			global.Log.Warn("加入刷新令牌黑名单失败", zap.Error(err))
 		}
 	}
-	if u.aiService != nil && userID > 0 {
-		u.aiService.RevokeUserSessions(c.Request.Context(), userID, "logout")
-	}
-
 	response.NewResponse[any, any](c).
 		SetCode(bizerrors.CodeSuccess).
 		Success("登出成功",
@@ -248,9 +242,6 @@ func (u *UserCtrl) DeactivateAccount(c *gin.Context) {
 		global.Log.Error("注销账号失败", zap.Uint("userID", userID), zap.Error(err))
 		response.BizFailWithError(err, c)
 		return
-	}
-	if u.aiService != nil {
-		u.aiService.RevokeUserSessions(c.Request.Context(), userID, "deactivate")
 	}
 	jwt.ClearRefreshToken(c)
 	response.BizOkWithMessage("账号已禁用", c)

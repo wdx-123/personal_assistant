@@ -22,17 +22,10 @@ type AICtrl struct {
 }
 
 // CreateConversation 负责创建新的 AI 会话。
-// 参数：
-//   - c：Gin 请求上下文，承载请求体、响应写出器和鉴权结果。
-//
-// 返回值：无。
 // 核心流程：
 //  1. 绑定请求体，尽早拦截格式错误，避免无意义进入 Service。
 //  2. 从 JWT 中提取当前用户 ID，并调用 Service 完成会话创建。
 //  3. 统一把成功结果包装成标准响应。
-//
-// 注意事项：
-//   - 参数绑定失败时直接返回统一错误响应，是为了把输入错误和业务错误明确区分开。
 func (ctrl *AICtrl) CreateConversation(c *gin.Context) {
 	var req request.CreateAssistantConversationReq
 
@@ -77,17 +70,10 @@ func (ctrl *AICtrl) ListConversations(c *gin.Context) {
 }
 
 // ListMessages 负责返回指定会话下的消息列表。
-// 参数：
-//   - c：Gin 请求上下文。
-//
-// 返回值：无。
 // 核心流程：
 //  1. 读取路径参数中的会话 ID。
 //  2. 调用 Service 校验归属并查询消息列表。
 //  3. 把 DTO 列表通过统一响应返回。
-//
-// 注意事项：
-//   - 会话归属校验放在 Service 层，Controller 不重复实现权限判断，保持分层清晰。
 func (ctrl *AICtrl) ListMessages(c *gin.Context) {
 	data, err := ctrl.aiService.ListMessages(c.Request.Context(), jwt.GetUserID(c), c.Param("id"))
 	if err != nil {
@@ -160,36 +146,6 @@ func (ctrl *AICtrl) StreamConversation(c *gin.Context) {
 	if !writer.Started() {
 		response.BizFailWithError(err, c)
 	}
-}
-
-// SubmitDecision 负责提交 interrupt 决策结果。
-// 参数：
-//   - c：Gin 请求上下文。
-//
-// 返回值：无。
-// 核心流程：
-//  1. 绑定 confirm/skip 等决策参数。
-//  2. 调用 Service 校验 interrupt 状态并写入用户决策。
-//  3. 返回“已接受”的标准响应。
-//
-// 注意事项：
-//   - Controller 只负责把决策原样转交 Service，不在这里解释 interrupt 状态机。
-func (ctrl *AICtrl) SubmitDecision(c *gin.Context) {
-	var req request.SubmitAssistantDecisionReq
-	if err := c.ShouldBindJSON(&req); err != nil {
-		global.Log.Error("AI interrupt 决策参数绑定失败", zap.Error(err))
-		response.BizFailWithCodeMsg(bizerrors.CodeBindFailed, "参数绑定失败", c)
-		return
-	}
-
-	data, err := ctrl.aiService.SubmitDecision(c.Request.Context(), jwt.GetUserID(c), c.Param("id"), c.Param("interrupt_id"), &req)
-	if err != nil {
-		global.Log.Error("AI interrupt 决策失败", zap.Error(err))
-		response.BizFailWithError(err, c)
-		return
-	}
-
-	response.BizOkWithDetailed(data, "操作成功", c)
 }
 
 // resolveSSEPolicy 负责为当前请求解析可用的 SSE 连接策略。

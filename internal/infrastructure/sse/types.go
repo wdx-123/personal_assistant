@@ -27,11 +27,11 @@ const (
 // StreamEvent 表示 SSE 链路中的标准事件结构。
 // 它同时覆盖实时发送、历史回放和跨实例广播三种场景，因此保留了较完整的上下文字段。
 type StreamEvent struct {
-	EventID    string            `json:"event_id"` // 唯一标志
+	EventID    string            `json:"event_id"`    // 唯一标志
 	StreamKind StreamKind        `json:"stream_kind"` // 会话级或频道级
-	Channel    string            `json:"channel"` // 所属频道
-	TenantID   uint64            `json:"tenant_id"` // 租户ID
-	SubjectID  uint64            `json:"subject_id"` // 发给谁
+	Channel    string            `json:"channel"`     // 所属频道
+	TenantID   uint64            `json:"tenant_id"`   // 租户ID
+	SubjectID  uint64            `json:"subject_id"`  // 发给谁
 	EventName  string            `json:"event_name"`
 	Data       []byte            `json:"data"`
 	OccurredAt time.Time         `json:"occurred_at"`
@@ -47,10 +47,10 @@ type StreamEvent struct {
 type ConnectionPolicy struct {
 	HeartbeatInterval        time.Duration // 心跳间隔
 	WriteTimeout             time.Duration // 写出超时
-	QueueCapacity            int // 写出队列容量
-	MaxConnectionsPerSubject int // 每个主体的最大连接数
-	ReplayLimit              int // 回放限制
-	IdleKickPolicy           string // 空闲踢出策略
+	QueueCapacity            int           // 写出队列容量
+	MaxConnectionsPerSubject int           // 每个主体的最大连接数
+	ReplayLimit              int           // 回放限制
+	IdleKickPolicy           string        // 空闲踢出策略
 }
 
 // Normalize 负责把连接策略补齐为可执行配置。

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"personal_assistant/global"
+	aidomain "personal_assistant/internal/domain/ai"
 	streamsse "personal_assistant/internal/infrastructure/sse"
 	"personal_assistant/internal/model/dto/request"
 	resp "personal_assistant/internal/model/dto/response"
@@ -19,41 +20,26 @@ import (
 )
 
 const (
-	// aiMessageStatusIdle 表示消息已进入等待用户确认或等待后续动作的空闲态。
-	aiMessageStatusIdle = "idle"
-
 	// aiMessageStatusLoading 表示消息仍在持续生成中。
-	aiMessageStatusLoading = "loading"
+	aiMessageStatusLoading = aidomain.MessageStatusLoading
 
 	// aiMessageStatusSuccess 表示消息已完整生成成功。
-	aiMessageStatusSuccess = "success"
+	aiMessageStatusSuccess = aidomain.MessageStatusSuccess
 
 	// aiMessageStatusError 表示消息在生成过程中失败。
-	aiMessageStatusError = "error"
+	aiMessageStatusError = aidomain.MessageStatusError
 
 	// aiMessageStatusStopped 表示消息因取消、超时或撤销被中断。
-	aiMessageStatusStopped = "stopped"
-
-	// aiInterruptStatusAwaiting 表示 interrupt 已创建，等待用户明确决策。
-	aiInterruptStatusAwaiting = "awaiting_confirmation"
-
-	// aiInterruptStatusDecision 表示用户决策已提交，运行时可以继续推进。
-	aiInterruptStatusDecision = "decision_received"
-
-	// aiInterruptStatusDone 表示需要确认的工具已经执行完成。
-	aiInterruptStatusDone = "completed"
-
-	// aiInterruptStatusSkipped 表示用户显式选择跳过该工具。
-	aiInterruptStatusSkipped = "skipped"
+	aiMessageStatusStopped = aidomain.MessageStatusStopped
 )
 
-// AIService 负责编排 AI 会话、消息、interrupt 与流式运行时之间的业务流程。
+// AIService 负责编排 AI 会话、消息与最小流式运行时之间的业务流程。
 // 它本身不直接操作 HTTP，也不直连数据库；所有持久化都通过 Repository 完成。
 type AIService struct {
 	txRunner repository.TxRunner
 	aiRepo   interfaces.AIRepository
 	userRepo interfaces.UserRepository
-	runtime  AIRuntime
+	runtime  aidomain.Runtime
 	policy   streamsse.ConnectionPolicy
 }
 
@@ -72,6 +58,18 @@ type AIService struct {
 // 注意事项：
 //   - 这里不直接依赖 HTTP 层，而是只保留运行时策略，方便同一业务逻辑被不同入口复用。
 func NewAIService(repositoryGroup *repository.Group) *AIService {
+	return newAIServiceWithDeps(repositoryGroup, global.AIRuntime)
+}
+
+// NewAIServiceWithRuntime 允许外部显式注入 runtime，方便阶段性迁移和测试替身接入。
+func NewAIServiceWithRuntime(repositoryGroup *repository.Group, runtime aidomain.Runtime) *AIService {
+	return newAIServiceWithDeps(repositoryGroup, runtime)
+}
+
+func newAIServiceWithDeps(
+	repositoryGroup *repository.Group,
+	runtime aidomain.Runtime,
+) *AIService {
 	policy := streamsse.ConnectionPolicy{}
 	if global.StreamInfra != nil {
 		policy = global.StreamInfra.Policy
@@ -81,7 +79,7 @@ func NewAIService(repositoryGroup *repository.Group) *AIService {
 		txRunner: repositoryGroup,
 		aiRepo:   repositoryGroup.SystemRepositorySupplier.GetAIRepository(),
 		userRepo: repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
-		runtime:  NewLocalAIRuntime(policy.Normalize().HeartbeatInterval),
+		runtime:  runtime,
 		policy:   policy.Normalize(),
 	}
 }
@@ -191,9 +189,10 @@ func (s *AIService) DeleteConversation(ctx context.Context, userID uint, convers
 //   - conversationID：目标会话 ID。
 //   - req：流式消息请求。
 //   - writer：SSE 输出器。
+//
 // 核心流程：
 //  1. 先校验请求参数、会话归属和会话忙碌状态。
-//  2. 调用运行时生成 Plan，并准备用户消息、AI 消息和可选 interrupt。
+//  2. 准备用户消息和 AI 消息。
 //  3. 事务化落库会话状态与初始消息，确保流开始前数据库状态完整。
 //  4. 创建 sink 执行运行时，并在结束后统一做收尾。
 func (s *AIService) StreamConversation(
@@ -213,6 +212,9 @@ func (s *AIService) StreamConversation(
 	if writer == nil {
 		return bizerrors.New(bizerrors.CodeAIStreamingUnsupported)
 	}
+	if s.runtime == nil {
+		return bizerrors.New(bizerrors.CodeAIStreamingUnsupported)
+	}
 
 	// 第二阶段：读取会话与用户上下文，保证本次流式执行建立在合法归属和可用会话之上。
 	conversation, err := s.requireConversationOwner(ctx, userID, conversationID)
@@ -230,10 +232,9 @@ func (s *AIService) StreamConversation(
 		return bizerrors.New(bizerrors.CodeUserNotFound)
 	}
 
-	// 先做 Plan，是为了把“需要哪些工具、是否要 interrupt”在真正写流之前确定下来。
-	plan, err := s.runtime.Plan(ctx, AIRuntimePlanInput{Conversation: conversation, Request: req})
+	historyMessages, err := s.aiRepo.ListMessagesByConversation(ctx, conversation.ID)
 	if err != nil {
-		return bizerrors.WrapWithMsg(bizerrors.CodeAIRequestRejected, "AI 请求无法解析", err)
+		return bizerrors.Wrap(bizerrors.CodeDBError, err)
 	}
 
 	// 第三阶段：构造本次对话会产生的持久化对象，确保运行时开始前有可追踪的消息骨架。
@@ -263,121 +264,24 @@ func (s *AIService) StreamConversation(
 		UpdatedAt:      now,
 	}
 
-	// 只有声明了需要确认的工具时才创建 interrupt，避免所有请求都落无意义的等待记录。
-	var interrupt *entity.AIInterrupt
-	if plan.DocTool != nil && plan.DocTool.RequiresConfirmation {
-		interrupt = &entity.AIInterrupt{
-			InterruptID:      newAIID("intr"),
-			ConversationID:   conversation.ID,
-			MessageID:        assistantMessage.ID,
-			UserID:           userID,
-			Status:           aiInterruptStatusAwaiting,
-			ToolKey:          plan.DocTool.Key,
-			RuntimeStateJSON: encodeJSON(map[string]any{"kind": plan.DocTool.Kind}, "{}"),
-			OwnerNodeID:      s.runtime.NodeID(),
-			CreatedAt:        now,
-			UpdatedAt:        now,
-		}
-	}
-
 	// 第四阶段：事务化写入起始状态，确保“会话进入生成中”与“消息骨架落库”具备一致性。
-	if err := s.persistStreamStart(ctx, conversation, user, userMessage, assistantMessage, interrupt, now); err != nil {
+	if err := s.persistStreamStart(ctx, conversation, user, userMessage, assistantMessage, now); err != nil {
 		return err
 	}
 
 	// Sink 负责把运行时事件同步到 SSE 与数据库消息状态，两条链路共用同一份状态机。
-	sink := newAIStreamSink(s.aiRepo, writer, assistantMessage, interrupt)
-	execErr := s.runtime.Execute(ctx, AIRuntimeExecutionInput{
-		UserID:         userID,
-		Conversation:   conversation,
-		Request:        req,
-		Plan:           plan,
-		Interrupt:      interrupt,
-		AssistantMsgID: assistantMessage.ID,
+	sink := newAIStreamSink(s.aiRepo, writer, assistantMessage)
+	_, execErr := s.runtime.Stream(ctx, aidomain.StreamInput{
+		UserID:             userID,
+		ConversationID:     conversation.ID,
+		UserMessageID:      userMessage.ID,
+		AssistantMessageID: assistantMessage.ID,
+		Content:            strings.TrimSpace(req.Content),
+		History:            messagesToRuntimeHistory(historyMessages),
 	}, sink)
 
 	// 所有已开始的流式请求都统一走 finishStream 收尾，避免成功和失败路径各自写一套状态处理逻辑。
 	return s.finishStream(ctx, conversation, sink, execErr)
-}
-
-// SubmitDecision 负责接收用户对 interrupt 的决策并推进状态机。
-// 作用：接收用户对 interrupt 的决策，并推进状态机。
-func (s *AIService) SubmitDecision(
-	ctx context.Context,
-	userID uint,
-	conversationID,
-	interruptID string,
-	req *request.SubmitAssistantDecisionReq,
-) (*resp.AssistantInterruptDecisionAcceptedResp, error) {
-	if req == nil {
-		return nil, bizerrors.New(bizerrors.CodeInvalidParams)
-	}
-	if req.ConversationID != conversationID || req.InterruptID != interruptID {
-		return nil, bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "conversation_id 或 interrupt_id 与路径参数不一致")
-	}
-
-	// 先确认当前用户确实拥有这次会话，避免借 interrupt ID 越权推进他人流程。
-	if _, err := s.requireConversationOwner(ctx, userID, conversationID); err != nil {
-		return nil, err
-	}
-	interrupt, err := s.aiRepo.GetInterruptByID(ctx, interruptID)
-	if err != nil {
-		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
-	}
-	if interrupt == nil || interrupt.ConversationID != conversationID || interrupt.UserID != userID {
-		return nil, bizerrors.New(bizerrors.CodeAIInterruptNotFound)
-	}
-	if interrupt.Status != aiInterruptStatusAwaiting {
-		return nil, bizerrors.New(bizerrors.CodeAIInterruptConflict)
-	}
-
-	// 运行时如果已经不再等待该 interrupt，会返回 unavailable；这时数据库不能继续盲目推进状态。
-	ok, submitErr := s.runtime.SubmitDecision(ctx, AIRuntimeDecisionCommand{
-		UserID:         userID,
-		ConversationID: conversationID,
-		InterruptID:    interruptID,
-		Decision:       req.Decision,
-		Reason:         req.Reason,
-	})
-	if submitErr != nil {
-		return nil, bizerrors.Wrap(bizerrors.CodeInternalError, submitErr)
-	}
-	if !ok {
-		return nil, bizerrors.New(bizerrors.CodeAIInterruptUnavailable)
-	}
-
-	// 决策被运行时接收后，再把数据库状态推进为“已收到决策”，保证线上状态与持久化状态一致。
-	interrupt.Decision = req.Decision
-	interrupt.Reason = strings.TrimSpace(req.Reason)
-	interrupt.Status = aiInterruptStatusDecision
-	interrupt.UpdatedAt = time.Now()
-	if err := s.aiRepo.UpdateInterrupt(ctx, interrupt); err != nil {
-		return nil, bizerrors.Wrap(bizerrors.CodeDBError, err)
-	}
-	return &resp.AssistantInterruptDecisionAcceptedResp{
-		Accepted:       true,
-		ConversationID: conversationID,
-		InterruptID:    interruptID,
-		Decision:       req.Decision,
-	}, nil
-}
-
-// RevokeUserSessions 负责撤销某个用户当前节点上的运行中会话。
-// 参数：
-//   - ctx：链路上下文。
-//   - userID：目标用户 ID。
-//   - reason：撤销原因。
-//
-// 返回值：
-//   - int：实际被撤销的会话数量。
-//
-// 核心流程：
-//  1. 直接委托运行时做用户级别的会话撤销。
-//
-// 注意事项：
-//   - 这里不直接更新数据库，是因为撤销后的消息状态和会话状态要由运行时收尾链路统一落库。
-func (s *AIService) RevokeUserSessions(ctx context.Context, userID uint, reason string) int {
-	return s.runtime.RevokeUser(ctx, userID, reason)
 }
 
 // requireConversationOwner 负责校验当前用户是否拥有指定会话。
@@ -401,27 +305,30 @@ func (s *AIService) persistStreamStart(
 	user *entity.User,
 	userMessage *entity.AIMessage,
 	assistantMessage *entity.AIMessage,
-	interrupt *entity.AIInterrupt,
 	now time.Time,
 ) error {
-	// 第一阶段：先处理入口参数、依赖或前置状态，尽早挡住不能继续推进的情况。
-	// 把前置判断集中在这里，是为了避免后续主逻辑夹杂过多防御性分支。
-	conversation.Title = deriveConversationTitle(conversation.Title, userMessage.Content)
-	conversation.Preview = buildConversationPreview(userMessage.Content)
-	conversation.IsGenerating = true
-	// 第二阶段：进入当前函数的主体逻辑，逐步组装中间结果或推进状态。
-	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
-	conversation.LastMessageAt = &now
-	conversation.UpdatedAt = now
-	conversation.OrgID = user.CurrentOrgID
-
-	// 第三阶段：统一收口结果、状态更新或返回动作，保证对外行为一致。
-	// 把收尾逻辑显式标出来，可以降低后续维护时遗漏边界处理的风险。
 	return s.txRunner.InTx(ctx, func(tx any) error {
 		txAI := s.aiRepo.WithTx(tx)
+		lockedConversation, err := txAI.GetConversationByIDForUpdate(ctx, conversation.ID)
+		if err != nil {
+			return err
+		}
+		if lockedConversation == nil || lockedConversation.UserID != conversation.UserID {
+			return bizerrors.New(bizerrors.CodeAIConversationNotFound)
+		}
+		if lockedConversation.IsGenerating {
+			return bizerrors.New(bizerrors.CodeAIConversationBusy)
+		}
+
+		lockedConversation.Title = deriveConversationTitle(lockedConversation.Title, userMessage.Content)
+		lockedConversation.Preview = buildConversationPreview(userMessage.Content)
+		lockedConversation.IsGenerating = true
+		lockedConversation.LastMessageAt = &now
+		lockedConversation.UpdatedAt = now
+		lockedConversation.OrgID = user.CurrentOrgID
 
 		// 会话状态先更新，是为了保证后续若消息已落库，列表页也能立即看到“生成中”态。
-		if err := txAI.UpdateConversation(ctx, conversation); err != nil {
+		if err := txAI.UpdateConversation(ctx, lockedConversation); err != nil {
 			return err
 		}
 		if err := txAI.CreateMessage(ctx, userMessage); err != nil {
@@ -430,13 +337,7 @@ func (s *AIService) persistStreamStart(
 		if err := txAI.CreateMessage(ctx, assistantMessage); err != nil {
 			return err
 		}
-
-		// interrupt 只在需要确认工具时创建，避免普通问答链路出现无意义等待记录。
-		if interrupt != nil {
-			if err := txAI.CreateInterrupt(ctx, interrupt); err != nil {
-				return err
-			}
-		}
+		*conversation = *lockedConversation
 		return nil
 	})
 }
@@ -457,13 +358,16 @@ func (s *AIService) finishStream(
 	sink *aiStreamSink,
 	execErr error,
 ) error {
+	finishCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
 	now := time.Now()
 	conversation.IsGenerating = false
 	conversation.LastMessageAt = &now
 	conversation.UpdatedAt = now
 
 	// 收尾状态更新失败要记录日志，但如果主流程已经出错，不再让收尾错误覆盖原始执行错误。
-	if err := s.aiRepo.UpdateConversation(ctx, conversation); err != nil {
+	if err := s.aiRepo.UpdateConversation(finishCtx, conversation); err != nil {
 		global.Log.Error("更新 AI 会话收尾状态失败", zap.String("conversation_id", conversation.ID), zap.Error(err))
 		if execErr == nil {
 			return bizerrors.Wrap(bizerrors.CodeDBError, err)
@@ -481,7 +385,7 @@ func (s *AIService) finishStream(
 	// 取消或超时属于“被中断”而不是“系统故障”，因此只标 stopped，不再额外发错误提示。
 	if errors.Is(execErr, context.Canceled) || errors.Is(execErr, context.DeadlineExceeded) {
 		sink.setStopped()
-		_ = sink.persistMessage(ctx)
+		_ = sink.persistMessage(finishCtx)
 		return nil
 	}
 
@@ -493,8 +397,8 @@ func (s *AIService) finishStream(
 	}
 
 	sink.setError(message)
-	_ = sink.Emit(ctx, "error", resp.AssistantErrorPayload{Message: message})
-	_ = sink.Emit(ctx, "done", map[string]any{})
+	_ = sink.Emit(ctx, aidomain.Event{Name: aidomain.EventError, Payload: aidomain.ErrorPayload{Message: message}})
+	_ = sink.Emit(ctx, aidomain.Event{Name: aidomain.EventDone, Payload: map[string]any{}})
 	return nil
 }
 

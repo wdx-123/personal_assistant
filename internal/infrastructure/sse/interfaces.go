@@ -1,4 +1,5 @@
 package sse
+
 /*
 1. Authorizer 授权者
   管“谁能连、谁能订阅、谁能看到什么”
@@ -14,7 +15,7 @@ package sse
 
 5. Backplane5. 背板
   管“多机之间怎么同步消息和踢线命令”
-*/ 
+*/
 import "context"
 
 // Authorizer 定义 SSE 接入链路的授权与事件过滤能力。
@@ -52,7 +53,7 @@ type StreamWriter interface {
 // ReplayStore 抽象 durable 事件的补发能力。
 // 只有实现了 Append 与 ReplayAfter，客户端断线重连后才有机会基于 Last-Event-ID 补齐消息。
 type ReplayStore interface {
-	Append(ctx context.Context, evt *StreamEvent) error // 追加
+	Append(ctx context.Context, evt *StreamEvent) error                                                     // 追加
 	ReplayAfter(ctx context.Context, channel string, lastEventID string, limit int) ([]*StreamEvent, error) // 补发limit条
 }
 

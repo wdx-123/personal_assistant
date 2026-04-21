@@ -24,5 +24,8 @@
    - `POST /ai/conversations/{id}/stream`
    - `POST /ai/conversations/{id}/interrupts/{interrupt_id}/decision`
 8. 旧的工具续跑流接口全量废弃。
+9. 第一阶段实现继续保留 `AIRuntime` 作为业务缝；正式运行时默认走 `EinoAIRuntime`，`LocalAIRuntime` 只保留为 mock / test / fallback。
+10. 第二阶段正式模型路径默认切到 `Qwen + DashScope compatible-mode`，不再默认走 `OpenAI / Ark`。
+11. 第二阶段开始，`task / progress / doc` 三类正式能力统一由 Eino 工具执行；前端上传的 `ContextUserName / ContextOrgName` 只保留兼容，不再作为正式真相输入。
 
 若后续需要补充实现细节、OpenAPI 变更或前后端联调约束，只更新主文档，不再回写本文件。

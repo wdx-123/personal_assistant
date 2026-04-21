@@ -22,10 +22,10 @@ type AssistantConversationResp struct {
 
 // AssistantTraceAction 表示轨迹节点上的可执行动作。
 type AssistantTraceAction struct {
-	Key    string `json:"key"`              // 动作唯一标识，用于前端定位或回传。
-	Label  string `json:"label"`            // 动作按钮文案，展示给用户。
-	Action string `json:"action"`           // 动作类型或动作指令，如 accept / reject / retry。
-	Style  string `json:"style,omitempty"`  // 动作样式标记，如 primary / danger，供前端渲染使用。
+	Key    string `json:"key"`             // 动作唯一标识，用于前端定位或回传。
+	Label  string `json:"label"`           // 动作按钮文案，展示给用户。
+	Action string `json:"action"`          // 动作类型或动作指令，如 accept / reject / retry。
+	Style  string `json:"style,omitempty"` // 动作样式标记，如 primary / danger，供前端渲染使用。
 }
 
 // AssistantTraceItem 表示一条执行轨迹节点。
@@ -89,24 +89,16 @@ type AssistantScopeInfo struct {
 
 // AssistantMessageResp 表示单条消息的响应结构。
 type AssistantMessageResp struct {
-	ID             string               `json:"id"`                      // 消息唯一标识。
-	ConversationID string               `json:"conversation_id"`         // 所属会话 ID。
-	Role           string               `json:"role"`                    // 消息角色，如 user / assistant / system。
-	Content        string               `json:"content"`                 // 消息正文内容。
-	CreatedAt      string               `json:"created_at"`              // 消息创建时间的格式化字符串。
-	Status         string               `json:"status"`                  // 消息状态，如 pending / streaming / completed / failed。
-	TraceItems     []AssistantTraceItem `json:"trace_items"`             // 当前消息关联的执行轨迹列表。
-	UIBlocks       []AssistantA2UIBlock `json:"ui_blocks"`               // 当前消息附带的结构化 UI 区块。
-	Scope          *AssistantScopeInfo  `json:"scope,omitempty"`         // 当前消息关联的作用域信息，为空表示无额外上下文。
-	ErrorText      string               `json:"error_text,omitempty"`    // 错误信息文本，通常在失败场景下返回。
-}
-
-// AssistantInterruptDecisionAcceptedResp 表示用户处理中断确认后的响应结果。
-type AssistantInterruptDecisionAcceptedResp struct {
-	Accepted       bool   `json:"accepted"`        // 后端是否成功接收本次确认决定。
-	ConversationID string `json:"conversation_id"` // 当前中断所属会话 ID。
-	InterruptID    string `json:"interrupt_id"`    // 被处理的中断 ID。
-	Decision       string `json:"decision"`        // 用户的确认结果，如 accept / reject。
+	ID             string               `json:"id"`                   // 消息唯一标识。
+	ConversationID string               `json:"conversation_id"`      // 所属会话 ID。
+	Role           string               `json:"role"`                 // 消息角色，如 user / assistant / system。
+	Content        string               `json:"content"`              // 消息正文内容。
+	CreatedAt      string               `json:"created_at"`           // 消息创建时间的格式化字符串。
+	Status         string               `json:"status"`               // 消息状态，如 pending / streaming / completed / failed。
+	TraceItems     []AssistantTraceItem `json:"trace_items"`          // 当前消息关联的执行轨迹列表。
+	UIBlocks       []AssistantA2UIBlock `json:"ui_blocks"`            // 当前消息附带的结构化 UI 区块。
+	Scope          *AssistantScopeInfo  `json:"scope,omitempty"`      // 当前消息关联的作用域信息，为空表示无额外上下文。
+	ErrorText      string               `json:"error_text,omitempty"` // 错误信息文本，通常在失败场景下返回。
 }
 
 // AssistantConversationStartedPayload 表示会话开始事件的载荷。
@@ -128,12 +120,12 @@ type AssistantToolCallStartedPayload struct {
 
 // AssistantToolCallFinishedPayload 表示工具调用结束事件的载荷。
 type AssistantToolCallFinishedPayload struct {
-	Key            string `json:"key"`                      // 工具调用步骤唯一标识。
-	Description    string `json:"description"`              // 工具调用结束后的简述。
-	DurationMS     int64  `json:"duration_ms"`              // 工具调用耗时，单位毫秒。
-	Status         string `json:"status"`                   // 工具调用结果状态，如 success / failed。
-	Content        string `json:"content,omitempty"`        // 工具调用返回的简要结果。
-	DetailMarkdown string `json:"detail_markdown,omitempty"`// 工具调用详细结果，通常为 Markdown。
+	Key            string `json:"key"`                       // 工具调用步骤唯一标识。
+	Description    string `json:"description"`               // 工具调用结束后的简述。
+	DurationMS     int64  `json:"duration_ms"`               // 工具调用耗时，单位毫秒。
+	Status         string `json:"status"`                    // 工具调用结果状态，如 success / failed。
+	Content        string `json:"content,omitempty"`         // 工具调用返回的简要结果。
+	DetailMarkdown string `json:"detail_markdown,omitempty"` // 工具调用详细结果，通常为 Markdown。
 }
 
 // AssistantToolCallWaitingConfirmationPayload 表示工具调用进入待确认状态时的载荷。
@@ -150,12 +142,12 @@ type AssistantToolCallWaitingConfirmationPayload struct {
 
 // AssistantToolCallConfirmationResultPayload 表示用户确认后返回的结果载荷。
 type AssistantToolCallConfirmationResultPayload struct {
-	InterruptID    string `json:"interrupt_id"`               // 已处理的中断 ID。
-	Key            string `json:"key"`                        // 对应的工具调用步骤 ID。
-	Decision       string `json:"decision"`                   // 用户做出的决定，如 accept / reject。
-	Status         string `json:"status"`                     // 决定生效后的步骤状态。
-	Description    string `json:"description"`                // 对本次确认结果的简要说明。
-	DetailMarkdown string `json:"detail_markdown,omitempty"`  // 对本次确认结果的详细说明。
+	InterruptID    string `json:"interrupt_id"`              // 已处理的中断 ID。
+	Key            string `json:"key"`                       // 对应的工具调用步骤 ID。
+	Decision       string `json:"decision"`                  // 用户做出的决定，如 accept / reject。
+	Status         string `json:"status"`                    // 决定生效后的步骤状态。
+	Description    string `json:"description"`               // 对本次确认结果的简要说明。
+	DetailMarkdown string `json:"detail_markdown,omitempty"` // 对本次确认结果的详细说明。
 }
 
 // AssistantStructuredBlockPayload 表示结构化 UI 或作用域信息事件的载荷。

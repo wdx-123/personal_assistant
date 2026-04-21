@@ -21,6 +21,7 @@ type Config struct {
 	Task          Task          `json:"task" yaml:"task"`                   // 定时任务配置
 	Messaging     Messaging     `json:"messaging" yaml:"messaging"`         // 消息队列配置
 	SSE           SSE           `json:"sse" yaml:"sse"`                     // SSE 实时推送配置
+	AI            AI            `json:"ai" yaml:"ai"`                       // AI Runtime / Eino 配置
 	RateLimit     RateLimit     `json:"rate_limit" yaml:"rate_limit"`       // 限流配置
 	Observability Observability `json:"observability" yaml:"observability"` // 观测基础设施配置
 }
@@ -310,6 +311,18 @@ func NewConfig() *Config {
 		AIRuntimeMode:            viper.GetString("sse.ai_runtime_mode"),
 	}
 
+	_ai := &AI{
+		Provider:            viper.GetString("ai.provider"),
+		APIKey:              viper.GetString("ai.api_key"),
+		BaseURL:             viper.GetString("ai.base_url"),
+		Model:               viper.GetString("ai.model"),
+		ByAzure:             viper.GetBool("ai.by_azure"),
+		APIVersion:          viper.GetString("ai.api_version"),
+		SystemPrompt:        viper.GetString("ai.system_prompt"),
+		Temperature:         viper.GetFloat64("ai.temperature"),
+		MaxCompletionTokens: viper.GetInt("ai.max_completion_tokens"),
+	}
+
 	_observability := &Observability{
 		Enabled:     viper.GetBool("observability.enabled"),
 		ServiceName: viper.GetString("observability.service_name"),
@@ -382,6 +395,7 @@ func NewConfig() *Config {
 		Task:          *_task,
 		Messaging:     *_messaging,
 		SSE:           *_sse,
+		AI:            *_ai,
 		RateLimit:     *_rateLimit,
 		Observability: *_observability,
 	}

@@ -22,7 +22,7 @@ const (
 type Permission struct {
 	Subject string // 权限主体（如用户ID@组织ID）
 	Object  string // 权限对象（如资源ID）
-	Action  string // 权限动作（如访问，读取，操作） 
+	Action  string // 权限动作（如访问，读取，操作）
 }
 
 type PolicySnapshot struct {
