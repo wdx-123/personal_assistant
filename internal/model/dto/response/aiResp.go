@@ -106,21 +106,6 @@ type AssistantConversationStartedPayload struct {
 	Title string `json:"title"` // 新会话生成后的标题。
 }
 
-// AssistantThinkingStartedPayload 表示可见思考开始事件的载荷。
-type AssistantThinkingStartedPayload struct {
-	Title string `json:"title"` // 思考区标题，默认显示为“深度思考”。
-}
-
-// AssistantThinkingDeltaPayload 表示可见思考追加事件的载荷。
-type AssistantThinkingDeltaPayload struct {
-	Delta string `json:"delta"` // 本次追加的思考文本片段。
-}
-
-// AssistantThinkingCompletedPayload 表示可见思考结束事件的载荷。
-type AssistantThinkingCompletedPayload struct {
-	Content string `json:"content"` // 思考区最终完整内容。
-}
-
 // AssistantTokenPayload 表示流式输出 token 事件的载荷。
 type AssistantTokenPayload struct {
 	Token string `json:"token"` // 本次流式追加的 token 内容。

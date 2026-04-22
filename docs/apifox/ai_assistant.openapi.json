@@ -3,7 +3,7 @@
   "info": {
     "title": "z_cur/UI AI 助手模块 OpenAPI",
     "version": "1.2.0",
-    "description": "覆盖当前 `personal-assistant-frontend` AI 助手模块使用的接口，可直接导入 Apifox。\n当前 V1 协议已经收敛为“单条聊天 SSE 流 + 思考短句流 + 最终正文流”。\n统一约束：\n1. CRUD 接口走 JSON BizResponse；`stream` 接口返回 `text/event-stream`。\n2. `stream` 是唯一聊天 SSE 流，不恢复 decision / interrupt / 第二条流。\n3. `thinking_started / thinking_delta / thinking_completed` 只承载用户可见的外显思考。\n4. `assistant_token` 与 `message_completed.content` 只承载最终正文。\n5. `trace_items` 持久化 `thinking_summary`，用于刷新后恢复思考区历史。\n6. `ui_blocks / scope` 字段继续保留兼容，但当前 V1 默认不下发结构化 UI。"
+    "description": "覆盖当前 `personal-assistant-frontend` AI 助手模块使用的接口，可直接导入 Apifox。\n当前 V1 协议已经收敛为“单条聊天 SSE 流 + 推理详情流 + 行动日志流 + 最终正文流”。\n统一约束：\n1. CRUD 接口走 JSON BizResponse；`stream` 接口返回 `text/event-stream`。\n2. `stream` 是唯一聊天 SSE 流，不恢复 decision / interrupt / 第二条流。\n3. `thinking_started / thinking_delta / thinking_completed` 承载用户可见的高细节推理详情，不暴露模型私有原始推理。\n4. `detail_step_started / detail_step_updated / detail_step_completed` 承载结构化行动日志。\n5. `assistant_token` 与 `message_completed.content` 只承载最终正文。\n6. `trace_items` 同时持久化 `thinking_summary` 和多个 `detail_step`，用于刷新后恢复过程区历史。"
   },
   "servers": [
     {
@@ -14,7 +14,7 @@
   "tags": [
     {
       "name": "AI助手",
-      "description": "会话 CRUD、单条聊天 SSE 流与 interrupt 决策控制接口。"
+      "description": "会话 CRUD、单条聊天 SSE 流与消息历史恢复接口。"
     }
   ],
   "security": [
@@ -194,7 +194,7 @@
           "AI助手"
         ],
         "summary": "获取会话消息列表",
-        "description": "历史消息必须能完整重建 UI。\n后端返回时建议优先补齐 `ui_blocks`，并保留 `trace_items / scope`；`scope` 仅在复杂范围时返回。\nUI 侧会按“思考摘要 / 工具意图 / 等待用户 / 最终正文”重建消息结构。\n消息按创建时间升序返回。",
+        "description": "历史消息必须能完整重建 UI。\n后端返回时应保留 `trace_items / scope`；`scope` 仅在复杂范围时返回。\nUI 侧会按“推理详情 / 行动日志 / 最终正文”重建消息结构。\n消息按创建时间升序返回；相同时间戳下按 `user -> assistant -> system` 稳定排序。",
         "operationId": "GetAssistantConversationMessages",
         "parameters": [
           {
@@ -462,7 +462,7 @@
           "AI助手"
         ],
         "summary": "发送用户消息并开启唯一聊天 SSE 流",
-        "description": "`stream` 是单轮问答的唯一事件流。\n当前事件顺序固定为：`conversation_started -> thinking_started -> thinking_delta* -> thinking_completed -> assistant_token* -> message_completed -> done`；失败时输出 `error -> done`。\n`thinking_*` 事件用于展示用户可见的外显思考，不暴露模型私有原始推理。\n`assistant_token` 和 `message_completed.content` 只用于最终正文。\nV1 不恢复 interrupt / decision / structured_block 工具链路。\n事件 payload 结构见 `AssistantEventPayloadCatalog`。",
+        "description": "`stream` 是单轮问答的唯一事件流。\n当前事件顺序固定为：`conversation_started -> detail_step_started/detail_step_updated* -> thinking_started -> thinking_delta* -> thinking_completed -> detail_step_completed/detail_step_updated* -> assistant_token* -> message_completed -> detail_step_completed -> done`；失败时输出 `error -> done`。\n`thinking_*` 事件用于展示用户可见的高细节推理详情，不暴露模型私有原始推理。\n`detail_step_*` 事件用于展示结构化行动日志。\n`assistant_token` 和 `message_completed.content` 只用于最终正文。\nV1 不恢复 interrupt / decision / structured_block 工具链路。\n事件 payload 结构见 `AssistantEventPayloadCatalog`。",
         "operationId": "StreamAssistantConversationMessage",
         "parameters": [
           {
@@ -503,7 +503,7 @@
                 "examples": {
                   "sameStreamResume": {
                     "summary": "原流等待确认并在同一连接内继续输出",
-                    "value": "event: conversation_started\ndata: {\"title\":\"介绍一下这个项目\"}\n\nevent: thinking_started\ndata: {\"title\":\"深度思考\"}\n\nevent: thinking_delta\ndata: {\"delta\":\"正在理解你的问题，先提炼核心目标和约束。\\n\"}\n\nevent: thinking_delta\ndata: {\"delta\":\"当前关注点：需要先说明项目定位，再补充主要能力。\\n\"}\n\nevent: thinking_completed\ndata: {\"content\":\"正在理解你的问题，先提炼核心目标和约束。\\n当前关注点：需要先说明项目定位，再补充主要能力。\\n下一步会按重点组织回答，再输出正式结果。\"}\n\nevent: assistant_token\ndata: {\"token\":\"这个项目目前处于 AI 助手基础阶段，重点提供流式对话能力。\"}\n\nevent: assistant_token\ndata: {\"token\":\"\\n\\n当前已经打通会话、历史消息和流式输出闭环。\"}\n\nevent: message_completed\ndata: {\"content\":\"这个项目目前处于 AI 助手基础阶段，重点提供流式对话能力。\\n\\n当前已经打通会话、历史消息和流式输出闭环。\"}\n\nevent: done\ndata: {}\n"
+                    "value": "event: conversation_started\ndata: {\"title\":\"介绍一下这个项目\"}\n\nevent: detail_step_started\ndata: {\"key\":\"step_read_history\",\"kind\":\"action\",\"title\":\"读取历史上下文\",\"content\":\"当前没有可复用的历史消息，将按首轮问题直接展开本轮分析。\",\"status\":\"loading\",\"order\":10}\n\nevent: detail_step_completed\ndata: {\"key\":\"step_read_history\",\"kind\":\"action\",\"title\":\"读取历史上下文\",\"content\":\"当前没有可复用的历史消息，将按首轮问题直接展开本轮分析。\",\"status\":\"success\",\"order\":10}\n\nevent: thinking_started\ndata: {\"title\":\"深度思考\"}\n\nevent: thinking_delta\ndata: {\"delta\":\"先判断这轮问题更需要过程细节还是结果摘要，避免一开始就走错输出方向。\\n\"}\n\nevent: thinking_delta\ndata: {\"delta\":\"当前输入里最需要优先抓住的是项目定位、现状和接下来怎么讲清楚。\\n\"}\n\nevent: thinking_completed\ndata: {\"content\":\"先判断这轮问题更需要过程细节还是结果摘要，避免一开始就走错输出方向。\\n当前输入里最需要优先抓住的是项目定位、现状和接下来怎么讲清楚。\\n接下来会继续组织结构，再进入最终正文生成。\"}\n\nevent: detail_step_started\ndata: {\"key\":\"step_generate_answer\",\"kind\":\"action\",\"title\":\"生成正文\",\"content\":\"已进入正文生成阶段，接下来会持续输出最终回答。\",\"status\":\"loading\",\"order\":50}\n\nevent: assistant_token\ndata: {\"token\":\"这个项目目前处于 AI 助手基础阶段，重点提供流式对话能力。\"}\n\nevent: assistant_token\ndata: {\"token\":\"\\n\\n当前已经打通会话、历史消息和流式输出闭环。\"}\n\nevent: message_completed\ndata: {\"content\":\"这个项目目前处于 AI 助手基础阶段，重点提供流式对话能力。\\n\\n当前已经打通会话、历史消息和流式输出闭环。\"}\n\nevent: detail_step_completed\ndata: {\"key\":\"step_generate_answer\",\"kind\":\"action\",\"title\":\"生成正文\",\"content\":\"最终正文已经全部生成完成。\",\"status\":\"success\",\"order\":50}\n\nevent: done\ndata: {}\n"
                   }
                 }
               },
@@ -819,11 +819,17 @@
       "AssistantTraceStatus": {
         "type": "string",
         "enum": [
-          "pending",
+          "loading",
           "success",
           "error",
-          "awaiting_confirmation",
-          "skipped"
+          "stopped"
+        ]
+      },
+      "AssistantTraceItemKind": {
+        "type": "string",
+        "enum": [
+          "reasoning",
+          "action"
         ]
       },
       "AssistantTraceActionType": {
@@ -934,6 +940,13 @@
           },
           "status": {
             "$ref": "#/components/schemas/AssistantTraceStatus"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AssistantTraceItemKind"
+          },
+          "order": {
+            "type": "integer",
+            "format": "int32"
           },
           "interrupt_id": {
             "type": "string"
@@ -1413,6 +1426,9 @@
           "thinking_started",
           "thinking_delta",
           "thinking_completed",
+          "detail_step_started",
+          "detail_step_updated",
+          "detail_step_completed",
           "assistant_token",
           "message_completed",
           "error",
@@ -1460,6 +1476,34 @@
         "properties": {
           "content": {
             "type": "string"
+          }
+        }
+      },
+      "AssistantDetailStepPayload": {
+        "type": "object",
+        "required": [
+          "key",
+          "title"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AssistantTraceItemKind"
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AssistantTraceStatus"
+          },
+          "order": {
+            "type": "integer",
+            "format": "int32"
           }
         }
       },
@@ -1653,6 +1697,15 @@
           },
           "thinking_completed": {
             "$ref": "#/components/schemas/AssistantThinkingCompletedPayload"
+          },
+          "detail_step_started": {
+            "$ref": "#/components/schemas/AssistantDetailStepPayload"
+          },
+          "detail_step_updated": {
+            "$ref": "#/components/schemas/AssistantDetailStepPayload"
+          },
+          "detail_step_completed": {
+            "$ref": "#/components/schemas/AssistantDetailStepPayload"
           },
           "assistant_token": {
             "$ref": "#/components/schemas/AssistantTokenPayload"

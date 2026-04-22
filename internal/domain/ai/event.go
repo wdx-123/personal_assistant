@@ -8,15 +8,6 @@ const (
 	// EventConversationStarted 表示一次 AI 流式生成已经开始。
 	EventConversationStarted EventName = "conversation_started"
 
-	// EventThinkingStarted 表示面向用户可见的外显思考阶段开始。
-	EventThinkingStarted EventName = "thinking_started"
-
-	// EventThinkingDelta 表示外显思考阶段追加的一段文本。
-	EventThinkingDelta EventName = "thinking_delta"
-
-	// EventThinkingCompleted 表示外显思考阶段已经结束。
-	EventThinkingCompleted EventName = "thinking_completed"
-
 	// EventAssistantToken 表示 assistant 本次追加输出的一段文本。
 	EventAssistantToken EventName = "assistant_token"
 
@@ -45,21 +36,6 @@ type Event struct {
 // ConversationStartedPayload 表示会话开始事件的载荷。
 type ConversationStartedPayload struct {
 	Title string `json:"title"`
-}
-
-// ThinkingStartedPayload 表示外显思考开始事件的载荷。
-type ThinkingStartedPayload struct {
-	Title string `json:"title"`
-}
-
-// ThinkingDeltaPayload 表示外显思考追加事件的载荷。
-type ThinkingDeltaPayload struct {
-	Delta string `json:"delta"`
-}
-
-// ThinkingCompletedPayload 表示外显思考结束事件的载荷。
-type ThinkingCompletedPayload struct {
-	Content string `json:"content"`
 }
 
 // AssistantTokenPayload 表示 assistant token 追加事件的载荷。

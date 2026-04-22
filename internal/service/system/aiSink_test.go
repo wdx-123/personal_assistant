@@ -74,3 +74,33 @@ func TestAIStreamSinkThrottlesPersistButForceFlushesFinalEvents(t *testing.T) {
 		t.Fatalf("writer events len = %d, want 3", len(writer.events))
 	}
 }
+
+func TestAIStreamSinkDoesNotPersistConversationStarted(t *testing.T) {
+	repo := &projectorRepoStub{}
+	writer := &writerStub{}
+	message := &entity.AIMessage{
+		ID:             "msg_ai_sink_step",
+		ConversationID: "conv_sink_step",
+		Role:           "assistant",
+		Status:         aiMessageStatusLoading,
+		TraceItemsJSON: "[]",
+		UIBlocksJSON:   "[]",
+		ScopeJSON:      "{}",
+	}
+	sink := newAIStreamSink(repo, writer, message)
+	sink.persistInterval = time.Hour
+
+	if err := sink.Emit(context.Background(), aidomain.Event{
+		Name:    aidomain.EventConversationStarted,
+		Payload: aidomain.ConversationStartedPayload{Title: "新建会话"},
+	}); err != nil {
+		t.Fatalf("Emit() error = %v", err)
+	}
+
+	if repo.updateCalls != 0 {
+		t.Fatalf("update calls after conversation_started = %d, want 0", repo.updateCalls)
+	}
+	if len(writer.events) != 1 {
+		t.Fatalf("writer events len = %d, want 1", len(writer.events))
+	}
+}

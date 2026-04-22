@@ -125,6 +125,39 @@
 - `role-menu / role-api / role-capability / menu-api` 变更统一写 DB + outbox，不允许在业务 Service 内直接全量刷新 Casbin。
 - `user-org-role / 成员状态` 变更允许同步收口当前主体投影，但仍必须补发异步修复事件。
 
+## 14. AI 子域渐进式 DDD 规则
+
+- 当前项目的正式口径是 `MVC 主体 + AI 子域渐进式 DDD`。
+- 这表示：
+  - 项目整体仍以传统 MVC 目录和职责划分为主。
+  - AI 子域在复杂度上升后，允许渐进式补 `internal/domain/ai` 与 `internal/infrastructure/ai`。
+  - 默认目标不是全量 DDD 重构，也不是项目整体目录全面改名。
+- AI 子域目录职责：
+  - `internal/controller/system`、`internal/router/system`
+    - 继续作为 AI HTTP / SSE 入口层。
+  - `internal/service/system`
+    - 继续作为 AI 应用编排层，负责会话流程、上下文组装、tool 注册与授权收口、sink/projector 协调。
+  - `internal/domain/ai`
+    - 放稳定协议、事件、tool/runtime 抽象、领域语义。
+    - 禁止依赖 Gin、GORM、Eino、Redis、第三方模型 SDK。
+  - `internal/infrastructure/ai`
+    - 放 Eino / Local runtime、模型 SDK、tool adapter、checkpoint / approval / runtime control 等技术实现。
+  - `internal/repository/*`
+    - 继续负责 AI 持久化访问，不因为 AI 子域拆分而绕开 Repository。
+- AI 任务落点判断：
+  - 协议与抽象：优先落 `domain/ai`
+  - 应用编排：优先落 `service/system`
+  - 基础设施适配：优先落 `infrastructure/ai`
+  - 持久化：优先落 `repository/*`
+- 禁止模式：
+  - 把 AI 子域演进误表述为“已经完成全量 DDD 重构”。
+  - 把 runtime、tool、trace、prompt 拼装、恢复控制等复杂度继续无边界堆进单个 `service` 文件。
+  - 在 `domain/ai` 中直接依赖 HTTP、数据库或具体 Agent 框架。
+  - 因 AI 子域局部改造而强行推动整个项目做无必要的目录迁移。
+- 阶段演进说明：
+  - A2UI、interrupt、approval、runtimecontrol 等能力允许按阶段收缩、停用或重建。
+  - 无论具体功能阶段如何变化，AI 子域的依赖方向和目录边界必须保持稳定。
+
 ## 计划落盘规则
 
 - 只要任务属于新增、重构、修复、联调、排障、迁移、删除、配置调整这类执行型工作，先写计划，不直接改代码。

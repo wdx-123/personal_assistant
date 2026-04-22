@@ -37,22 +37,6 @@ func TestRuntimeStreamEmitsMinimalEvents(t *testing.T) {
 	if sink.events[0].Name != aidomain.EventConversationStarted {
 		t.Fatalf("first event = %q", sink.events[0].Name)
 	}
-	foundThinkingStarted := false
-	foundThinkingCompleted := false
-	for _, event := range sink.events {
-		if event.Name == aidomain.EventThinkingStarted {
-			foundThinkingStarted = true
-		}
-		if event.Name == aidomain.EventThinkingCompleted {
-			foundThinkingCompleted = true
-		}
-	}
-	if !foundThinkingStarted {
-		t.Fatal("thinking_started event not found")
-	}
-	if !foundThinkingCompleted {
-		t.Fatal("thinking_completed event not found")
-	}
 	if sink.events[len(sink.events)-1].Name != aidomain.EventDone {
 		t.Fatalf("last event = %q", sink.events[len(sink.events)-1].Name)
 	}

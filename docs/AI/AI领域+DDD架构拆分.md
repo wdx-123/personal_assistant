@@ -120,6 +120,30 @@ internal/
 因为在这次的项目中，
 并不是为了用 DDD 推翻现有 MVC，而只需要给 AI 子域补一个 domain/ai 稳定核心层，让 Service 和 Infrastructure 都围着它依赖。
 
+## 当前项目正式口径
+
+当前项目对外和对内的统一表述，应当是：
+
+> **项目整体仍是传统 MVC 主体架构，针对 AI 核心子域做渐进式 DDD 分层改造。**
+
+这句话的含义是：
+
+- 不是说整个项目已经完成全量 DDD 重构。
+- 也不是说 AI 子域仍然应该继续全部堆在单个 MVC Service 里。
+- 而是：
+  - `controller/router/service/repository` 主体结构继续保留；
+  - 当 AI 逻辑出现稳定协议、事件语义、可替换 runtime、tool 抽象、恢复控制等需求时，
+    再把这些内容渐进式收口到 `domain/ai` 与 `infrastructure/ai`。
+
+因此，后续在本项目做 AI 改动时，默认优先遵守下面这条落点规则：
+
+- 稳定协议、事件、tool/runtime 抽象：放 `internal/domain/ai`
+- Eino / Local runtime、模型 SDK、第三方 Agent 适配：放 `internal/infrastructure/ai`
+- 会话流程、上下文组装、tool 注册授权、trace/projector 协调：放 `internal/service/system`
+- HTTP / SSE 入口：继续放 `internal/controller/system` 与 `internal/router/system`
+
+这就是“AI 子域局部 DDD”，不是“项目整体目录全面改名”。
+
 
 
 我能不能在拆分的时候，先把这部分给踢掉，等后期在新添加上去，顺便把A2UI这个踢掉，
