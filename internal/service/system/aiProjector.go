@@ -2,12 +2,21 @@ package system
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"sync"
 	"time"
 
 	aidomain "personal_assistant/internal/domain/ai"
+	resp "personal_assistant/internal/model/dto/response"
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository/interfaces"
+)
+
+const (
+	thinkingTraceKey         = "thinking_summary"
+	thinkingTraceTitle       = "深度思考"
+	thinkingTraceDescription = "正在整理当前判断和下一步。"
 )
 
 // aiMessageProjector 负责把最小 runtime 事件折叠成 assistant 消息快照。
@@ -37,6 +46,7 @@ func (p *aiMessageProjector) setStopped() {
 
 	if p.message != nil {
 		p.message.Status = aiMessageStatusStopped
+		p.updateThinkingTraceStatusLocked(aiMessageStatusStopped)
 	}
 }
 
@@ -50,6 +60,7 @@ func (p *aiMessageProjector) setError(message string) {
 	if p.message != nil {
 		p.message.Status = aiMessageStatusError
 		p.message.ErrorText = message
+		p.updateThinkingTraceStatusLocked(aiMessageStatusError)
 	}
 }
 
@@ -68,9 +79,15 @@ func (p *aiMessageProjector) persistMessage(ctx context.Context) error {
 	if p.message == nil {
 		return nil
 	}
-	p.message.TraceItemsJSON = "[]"
-	p.message.UIBlocksJSON = "[]"
-	p.message.ScopeJSON = "{}"
+	if strings.TrimSpace(p.message.TraceItemsJSON) == "" {
+		p.message.TraceItemsJSON = "[]"
+	}
+	if strings.TrimSpace(p.message.UIBlocksJSON) == "" {
+		p.message.UIBlocksJSON = "[]"
+	}
+	if strings.TrimSpace(p.message.ScopeJSON) == "" {
+		p.message.ScopeJSON = "{}"
+	}
 	p.message.UpdatedAt = time.Now()
 	return p.repo.UpdateMessage(ctx, p.message)
 }
@@ -94,6 +111,30 @@ func (p *aiMessageProjector) applyEvent(event aidomain.Event) {
 	}
 
 	switch event.Name {
+	case aidomain.EventThinkingStarted:
+		p.upsertThinkingTraceLocked(func(item *resp.AssistantTraceItem) {
+			item.Title = thinkingTraceTitle
+			item.Description = thinkingTraceDescription
+			item.Status = aiMessageStatusLoading
+		})
+	case aidomain.EventThinkingDelta:
+		if payload, ok := event.Payload.(aidomain.ThinkingDeltaPayload); ok {
+			p.upsertThinkingTraceLocked(func(item *resp.AssistantTraceItem) {
+				item.Title = thinkingTraceTitle
+				item.Description = thinkingTraceDescription
+				item.Status = aiMessageStatusLoading
+				item.Content += payload.Delta
+			})
+		}
+	case aidomain.EventThinkingCompleted:
+		p.upsertThinkingTraceLocked(func(item *resp.AssistantTraceItem) {
+			item.Title = thinkingTraceTitle
+			item.Description = thinkingTraceDescription
+			item.Status = aiMessageStatusSuccess
+			if payload, ok := event.Payload.(aidomain.ThinkingCompletedPayload); ok && strings.TrimSpace(payload.Content) != "" {
+				item.Content = payload.Content
+			}
+		})
 	case aidomain.EventAssistantToken:
 		if payload, ok := event.Payload.(aidomain.AssistantTokenPayload); ok {
 			p.message.Content += payload.Token
@@ -107,10 +148,82 @@ func (p *aiMessageProjector) applyEvent(event aidomain.Event) {
 			p.message.Content = payload.Content
 		}
 		p.message.Status = aiMessageStatusSuccess
+		p.updateThinkingTraceStatusLocked(aiMessageStatusSuccess)
 	case aidomain.EventError:
 		if payload, ok := event.Payload.(aidomain.ErrorPayload); ok {
 			p.message.ErrorText = payload.Message
 		}
 		p.message.Status = aiMessageStatusError
+		p.updateThinkingTraceStatusLocked(aiMessageStatusError)
+	}
+}
+
+func (p *aiMessageProjector) decodeTraceItemsLocked() []resp.AssistantTraceItem {
+	if p.message == nil || strings.TrimSpace(p.message.TraceItemsJSON) == "" {
+		return []resp.AssistantTraceItem{}
+	}
+	items := make([]resp.AssistantTraceItem, 0)
+	if err := json.Unmarshal([]byte(p.message.TraceItemsJSON), &items); err != nil {
+		return []resp.AssistantTraceItem{}
+	}
+	return items
+}
+
+func (p *aiMessageProjector) encodeTraceItemsLocked(items []resp.AssistantTraceItem) {
+	raw, err := json.Marshal(items)
+	if err != nil {
+		p.message.TraceItemsJSON = "[]"
+		return
+	}
+	p.message.TraceItemsJSON = string(raw)
+}
+
+func (p *aiMessageProjector) upsertThinkingTraceLocked(mutator func(item *resp.AssistantTraceItem)) {
+	if p.message == nil {
+		return
+	}
+	items := p.decodeTraceItemsLocked()
+	index := -1
+	for idx, item := range items {
+		if item.Key == thinkingTraceKey {
+			index = idx
+			break
+		}
+	}
+
+	var target resp.AssistantTraceItem
+	if index >= 0 {
+		target = items[index]
+	} else {
+		target = resp.AssistantTraceItem{
+			Key:         thinkingTraceKey,
+			Title:       thinkingTraceTitle,
+			Description: thinkingTraceDescription,
+			Status:      aiMessageStatusLoading,
+		}
+	}
+
+	mutator(&target)
+
+	if index >= 0 {
+		items[index] = target
+	} else {
+		items = append(items, target)
+	}
+	p.encodeTraceItemsLocked(items)
+}
+
+func (p *aiMessageProjector) updateThinkingTraceStatusLocked(status string) {
+	if p.message == nil {
+		return
+	}
+	items := p.decodeTraceItemsLocked()
+	for idx, item := range items {
+		if item.Key != thinkingTraceKey {
+			continue
+		}
+		items[idx].Status = status
+		p.encodeTraceItemsLocked(items)
+		return
 	}
 }

@@ -240,6 +240,8 @@ func (r *AIGormRepository) ListMessagesByConversation(ctx context.Context, conve
 	if err := r.db.WithContext(ctx).
 		Where("conversation_id = ?", conversationID).
 		Order("created_at ASC").
+		Order("CASE role WHEN 'user' THEN 0 WHEN 'assistant' THEN 1 ELSE 2 END ASC").
+		Order("id ASC").
 		Find(&messages).Error; err != nil {
 		return nil, err
 	}

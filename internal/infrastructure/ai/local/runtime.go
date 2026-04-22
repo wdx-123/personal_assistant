@@ -79,6 +79,10 @@ func (r *Runtime) Stream(ctx context.Context, input aidomain.StreamInput, sink a
 		return aidomain.StreamResult{}, err
 	}
 
+	if err := emitVisibleThinking(ctx, sink, buildThinkingSummary(input.Content)); err != nil {
+		return aidomain.StreamResult{}, err
+	}
+
 	reply := buildReply(input.Content)
 	for _, chunk := range splitChunks(reply, 48) {
 		if err := sink.Emit(ctx, aidomain.Event{
@@ -108,6 +112,22 @@ func buildReply(content string) string {
 		return "我没有收到有效内容，请重新输入你的问题。"
 	}
 	return "我已收到你的问题：" + content + "\n\n当前阶段 AI 助手只保留基础流式对话能力；我会基于你的输入直接回答，不再调用工具或等待人工确认。"
+}
+
+// buildThinkingSummary 为本地 runtime 生成用户可见的外显思考短句。
+func buildThinkingSummary(content string) string {
+	content = strings.TrimSpace(strings.ReplaceAll(content, "\n", " "))
+	if content == "" {
+		return strings.Join([]string{
+			"正在检查输入是否完整，并确认本轮回答目标。",
+			"下一步会先归纳问题重点，再输出正式回复。",
+		}, "\n")
+	}
+	return strings.Join([]string{
+		"正在理解你的问题，先提炼核心目标和约束。",
+		"当前关注点：" + truncateRunes(content, 24),
+		"下一步会按重点组织回答，再输出正式结果。",
+	}, "\n")
 }
 
 // deriveTitle 根据用户输入生成会话开始事件中的标题。
@@ -148,6 +168,42 @@ func splitChunks(content string, size int) []string {
 		chunks = append(chunks, string(runes[start:end]))
 	}
 	return chunks
+}
+
+func emitVisibleThinking(ctx context.Context, sink aidomain.Sink, content string) error {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return nil
+	}
+	if err := sink.Emit(ctx, aidomain.Event{
+		Name:    aidomain.EventThinkingStarted,
+		Payload: aidomain.ThinkingStartedPayload{Title: "深度思考"},
+	}); err != nil {
+		return err
+	}
+	for _, chunk := range splitChunks(content, 24) {
+		if err := sink.Emit(ctx, aidomain.Event{
+			Name:    aidomain.EventThinkingDelta,
+			Payload: aidomain.ThinkingDeltaPayload{Delta: chunk},
+		}); err != nil {
+			return err
+		}
+	}
+	return sink.Emit(ctx, aidomain.Event{
+		Name:    aidomain.EventThinkingCompleted,
+		Payload: aidomain.ThinkingCompletedPayload{Content: content},
+	})
+}
+
+func truncateRunes(content string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(strings.TrimSpace(content))
+	if len(runes) <= limit {
+		return string(runes)
+	}
+	return string(runes[:limit])
 }
 
 // runtimeError 表示本地 runtime 内部的轻量错误类型。

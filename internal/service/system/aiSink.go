@@ -16,6 +16,9 @@ import (
 type aiStreamSink struct {
 	writer    streamsse.StreamWriter
 	projector *aiMessageProjector
+
+	persistInterval time.Duration
+	lastPersistAt   time.Time
 }
 
 // newAIStreamSink 负责创建一条流式执行期间使用的 sink。
@@ -26,8 +29,9 @@ func newAIStreamSink(
 	message *entity.AIMessage,
 ) *aiStreamSink {
 	return &aiStreamSink{
-		writer:    writer,
-		projector: newAIMessageProjector(repo, message),
+		writer:          writer,
+		projector:       newAIMessageProjector(repo, message),
+		persistInterval: 400 * time.Millisecond,
 	}
 }
 
@@ -53,7 +57,10 @@ func (s *aiStreamSink) Emit(ctx context.Context, event aidomain.Event) error {
 		return err
 	}
 	s.projector.applyEvent(event)
-	return s.projector.persistMessage(ctx)
+	if !s.shouldPersist(event.Name) {
+		return nil
+	}
+	return s.persistMessage(ctx)
 }
 
 // Heartbeat 负责向客户端发送 keepalive 心跳。
@@ -79,5 +86,22 @@ func (s *aiStreamSink) setError(message string) {
 // persistMessage 负责把当前内存态消息快照写回数据库。
 // 作用：把当前 sink 内存里的最新状态写回数据库。
 func (s *aiStreamSink) persistMessage(ctx context.Context) error {
-	return s.projector.persistMessage(ctx)
+	if err := s.projector.persistMessage(ctx); err != nil {
+		return err
+	}
+	s.lastPersistAt = time.Now()
+	return nil
+}
+
+func (s *aiStreamSink) shouldPersist(name aidomain.EventName) bool {
+	switch name {
+	case aidomain.EventThinkingCompleted, aidomain.EventMessageCompleted, aidomain.EventError, aidomain.EventDone:
+		return true
+	case aidomain.EventConversationStarted:
+		return false
+	}
+	if s.persistInterval <= 0 || s.lastPersistAt.IsZero() {
+		return true
+	}
+	return time.Since(s.lastPersistAt) >= s.persistInterval
 }

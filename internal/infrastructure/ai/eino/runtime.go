@@ -87,6 +87,10 @@ func (r *Runtime) Stream(
 		return aidomain.StreamResult{}, err
 	}
 
+	if err := r.emitVisibleThinking(ctx, input, sink); err != nil {
+		return aidomain.StreamResult{}, err
+	}
+
 	reader, err := r.model.Stream(ctx, r.buildMessages(input))
 	if err != nil {
 		return aidomain.StreamResult{}, err
@@ -127,6 +131,78 @@ func (r *Runtime) Stream(
 	return aidomain.StreamResult{Content: content, FinishReason: "stop"}, nil
 }
 
+func (r *Runtime) emitVisibleThinking(
+	ctx context.Context,
+	input aidomain.StreamInput,
+	sink aidomain.Sink,
+) error {
+	content, err := r.generateThinkingSummary(ctx, input)
+	if err != nil {
+		content = buildVisibleThinkingSummary(input.Content)
+	}
+	content = normalizeThinkingSummary(content, input.Content)
+	if content == "" {
+		return nil
+	}
+	if err := sink.Emit(ctx, aidomain.Event{
+		Name:    aidomain.EventThinkingStarted,
+		Payload: aidomain.ThinkingStartedPayload{Title: "深度思考"},
+	}); err != nil {
+		return err
+	}
+	for _, chunk := range splitTextChunks(content, 24) {
+		if err := sink.Emit(ctx, aidomain.Event{
+			Name:    aidomain.EventThinkingDelta,
+			Payload: aidomain.ThinkingDeltaPayload{Delta: chunk},
+		}); err != nil {
+			return err
+		}
+	}
+	return sink.Emit(ctx, aidomain.Event{
+		Name:    aidomain.EventThinkingCompleted,
+		Payload: aidomain.ThinkingCompletedPayload{Content: content},
+	})
+}
+
+func (r *Runtime) generateThinkingSummary(ctx context.Context, input aidomain.StreamInput) (string, error) {
+	messages := []*schema.Message{
+		schema.SystemMessage(strings.TrimSpace(`
+你需要先输出一段可以直接展示给用户的“深度思考”短句。
+要求：
+1. 只描述“当前判断 / 正在做什么 / 下一步是什么”。
+2. 不泄露模型私有推理，不展示完整推导链。
+3. 不输出最终答案，不要复述太多用户原文。
+4. 最多 3 行，总长度控制在 120 个中文字符以内。
+5. 直接输出正文，不要加标题、编号、markdown 列表符号。`)),
+		schema.UserMessage(strings.TrimSpace(input.Content)),
+	}
+	return r.readStreamContent(ctx, messages)
+}
+
+func (r *Runtime) readStreamContent(ctx context.Context, messages []*schema.Message) (string, error) {
+	reader, err := r.model.Stream(ctx, messages)
+	if err != nil {
+		return "", err
+	}
+	defer reader.Close()
+
+	var output strings.Builder
+	for {
+		msg, recvErr := reader.Recv()
+		if errors.Is(recvErr, io.EOF) {
+			break
+		}
+		if recvErr != nil {
+			return "", recvErr
+		}
+		if msg == nil || msg.Content == "" {
+			continue
+		}
+		output.WriteString(msg.Content)
+	}
+	return output.String(), nil
+}
+
 // buildMessages 把 domain 层历史消息转换成 Eino schema 消息。
 // 参数：
 //   - input：包含历史消息与当前用户输入的 StreamInput。
@@ -154,6 +230,73 @@ func (r *Runtime) buildMessages(input aidomain.StreamInput) []*schema.Message {
 		messages = append(messages, schema.UserMessage(strings.TrimSpace(input.Content)))
 	}
 	return messages
+}
+
+func buildVisibleThinkingSummary(content string) string {
+	content = strings.TrimSpace(strings.ReplaceAll(content, "\n", " "))
+	if content == "" {
+		return strings.Join([]string{
+			"正在确认输入是否完整，并收拢本轮回答目标。",
+			"下一步会先组织回答结构，再输出正式结果。",
+		}, "\n")
+	}
+	return strings.Join([]string{
+		"正在理解你的问题，先提炼核心目标和约束。",
+		"当前关注点：" + truncateRunes(content, 24),
+		"下一步会按重点组织回答，再输出正式结果。",
+	}, "\n")
+}
+
+func normalizeThinkingSummary(content string, fallback string) string {
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	content = strings.ReplaceAll(content, "\r", "\n")
+	lines := strings.Split(content, "\n")
+	filtered := make([]string, 0, 3)
+	for _, line := range lines {
+		line = strings.TrimSpace(strings.TrimLeft(line, "-*0123456789.、 "))
+		if line == "" {
+			continue
+		}
+		filtered = append(filtered, line)
+		if len(filtered) == 3 {
+			break
+		}
+	}
+	if len(filtered) == 0 {
+		return buildVisibleThinkingSummary(fallback)
+	}
+	content = strings.Join(filtered, "\n")
+	return truncateRunes(content, 120)
+}
+
+func splitTextChunks(content string, size int) []string {
+	if size <= 0 {
+		size = 24
+	}
+	runes := []rune(content)
+	if len(runes) == 0 {
+		return nil
+	}
+	chunks := make([]string, 0, (len(runes)/size)+1)
+	for start := 0; start < len(runes); start += size {
+		end := start + size
+		if end > len(runes) {
+			end = len(runes)
+		}
+		chunks = append(chunks, string(runes[start:end]))
+	}
+	return chunks
+}
+
+func truncateRunes(content string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(strings.TrimSpace(content))
+	if len(runes) <= limit {
+		return string(runes)
+	}
+	return string(runes[:limit])
 }
 
 // deriveTitle 根据用户输入生成会话开始事件标题。

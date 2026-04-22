@@ -3,7 +3,7 @@
   "info": {
     "title": "z_cur/UI AI 助手模块 OpenAPI",
     "version": "1.2.0",
-    "description": "只覆盖 `z_cur/UI` 当前 AI 助手模块需要的接口，可直接导入 Apifox。\n当前正式方案以 `go/personal_assistant/docs/AI助手架构设计方案.md`、`z_cur/UI/src/types/assistant.types.ts` 与 `z_cur/UI/src/stores/assistant.ts` 为准。\n当前协议固定为“业务 SSE 事件流 + 内嵌 A2UI block”的混合模型，不切换到纯 A2UI 顶层协议。\nAI 回复区只允许四类可见内容：`思考摘要 / 工具意图 / 等待用户 / 最终正文`。\n统一约束：\n1. CRUD 与 decision 接口走 JSON BizResponse；`stream` 接口返回 `text/event-stream`。\n2. `stream` 是唯一聊天 SSE 流；decision 接口只提交控制命令，不返回第二条 SSE 流。\n3. `assistant_token` 与 `message_completed.content` 只承载最终正文。\n4. `structured_block.ui_block` 只允许 `thinking_summary_block / tool_intent_block / waiting_user_block`。\n5. `trace_items / scope` 继续作为恢复与上下文字段存在，但不是默认可见内容。\n6. 命中 interrupt 后，服务端在原流内等待决策并恢复输出；旧的工具续跑流接口已废弃。"
+    "description": "覆盖当前 `personal-assistant-frontend` AI 助手模块使用的接口，可直接导入 Apifox。\n当前 V1 协议已经收敛为“单条聊天 SSE 流 + 思考短句流 + 最终正文流”。\n统一约束：\n1. CRUD 接口走 JSON BizResponse；`stream` 接口返回 `text/event-stream`。\n2. `stream` 是唯一聊天 SSE 流，不恢复 decision / interrupt / 第二条流。\n3. `thinking_started / thinking_delta / thinking_completed` 只承载用户可见的外显思考。\n4. `assistant_token` 与 `message_completed.content` 只承载最终正文。\n5. `trace_items` 持久化 `thinking_summary`，用于刷新后恢复思考区历史。\n6. `ui_blocks / scope` 字段继续保留兼容，但当前 V1 默认不下发结构化 UI。"
   },
   "servers": [
     {
@@ -462,7 +462,7 @@
           "AI助手"
         ],
         "summary": "发送用户消息并开启唯一聊天 SSE 流",
-        "description": "`stream` 是单轮问答的唯一事件流。\n命中 interrupt 后，服务端应发送 `tool_call_waiting_confirmation`，并在同一条连接上保持 keepalive；用户随后调用 decision 接口，服务端在原流内继续输出 `tool_call_confirmation_result / structured_block / assistant_token / message_completed / done`。\nV1 不做“断流后重新附着到同一轮运行”；连接断开即本轮失败或停止。\n问候语、寒暄和无业务目标的短消息可直接走轻量直答路径，不进入重型工具链路。\n`assistant_token` 和 `message_completed.content` 只用于最终正文；思考摘要、工具意图和等待用户通过 `structured_block.ui_block` 返回。\n`scope` 仅在复杂范围时通过 `structured_block.scope` 返回，普通同上下文对话默认不发。\n事件 payload 结构见 `AssistantEventPayloadCatalog`。",
+        "description": "`stream` 是单轮问答的唯一事件流。\n当前事件顺序固定为：`conversation_started -> thinking_started -> thinking_delta* -> thinking_completed -> assistant_token* -> message_completed -> done`；失败时输出 `error -> done`。\n`thinking_*` 事件用于展示用户可见的外显思考，不暴露模型私有原始推理。\n`assistant_token` 和 `message_completed.content` 只用于最终正文。\nV1 不恢复 interrupt / decision / structured_block 工具链路。\n事件 payload 结构见 `AssistantEventPayloadCatalog`。",
         "operationId": "StreamAssistantConversationMessage",
         "parameters": [
           {
@@ -503,7 +503,7 @@
                 "examples": {
                   "sameStreamResume": {
                     "summary": "原流等待确认并在同一连接内继续输出",
-                    "value": "event: conversation_started\ndata: {\"title\":\"任务汇报与项目摘要\"}\n\nevent: structured_block\ndata: {\"ui_block\":{\"key\":\"block_thinking_summary_001\",\"type\":\"thinking_summary_block\",\"surface\":{\"id\":\"surface_thinking_summary_001\",\"root\":\"thinking_card_root\",\"components\":[{\"id\":\"thinking_card_root\",\"type\":\"Card\",\"tone\":\"muted\",\"children\":[\"thinking_title\",\"thinking_points\"]},{\"id\":\"thinking_title\",\"type\":\"Text\",\"value\":\"当前判断与下一步\",\"usage_hint\":\"title\"},{\"id\":\"thinking_points\",\"type\":\"BulletList\",\"items\":[\"当前判断：这个问题需要结合最新业务数据或项目文档来回答。\",\"当前动作：正在安排所需工具，避免只靠上下文猜测。\",\"下一步：工具结果返回后再输出最终正文。\"]}]}}}\n\nevent: structured_block\ndata: {\"ui_block\":{\"key\":\"block_tool_intent_001\",\"type\":\"tool_intent_block\",\"surface\":{\"id\":\"surface_tool_intent_001\",\"root\":\"tool_intent_card_root\",\"components\":[{\"id\":\"tool_intent_card_root\",\"type\":\"Card\",\"tone\":\"warning\",\"children\":[\"tool_badge\",\"tool_title\",\"tool_points\"]},{\"id\":\"tool_badge\",\"type\":\"Badge\",\"label\":\"等待确认\",\"tone\":\"warning\"},{\"id\":\"tool_title\",\"type\":\"Text\",\"value\":\"文档工具需要你的确认\",\"usage_hint\":\"title\"},{\"id\":\"tool_points\",\"type\":\"BulletList\",\"items\":[\"目的：当前准备使用任务快照、项目文档来补齐回答依据。\",\"必要性：现有结果已够形成初步判断，但缺少正式文档支持。\",\"预期收益：继续后能明确页面定位、知识源和接入方式。\",\"确认要求：是否继续读取正式项目文档需要你决定。\"]}]}}}\n\nevent: structured_block\ndata: {\"ui_block\":{\"key\":\"block_waiting_user_001\",\"type\":\"waiting_user_block\",\"surface\":{\"id\":\"surface_waiting_user_001\",\"root\":\"waiting_card_root\",\"components\":[{\"id\":\"waiting_card_root\",\"type\":\"Card\",\"tone\":\"warning\",\"children\":[\"waiting_title\",\"waiting_description\",\"waiting_points\"]},{\"id\":\"waiting_title\",\"type\":\"Text\",\"value\":\"是否继续使用“项目文档摘要”工具？\",\"usage_hint\":\"title\"},{\"id\":\"waiting_description\",\"type\":\"Text\",\"value\":\"继续后会读取正式文档白名单并补充引用摘要；跳过则只基于已有业务数据继续输出。\",\"usage_hint\":\"body\"},{\"id\":\"waiting_points\",\"type\":\"BulletList\",\"items\":[\"继续后：会读取正式项目文档白名单，并把页面定位与接入说明补进回答。\",\"跳过后：只基于当前已拿到的业务数据继续输出。\"]}]}}}\n\nevent: tool_call_waiting_confirmation\ndata: {\"interrupt_id\":\"intr_20260406_doc_001\",\"key\":\"tool_doc_snapshot\",\"title\":\"读取正式项目文档\",\"description\":\"读取 README、架构设计方案和 AI UI 改造说明。\",\"confirmation_title\":\"是否继续使用“项目文档摘要”工具？\",\"confirmation_description\":\"继续后会读取正式文档白名单并补充引用摘要；跳过则只基于已有业务数据继续输出。\",\"actions\":[{\"key\":\"confirm_doc\",\"label\":\"继续使用\",\"action\":\"confirm\",\"style\":\"primary\"},{\"key\":\"skip_doc\",\"label\":\"跳过此工具\",\"action\":\"skip\",\"style\":\"default\"}]}\n\n: keepalive\n\n: user calls POST /ai/conversations/conv_20260406_001/interrupts/intr_20260406_doc_001/decision\n\nevent: tool_call_confirmation_result\ndata: {\"interrupt_id\":\"intr_20260406_doc_001\",\"key\":\"tool_doc_snapshot\",\"decision\":\"confirm\",\"status\":\"pending\",\"description\":\"已确认继续读取正式项目文档，准备补充最终回答。\"}\n\nevent: assistant_token\ndata: {\"token\":\"当前任务主线已进入收口阶段，主要阻塞集中在少数成员补齐和回归验证。\"}\n\nevent: message_completed\ndata: {\"content\":\"当前任务主线已进入收口阶段，主要阻塞集中在少数成员补齐和回归验证。\\n\\n- 任务完成率：81%\\n- 覆盖成员：17 / 21\\n- 阻塞项：3\\n\\n补充正式项目文档后，可以确认两点：\\n\\n- 助手继续挂在控制台 Workbench 中，不额外拆独立站点。\\n- 后端接入继续采用单条 SSE 聊天流 + interrupt decision 控制接口。\"}\n\nevent: done\ndata: {}\n"
+                    "value": "event: conversation_started\ndata: {\"title\":\"介绍一下这个项目\"}\n\nevent: thinking_started\ndata: {\"title\":\"深度思考\"}\n\nevent: thinking_delta\ndata: {\"delta\":\"正在理解你的问题，先提炼核心目标和约束。\\n\"}\n\nevent: thinking_delta\ndata: {\"delta\":\"当前关注点：需要先说明项目定位，再补充主要能力。\\n\"}\n\nevent: thinking_completed\ndata: {\"content\":\"正在理解你的问题，先提炼核心目标和约束。\\n当前关注点：需要先说明项目定位，再补充主要能力。\\n下一步会按重点组织回答，再输出正式结果。\"}\n\nevent: assistant_token\ndata: {\"token\":\"这个项目目前处于 AI 助手基础阶段，重点提供流式对话能力。\"}\n\nevent: assistant_token\ndata: {\"token\":\"\\n\\n当前已经打通会话、历史消息和流式输出闭环。\"}\n\nevent: message_completed\ndata: {\"content\":\"这个项目目前处于 AI 助手基础阶段，重点提供流式对话能力。\\n\\n当前已经打通会话、历史消息和流式输出闭环。\"}\n\nevent: done\ndata: {}\n"
                   }
                 }
               },
@@ -1410,12 +1410,10 @@
         "type": "string",
         "enum": [
           "conversation_started",
+          "thinking_started",
+          "thinking_delta",
+          "thinking_completed",
           "assistant_token",
-          "tool_call_started",
-          "tool_call_finished",
-          "tool_call_waiting_confirmation",
-          "tool_call_confirmation_result",
-          "structured_block",
           "message_completed",
           "error",
           "done"
@@ -1428,6 +1426,39 @@
         ],
         "properties": {
           "title": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantThinkingStartedPayload": {
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantThinkingDeltaPayload": {
+        "type": "object",
+        "required": [
+          "delta"
+        ],
+        "properties": {
+          "delta": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantThinkingCompletedPayload": {
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "properties": {
+          "content": {
             "type": "string"
           }
         }
@@ -1614,23 +1645,17 @@
           "conversation_started": {
             "$ref": "#/components/schemas/AssistantConversationStartedPayload"
           },
+          "thinking_started": {
+            "$ref": "#/components/schemas/AssistantThinkingStartedPayload"
+          },
+          "thinking_delta": {
+            "$ref": "#/components/schemas/AssistantThinkingDeltaPayload"
+          },
+          "thinking_completed": {
+            "$ref": "#/components/schemas/AssistantThinkingCompletedPayload"
+          },
           "assistant_token": {
             "$ref": "#/components/schemas/AssistantTokenPayload"
-          },
-          "tool_call_started": {
-            "$ref": "#/components/schemas/AssistantToolCallStartedPayload"
-          },
-          "tool_call_finished": {
-            "$ref": "#/components/schemas/AssistantToolCallFinishedPayload"
-          },
-          "tool_call_waiting_confirmation": {
-            "$ref": "#/components/schemas/AssistantToolCallWaitingConfirmationPayload"
-          },
-          "tool_call_confirmation_result": {
-            "$ref": "#/components/schemas/AssistantToolCallConfirmationResultPayload"
-          },
-          "structured_block": {
-            "$ref": "#/components/schemas/AssistantStructuredBlockPayload"
           },
           "message_completed": {
             "$ref": "#/components/schemas/AssistantMessageCompletedPayload"
