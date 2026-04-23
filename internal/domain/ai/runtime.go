@@ -38,6 +38,15 @@ type StreamInput struct {
 	Content string
 
 	History []Message
+
+	// DynamicSystemPrompt 是本轮动态拼装的 system prompt，用于注入可见工具和约束。
+	DynamicSystemPrompt string
+
+	// Tools 是本轮允许 runtime 暴露给模型的工具集合。
+	Tools []Tool
+
+	// ToolCallContext 是所有工具调用共享的执行上下文。
+	ToolCallContext ToolCallContext
 }
 
 // StreamResult 表示 runtime 执行完成后的结果摘要。

@@ -36,46 +36,12 @@ type AssistantTraceItem struct {
 	Status                  string                 `json:"status"`                             // 轨迹状态，如 running / success / failed / waiting。
 	InterruptID             string                 `json:"interrupt_id,omitempty"`             // 中断确认场景下的中断 ID，用于后续确认或拒绝。
 	DurationMS              int64                  `json:"duration_ms,omitempty"`              // 当前步骤耗时，单位毫秒。
-	Content                 string                 `json:"content,omitempty"`                  // 当前步骤的简要结果内容，适合直接展示。
-	DetailMarkdown          string                 `json:"detail_markdown,omitempty"`          // 当前步骤的详细说明，通常为 Markdown 格式。
+	Content                 string                 `json:"content,omitempty"`                  // 当前步骤的简要结果内容，供前端折叠进普通消息显示。
+	DetailMarkdown          string                 `json:"detail_markdown,omitempty"`          // 当前步骤的详细说明，通常为 Markdown 格式，仅在前端需要补充时使用。
 	RequiresConfirmation    bool                   `json:"requires_confirmation,omitempty"`    // 当前步骤是否需要用户确认后才能继续。
 	ConfirmationTitle       string                 `json:"confirmation_title,omitempty"`       // 确认弹窗或确认区域的标题。
 	ConfirmationDescription string                 `json:"confirmation_description,omitempty"` // 对确认事项的补充说明。
 	Actions                 []AssistantTraceAction `json:"actions,omitempty"`                  // 当前节点可供用户选择的动作列表。
-}
-
-// AssistantA2UIBinding 表示 A2UI 中的一个绑定变量。
-type AssistantA2UIBinding struct {
-	Key         string `json:"key"`                    // 绑定键名，供组件通过 binding_key 引用。
-	ValueString string `json:"value_string,omitempty"` // 绑定值的字符串形式。
-}
-
-// AssistantA2UIComponent 表示 A2UI 中的一个组件节点。
-type AssistantA2UIComponent struct {
-	ID         string   `json:"id"`                    // 组件唯一标识。
-	Type       string   `json:"type"`                  // 组件类型，如 text / card / list / button。
-	Value      string   `json:"value,omitempty"`       // 组件直接承载的文本或值。
-	BindingKey string   `json:"binding_key,omitempty"` // 组件绑定的数据键，值从 Bindings 中取。
-	UsageHint  string   `json:"usage_hint,omitempty"`  // 组件用途提示，帮助前端或模型理解展示意图。
-	Tone       string   `json:"tone,omitempty"`        // 组件语气或视觉风格，如 info / success / warning。
-	Children   []string `json:"children,omitempty"`    // 子组件 ID 列表，用于组织组件树。
-	Label      string   `json:"label,omitempty"`       // 组件标签文本，常用于按钮、表单项等。
-	Items      []string `json:"items,omitempty"`       // 列表类组件承载的条目集合。
-}
-
-// AssistantA2UISurface 表示一块完整的 A2UI 渲染面。
-type AssistantA2UISurface struct {
-	ID         string                   `json:"id"`                 // Surface 唯一标识。
-	Root       string                   `json:"root"`               // 根组件 ID，前端从该节点开始构建整棵组件树。
-	Components []AssistantA2UIComponent `json:"components"`         // 当前 Surface 下的全部组件定义。
-	Bindings   []AssistantA2UIBinding   `json:"bindings,omitempty"` // 当前 Surface 用到的数据绑定集合。
-}
-
-// AssistantA2UIBlock 表示消息中的一个结构化 UI 区块。
-type AssistantA2UIBlock struct {
-	Key     string               `json:"key"`     // UI 区块唯一标识。
-	Type    string               `json:"type"`    // UI 区块类型，用于区分不同展示协议。
-	Surface AssistantA2UISurface `json:"surface"` // 当前区块对应的可渲染 Surface 数据。
 }
 
 // AssistantScopeInfo 表示当前消息所处的业务上下文范围。
@@ -92,11 +58,10 @@ type AssistantMessageResp struct {
 	ID             string               `json:"id"`                   // 消息唯一标识。
 	ConversationID string               `json:"conversation_id"`      // 所属会话 ID。
 	Role           string               `json:"role"`                 // 消息角色，如 user / assistant / system。
-	Content        string               `json:"content"`              // 消息正文内容。
+	Content        string               `json:"content"`              // 消息最终正文内容。
 	CreatedAt      string               `json:"created_at"`           // 消息创建时间的格式化字符串。
-	Status         string               `json:"status"`               // 消息状态，如 pending / streaming / completed / failed。
-	TraceItems     []AssistantTraceItem `json:"trace_items"`          // 当前消息关联的执行轨迹列表。
-	UIBlocks       []AssistantA2UIBlock `json:"ui_blocks"`            // 当前消息附带的结构化 UI 区块。
+	Status         string               `json:"status"`               // 消息状态，如 loading / success / error / stopped。
+	TraceItems     []AssistantTraceItem `json:"trace_items"`          // 当前消息关联的执行轨迹列表，前端会把这些轨迹折叠进同一条消息显示。
 	Scope          *AssistantScopeInfo  `json:"scope,omitempty"`      // 当前消息关联的作用域信息，为空表示无额外上下文。
 	ErrorText      string               `json:"error_text,omitempty"` // 错误信息文本，通常在失败场景下返回。
 }
@@ -113,14 +78,16 @@ type AssistantTokenPayload struct {
 
 // AssistantToolCallStartedPayload 表示工具调用开始事件的载荷。
 type AssistantToolCallStartedPayload struct {
-	Key         string `json:"key"`         // 工具调用步骤唯一标识。
-	Title       string `json:"title"`       // 工具调用步骤标题。
-	Description string `json:"description"` // 工具调用开始时的说明文本。
+	Key         string `json:"key"`                 // 工具调用步骤唯一标识。
+	ToolName    string `json:"tool_name,omitempty"` // 被调用的工具名，便于前端展示和排障。
+	Title       string `json:"title"`               // 工具调用步骤标题。
+	Description string `json:"description"`         // 工具调用开始时的说明文本。
 }
 
 // AssistantToolCallFinishedPayload 表示工具调用结束事件的载荷。
 type AssistantToolCallFinishedPayload struct {
 	Key            string `json:"key"`                       // 工具调用步骤唯一标识。
+	ToolName       string `json:"tool_name,omitempty"`       // 执行完成的工具名，便于前端展示和排障。
 	Description    string `json:"description"`               // 工具调用结束后的简述。
 	DurationMS     int64  `json:"duration_ms"`               // 工具调用耗时，单位毫秒。
 	Status         string `json:"status"`                    // 工具调用结果状态，如 success / failed。
@@ -150,10 +117,9 @@ type AssistantToolCallConfirmationResultPayload struct {
 	DetailMarkdown string `json:"detail_markdown,omitempty"` // 对本次确认结果的详细说明。
 }
 
-// AssistantStructuredBlockPayload 表示结构化 UI 或作用域信息事件的载荷。
+// AssistantStructuredBlockPayload 表示作用域信息事件的载荷。
 type AssistantStructuredBlockPayload struct {
-	UIBlock *AssistantA2UIBlock `json:"ui_block,omitempty"` // 本次下发的结构化 UI 区块。
-	Scope   *AssistantScopeInfo `json:"scope,omitempty"`    // 本次下发的作用域信息。
+	Scope *AssistantScopeInfo `json:"scope,omitempty"` // 本次下发的作用域信息。
 }
 
 // AssistantMessageCompletedPayload 表示消息生成完成事件的载荷。

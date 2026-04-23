@@ -39,7 +39,6 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 	rawMenu := NewMenuService(repositoryGroup, rawPermissionProjection)
 	rawRole := NewRoleService(repositoryGroup, rawPermissionProjection)
 	rawImage := NewImageService(repositoryGroup)
-	rawAI := NewAIService(repositoryGroup)
 	rawObservability := obsquery.NewQueryService(
 		global.ObservabilityMetrics,
 		global.ObservabilityTraces,
@@ -62,7 +61,6 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 	// 这里单独分段，是为了让阅读者更容易看清主要业务动作发生的位置。
 	roleSvc := contract.RoleServiceContract(rawRole)
 	imageSvc := contract.ImageServiceContract(rawImage)
-	aiSvc := contract.AIServiceContract(rawAI)
 	observabilitySvc := contract.ObservabilityServiceContract(rawObservability)
 	cacheProjectionSvc := contract.CacheProjectionServiceContract(rawCacheProjection)
 	ojDailyStatsProjectionSvc := contract.OJDailyStatsProjectionServiceContract(rawOJDailyStatsProjection)
@@ -82,6 +80,16 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 	if traceModuleEnabled("observability") {
 		observabilitySvc = obsdecorator.WrapObservabilityService(observabilitySvc)
 	}
+
+	// AIService 在这里注入 runtime 所需的最小依赖，让 tool 可见性和执行鉴权都走正式 Service。
+	rawAI := NewAIServiceWithRuntimeAndDeps(repositoryGroup, global.AIRuntime, AIDeps{
+		Authorization: authorizationSvc,
+		OJ:            ojSvc,
+		OJTask:        ojTaskSvc,
+		Observability: observabilitySvc,
+	})
+	// 对外仍只暴露统一的 AIService 契约，不把具体 tool 依赖细节泄露到上层。
+	aiSvc := contract.AIServiceContract(rawAI)
 
 	ss.jwtService = jwtSvc
 	ss.authorizationService = authorizationSvc

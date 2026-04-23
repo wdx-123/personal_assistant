@@ -41,6 +41,10 @@ type AIService struct {
 	userRepo interfaces.UserRepository
 	runtime  aidomain.Runtime
 	policy   streamsse.ConnectionPolicy
+	// authorizationSvc 用于补充超级管理员和组织能力的真实鉴权。
+	authorizationSvc aiAuthorizationService
+	// toolRegistry 负责注册、过滤并执行本轮可见 AI tool。
+	toolRegistry *aiToolRegistry
 }
 
 // NewAIService 负责组装 AIService 所需依赖。
@@ -58,20 +62,33 @@ type AIService struct {
 // 注意事项：
 //   - 这里不直接依赖 HTTP 层，而是只保留运行时策略，方便同一业务逻辑被不同入口复用。
 func NewAIService(repositoryGroup *repository.Group) *AIService {
-	return newAIServiceWithDeps(repositoryGroup, global.AIRuntime)
+	return newAIServiceWithDeps(repositoryGroup, global.AIRuntime, AIDeps{})
 }
 
 // NewAIServiceWithRuntime 允许外部显式注入 runtime，方便阶段性迁移和测试替身接入。
 func NewAIServiceWithRuntime(repositoryGroup *repository.Group, runtime aidomain.Runtime) *AIService {
-	return newAIServiceWithDeps(repositoryGroup, runtime)
+	return newAIServiceWithDeps(repositoryGroup, runtime, AIDeps{})
+}
+
+// NewAIServiceWithRuntimeAndDeps 允许同时注入 runtime 与 AI tool 所需依赖。
+func NewAIServiceWithRuntimeAndDeps(
+	repositoryGroup *repository.Group,
+	runtime aidomain.Runtime,
+	deps AIDeps,
+) *AIService {
+	// 统一走同一套构造逻辑，避免普通模式和 tool 模式初始化分叉。
+	return newAIServiceWithDeps(repositoryGroup, runtime, deps)
 }
 
 func newAIServiceWithDeps(
 	repositoryGroup *repository.Group,
 	runtime aidomain.Runtime,
+	deps AIDeps,
 ) *AIService {
+	// 默认使用零值策略，兼容未初始化全局 SSE 基础设施的场景。
 	policy := streamsse.ConnectionPolicy{}
 	if global.StreamInfra != nil {
+		// 如果全局流式基础设施已初始化，则复用它的连接策略。
 		policy = global.StreamInfra.Policy
 	}
 
@@ -81,6 +98,10 @@ func newAIServiceWithDeps(
 		userRepo: repositoryGroup.SystemRepositorySupplier.GetUserRepository(),
 		runtime:  runtime,
 		policy:   policy.Normalize(),
+		// 授权服务只保存到 AIService，供构造 principal 和执行前鉴权复用。
+		authorizationSvc: deps.Authorization,
+		// tool registry 根据当前注入依赖决定哪些工具真正可用。
+		toolRegistry: newAIToolRegistry(deps),
 	}
 }
 
@@ -246,7 +267,6 @@ func (s *AIService) StreamConversation(
 		Content:        strings.TrimSpace(req.Content),
 		Status:         aiMessageStatusSuccess,
 		TraceItemsJSON: "[]",
-		UIBlocksJSON:   "[]",
 		ScopeJSON:      "{}",
 		CreatedAt:      now,
 		UpdatedAt:      now,
@@ -258,7 +278,6 @@ func (s *AIService) StreamConversation(
 		Content:        "",
 		Status:         aiMessageStatusLoading,
 		TraceItemsJSON: "[]",
-		UIBlocksJSON:   "[]",
 		ScopeJSON:      "{}",
 		CreatedAt:      now,
 		UpdatedAt:      now,
@@ -271,13 +290,38 @@ func (s *AIService) StreamConversation(
 
 	// Sink 负责把运行时事件同步到 SSE 与数据库消息状态，两条链路共用同一份状态机。
 	sink := newAIStreamSink(s.aiRepo, writer, assistantMessage)
-	_, execErr := s.runtime.Stream(ctx, aidomain.StreamInput{
-		UserID:             userID,
+
+	// principal 只承载当前用户的授权事实，不做固定 AI 身份分类。
+	toolPrincipal, err := s.buildAIToolPrincipal(ctx, user)
+	if err != nil {
+		return err
+	}
+
+	// toolCallCtx 把本轮消息和授权事实传给后续所有工具调用。
+	toolCallCtx := aidomain.ToolCallContext{
 		ConversationID:     conversation.ID,
 		UserMessageID:      userMessage.ID,
 		AssistantMessageID: assistantMessage.ID,
-		Content:            strings.TrimSpace(req.Content),
-		History:            messagesToRuntimeHistory(historyMessages),
+		Principal:          toolPrincipal,
+	}
+
+	// 先按 policy 过滤本轮可见工具，避免把无权限工具暴露给模型。
+	visibleTools, err := s.filterVisibleAITools(ctx, toolCallCtx)
+	if err != nil {
+		return err
+	}
+
+	// 把动态 prompt、可见工具和调用上下文一并注入 runtime。
+	_, execErr := s.runtime.Stream(ctx, aidomain.StreamInput{
+		UserID:              userID,
+		ConversationID:      conversation.ID,
+		UserMessageID:       userMessage.ID,
+		AssistantMessageID:  assistantMessage.ID,
+		Content:             strings.TrimSpace(req.Content),
+		History:             messagesToRuntimeHistory(historyMessages),
+		DynamicSystemPrompt: buildAIToolDynamicPrompt(visibleTools, toolPrincipal),
+		Tools:               visibleTools,
+		ToolCallContext:     toolCallCtx,
 	}, sink)
 
 	// 所有已开始的流式请求都统一走 finishStream 收尾，避免成功和失败路径各自写一套状态处理逻辑。
@@ -426,4 +470,49 @@ func streamWriterStarted(writer streamsse.StreamWriter) bool {
 		return sw.Started()
 	}
 	return true
+}
+
+func (s *AIService) buildAIToolPrincipal(
+	ctx context.Context,
+	user *entity.User,
+) (aidomain.AIToolPrincipal, error) {
+	// 先构造零值 principal，便于统一在后续分支里逐步回填授权事实。
+	principal := aidomain.AIToolPrincipal{}
+	if user == nil {
+		return principal, bizerrors.New(bizerrors.CodeUserNotFound)
+	}
+
+	// 用户 ID 和当前组织是所有工具都可能依赖的最小上下文。
+	principal.UserID = user.ID
+	principal.CurrentOrgID = user.CurrentOrgID
+	if s.authorizationSvc == nil {
+		// 未注入授权服务时，仅保留基础事实，不额外推断超级管理员状态。
+		return principal, nil
+	}
+
+	// 超级管理员状态单独查询，避免把 AI 身份和业务角色绑定在一起。
+	isSuperAdmin, err := s.authorizationSvc.IsSuperAdmin(ctx, user.ID)
+	if err != nil {
+		return aidomain.AIToolPrincipal{}, bizerrors.Wrap(bizerrors.CodeDBError, err)
+	}
+	principal.IsSuperAdmin = isSuperAdmin
+	return principal, nil
+}
+
+// filterVisibleAITools 负责按当前 principal 过滤出本轮真正可见的工具集合。
+func (s *AIService) filterVisibleAITools(
+	ctx context.Context,
+	callCtx aidomain.ToolCallContext,
+) ([]aidomain.Tool, error) {
+	// 未配置 registry 时直接退化成无工具模式。
+	if s.toolRegistry == nil {
+		return nil, nil
+	}
+
+	// 可见性过滤失败时向上包装为内部错误，避免泄露底层策略实现细节。
+	tools, err := s.toolRegistry.FilterVisibleTools(ctx, callCtx)
+	if err != nil {
+		return nil, bizerrors.Wrap(bizerrors.CodeInternalError, err)
+	}
+	return tools, nil
 }

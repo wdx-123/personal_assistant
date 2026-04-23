@@ -35,7 +35,6 @@ func TestAIStreamSinkThrottlesPersistButForceFlushesFinalEvents(t *testing.T) {
 		Role:           "assistant",
 		Status:         aiMessageStatusLoading,
 		TraceItemsJSON: "[]",
-		UIBlocksJSON:   "[]",
 		ScopeJSON:      "{}",
 	}
 	sink := newAIStreamSink(repo, writer, message)
@@ -84,7 +83,6 @@ func TestAIStreamSinkDoesNotPersistConversationStarted(t *testing.T) {
 		Role:           "assistant",
 		Status:         aiMessageStatusLoading,
 		TraceItemsJSON: "[]",
-		UIBlocksJSON:   "[]",
 		ScopeJSON:      "{}",
 	}
 	sink := newAIStreamSink(repo, writer, message)

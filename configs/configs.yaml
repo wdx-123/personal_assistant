@@ -244,6 +244,9 @@ ai:
   system_prompt: "你是 personal_assistant 项目的 AI 助手。当前阶段只提供基础流式对话，不调用工具，不请求人工确认。请直接、准确地回答用户问题。"
   temperature: 0.2
   max_completion_tokens: 1200
+qdrant:
+  endpoint: "" # Example: http://127.0.0.1:6333
+  api_key: ""  # Use QDRANT_API_KEY in .env for real credentials
 observability:
   enabled: true                      # 总开关
   service_name: "personal_assistant" # 服务名维度（需稳定）

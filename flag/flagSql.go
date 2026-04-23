@@ -106,6 +106,9 @@ func SQL() error {
 	if err := migrateAPILifecycleData(db); err != nil {
 		return err
 	}
+	if err := dropLegacyAIMessageUIColumn(db); err != nil {
+		return err
+	}
 
 	return migrateOrgMemberLifecycleData(db)
 }
@@ -1220,6 +1223,21 @@ func migrateAPILifecycleData(db *gorm.DB) error {
 		Where("sync_state = '' OR sync_state IS NULL").
 		Update("sync_state", consts.APISyncStateRegistered).
 		Error
+}
+
+// dropLegacyAIMessageUIColumn removes the legacy AI message UI column.
+func dropLegacyAIMessageUIColumn(db *gorm.DB) error {
+	if !db.Migrator().HasTable("ai_messages") {
+		return nil
+	}
+	exists, err := columnExists(db, "ai_messages", "ui_blocks_json")
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return nil
+	}
+	return db.Exec("ALTER TABLE ai_messages DROP COLUMN ui_blocks_json").Error
 }
 
 // ensureAllMembersOrg 负责执行当前函数对应的核心逻辑。

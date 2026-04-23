@@ -67,7 +67,6 @@ func TestAIMessageProjectorPersistsBasicMessageAndClearsTraceJSON(t *testing.T) 
 		Role:           "assistant",
 		Status:         aiMessageStatusLoading,
 		TraceItemsJSON: `[{"key":"legacy","title":"legacy"}]`,
-		UIBlocksJSON:   `[{"key":"legacy"}]`,
 		ScopeJSON:      `{"legacy":true}`,
 	}
 	projector := newAIMessageProjector(repo, message)
@@ -92,9 +91,6 @@ func TestAIMessageProjectorPersistsBasicMessageAndClearsTraceJSON(t *testing.T) 
 	}
 	if repo.lastMessage.TraceItemsJSON != "[]" {
 		t.Fatalf("trace json = %q", repo.lastMessage.TraceItemsJSON)
-	}
-	if repo.lastMessage.UIBlocksJSON != "[]" {
-		t.Fatalf("ui blocks json = %q", repo.lastMessage.UIBlocksJSON)
 	}
 	if repo.lastMessage.ScopeJSON != "{}" {
 		t.Fatalf("scope json = %q", repo.lastMessage.ScopeJSON)
@@ -128,5 +124,61 @@ func TestAIMessageProjectorSetStoppedAndError(t *testing.T) {
 	}
 	if repo.lastMessage.ErrorText != "模型调用失败" {
 		t.Fatalf("error text = %q", repo.lastMessage.ErrorText)
+	}
+}
+
+func TestAIMessageProjectorPersistsToolTraceItems(t *testing.T) {
+	repo := &projectorRepoStub{}
+	message := &entity.AIMessage{
+		ID:             "msg_ai_trace",
+		ConversationID: "conv_trace",
+		Role:           "assistant",
+		Status:         aiMessageStatusLoading,
+		TraceItemsJSON: "[]",
+		ScopeJSON:      "{}",
+	}
+	projector := newAIMessageProjector(repo, message)
+
+	projector.applyEvent(aidomain.Event{
+		Name: aidomain.EventToolCallStarted,
+		Payload: aidomain.ToolCallStartedPayload{
+			Key:         "call_1",
+			ToolName:    "get_my_oj_stats",
+			Title:       "调用工具 get_my_oj_stats",
+			Description: "正在执行工具调用。",
+		},
+	})
+	projector.applyEvent(aidomain.Event{
+		Name: aidomain.EventToolCallFinished,
+		Payload: aidomain.ToolCallFinishedPayload{
+			Key:            "call_1",
+			ToolName:       "get_my_oj_stats",
+			Description:    "工具调用完成。",
+			DurationMS:     23,
+			Status:         "success",
+			Content:        "已返回当前用户的 OJ 统计",
+			DetailMarkdown: "```json\n{}\n```",
+		},
+	})
+
+	if err := projector.persistMessage(context.Background()); err != nil {
+		t.Fatalf("persistMessage() error = %v", err)
+	}
+
+	items := decodeAssistantTraceItems(repo.lastMessage.TraceItemsJSON)
+	if len(items) != 1 {
+		t.Fatalf("trace item len = %d, want 1", len(items))
+	}
+	if items[0].Key != "call_1" {
+		t.Fatalf("trace item key = %q", items[0].Key)
+	}
+	if items[0].Status != "success" {
+		t.Fatalf("trace item status = %q", items[0].Status)
+	}
+	if items[0].DurationMS != 23 {
+		t.Fatalf("trace item duration = %d", items[0].DurationMS)
+	}
+	if items[0].Content != "已返回当前用户的 OJ 统计" {
+		t.Fatalf("trace item content = %q", items[0].Content)
 	}
 }

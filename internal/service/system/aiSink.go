@@ -96,6 +96,8 @@ func (s *aiStreamSink) persistMessage(ctx context.Context) error {
 func (s *aiStreamSink) shouldPersist(name aidomain.EventName) bool {
 	switch name {
 	case aidomain.EventMessageCompleted,
+		aidomain.EventToolCallStarted,
+		aidomain.EventToolCallFinished,
 		aidomain.EventError,
 		aidomain.EventDone:
 		return true

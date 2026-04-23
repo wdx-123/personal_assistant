@@ -146,7 +146,6 @@ func messageToResp(message *entity.AIMessage) (*resp.AssistantMessageResp, error
 		Status:         message.Status,
 		// 从 JSON 字符串解码成结构化对象
 		TraceItems: decodeAssistantTraceItems(message.TraceItemsJSON),
-		UIBlocks:   decodeAssistantUIBlocks(message.UIBlocksJSON),
 		Scope:      decodeAssistantScope(message.ScopeJSON),
 		ErrorText:  message.ErrorText,
 	}, nil
@@ -180,19 +179,6 @@ func decodeAssistantTraceItems(raw string) []resp.AssistantTraceItem {
 	items := make([]resp.AssistantTraceItem, 0)
 	if err := json.Unmarshal([]byte(raw), &items); err != nil {
 		return []resp.AssistantTraceItem{}
-	}
-	return items
-}
-
-// decodeAssistantUIBlocks 负责执行当前函数对应的核心逻辑。
-// 作用：把 UI block 的 JSON 字符串解码成数组。
-func decodeAssistantUIBlocks(raw string) []resp.AssistantA2UIBlock {
-	if strings.TrimSpace(raw) == "" {
-		return []resp.AssistantA2UIBlock{}
-	}
-	items := make([]resp.AssistantA2UIBlock, 0)
-	if err := json.Unmarshal([]byte(raw), &items); err != nil {
-		return []resp.AssistantA2UIBlock{}
 	}
 	return items
 }

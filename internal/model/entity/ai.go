@@ -45,7 +45,6 @@ type AIMessage struct {
 	Content        string         `json:"content" gorm:"type:longtext;not null;comment:'消息正文'"`
 	Status         string         `json:"status" gorm:"type:varchar(32);not null;default:'success';comment:'消息状态'"`
 	TraceItemsJSON string         `json:"trace_items_json" gorm:"type:longtext;not null;comment:'trace_items JSON'"`
-	UIBlocksJSON   string         `json:"ui_blocks_json" gorm:"type:longtext;not null;comment:'ui_blocks JSON'"`
 	ScopeJSON      string         `json:"scope_json" gorm:"type:longtext;not null;comment:'scope JSON'"`
 	ErrorText      string         `json:"error_text" gorm:"type:varchar(500);not null;default:'';comment:'错误文案'"`
 	CreatedAt      time.Time      `json:"created_at" gorm:"type:datetime;not null;index;comment:'创建时间'"`

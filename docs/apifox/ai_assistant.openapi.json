@@ -3,7 +3,7 @@
   "info": {
     "title": "z_cur/UI AI 助手模块 OpenAPI",
     "version": "1.2.0",
-    "description": "覆盖当前 `personal-assistant-frontend` AI 助手模块使用的接口，可直接导入 Apifox。\n当前 V1 协议已经收敛为“单条聊天 SSE 流 + 推理详情流 + 行动日志流 + 最终正文流”。\n统一约束：\n1. CRUD 接口走 JSON BizResponse；`stream` 接口返回 `text/event-stream`。\n2. `stream` 是唯一聊天 SSE 流，不恢复 decision / interrupt / 第二条流。\n3. `thinking_started / thinking_delta / thinking_completed` 承载用户可见的高细节推理详情，不暴露模型私有原始推理。\n4. `detail_step_started / detail_step_updated / detail_step_completed` 承载结构化行动日志。\n5. `assistant_token` 与 `message_completed.content` 只承载最终正文。\n6. `trace_items` 同时持久化 `thinking_summary` 和多个 `detail_step`，用于刷新后恢复过程区历史。"
+    "description": "覆盖当前 `personal-assistant-frontend` AI 助手模块使用的接口，可直接导入 Apifox。\n当前 V1 协议已经收敛为“单条聊天 SSE 流 + 工具轨迹 + 最终正文”。\n统一约束：\n1. CRUD 接口走 JSON BizResponse；`stream` 接口返回 `text/event-stream`。\n2. `stream` 是唯一聊天 SSE 流，不恢复第二条推理流。\n3. `tool_call_started / tool_call_finished` 承载工具调用轨迹；前端会把 `trace_items` 折叠进同一条 assistant 消息显示。\n4. `assistant_token` 与 `message_completed.content` 只承载最终正文。\n5. `trace_items` 用于历史恢复和流式过程对齐，不额外暴露 `trace_items_json` 原始字符串。"
   },
   "servers": [
     {
@@ -194,7 +194,7 @@
           "AI助手"
         ],
         "summary": "获取会话消息列表",
-        "description": "历史消息必须能完整重建 UI。\n后端返回时应保留 `trace_items / scope`；`scope` 仅在复杂范围时返回。\nUI 侧会按“推理详情 / 行动日志 / 最终正文”重建消息结构。\n消息按创建时间升序返回；相同时间戳下按 `user -> assistant -> system` 稳定排序。",
+        "description": "历史消息必须能完整重建 UI。\n后端返回时保留 `content / trace_items / scope`；`scope` 仅在复杂范围时返回。\n前端会把 `trace_items` 折叠成普通文本，并与 `content` 合并为同一条 assistant 消息显示。\n消息按创建时间升序返回；相同时间戳下按 `user -> assistant -> system` 稳定排序。",
         "operationId": "GetAssistantConversationMessages",
         "parameters": [
           {
@@ -240,8 +240,7 @@
                           "content": "帮我整理一版任务汇报并说明助手页面定位。",
                           "created_at": "2026-04-06T10:40:01+08:00",
                           "status": "success",
-                          "trace_items": [],
-                          "ui_blocks": []
+                          "trace_items": []
                         },
                         {
                           "id": "msg_ai_001",
@@ -266,83 +265,6 @@
                               "status": "success",
                               "duration_ms": 88,
                               "content": "已命中 README、架构设计方案与 AI UI 改造说明。"
-                            }
-                          ],
-                          "ui_blocks": [
-                            {
-                              "key": "block_thinking_summary_001",
-                              "type": "thinking_summary_block",
-                              "surface": {
-                                "id": "surface_thinking_summary_001",
-                                "root": "thinking_card_root",
-                                "components": [
-                                  {
-                                    "id": "thinking_card_root",
-                                    "type": "Card",
-                                    "tone": "primary",
-                                    "children": [
-                                      "thinking_title",
-                                      "thinking_points"
-                                    ]
-                                  },
-                                  {
-                                    "id": "thinking_title",
-                                    "type": "Text",
-                                    "value": "当前判断与下一步",
-                                    "usage_hint": "title"
-                                  },
-                                  {
-                                    "id": "thinking_points",
-                                    "type": "BulletList",
-                                    "items": [
-                                      "当前判断：本轮所需信息已经齐备，可以直接输出最终正文。",
-                                      "当前动作：已把工具结果收束成正式回答，不再重复展示中间过程。",
-                                      "下一步：如果你要改口吻、改结构或扩范围，可以继续追问。"
-                                    ]
-                                  }
-                                ]
-                              }
-                            },
-                            {
-                              "key": "block_tool_intent_001",
-                              "type": "tool_intent_block",
-                              "surface": {
-                                "id": "surface_tool_intent_001",
-                                "root": "tool_intent_card_root",
-                                "components": [
-                                  {
-                                    "id": "tool_intent_card_root",
-                                    "type": "Card",
-                                    "tone": "success",
-                                    "children": [
-                                      "tool_badge",
-                                      "tool_title",
-                                      "tool_points"
-                                    ]
-                                  },
-                                  {
-                                    "id": "tool_badge",
-                                    "type": "Badge",
-                                    "label": "已完成",
-                                    "tone": "success"
-                                  },
-                                  {
-                                    "id": "tool_title",
-                                    "type": "Text",
-                                    "value": "本轮已处理 2 个工具",
-                                    "usage_hint": "title"
-                                  },
-                                  {
-                                    "id": "tool_points",
-                                    "type": "BulletList",
-                                    "items": [
-                                      "目的：任务快照、项目文档已经用于补齐本轮回答所需的信息。",
-                                      "必要性：这些问题依赖最新业务数据或正式文档，不能只靠上下文推断。",
-                                      "预期收益：最终正文会更准确，也更适合直接复用。"
-                                    ]
-                                  }
-                                ]
-                              }
                             }
                           ]
                         }
@@ -462,7 +384,7 @@
           "AI助手"
         ],
         "summary": "发送用户消息并开启唯一聊天 SSE 流",
-        "description": "`stream` 是单轮问答的唯一事件流。\n当前事件顺序固定为：`conversation_started -> detail_step_started/detail_step_updated* -> thinking_started -> thinking_delta* -> thinking_completed -> detail_step_completed/detail_step_updated* -> assistant_token* -> message_completed -> detail_step_completed -> done`；失败时输出 `error -> done`。\n`thinking_*` 事件用于展示用户可见的高细节推理详情，不暴露模型私有原始推理。\n`detail_step_*` 事件用于展示结构化行动日志。\n`assistant_token` 和 `message_completed.content` 只用于最终正文。\nV1 不恢复 interrupt / decision / structured_block 工具链路。\n事件 payload 结构见 `AssistantEventPayloadCatalog`。",
+        "description": "`stream` 是单轮问答的唯一事件流。\n常见事件顺序为：`conversation_started -> tool_call_started/tool_call_finished* -> assistant_token* -> message_completed -> done`；工具失败会通过 `tool_call_finished.status=failed` 下发，致命失败时输出 `error -> done`。\n`tool_call_*` 事件用于维护结构化 `trace_items`，前端会把这些轨迹折叠进同一条 assistant 消息显示。\n`assistant_token` 和 `message_completed.content` 只用于最终正文。\nV1 不恢复第二条推理流，也不额外暴露 `trace_items_json` 原始字符串。\n事件 payload 结构见 `AssistantEventPayloadCatalog`。",
         "operationId": "StreamAssistantConversationMessage",
         "parameters": [
           {
@@ -503,7 +425,7 @@
                 "examples": {
                   "sameStreamResume": {
                     "summary": "原流等待确认并在同一连接内继续输出",
-                    "value": "event: conversation_started\ndata: {\"title\":\"介绍一下这个项目\"}\n\nevent: detail_step_started\ndata: {\"key\":\"step_read_history\",\"kind\":\"action\",\"title\":\"读取历史上下文\",\"content\":\"当前没有可复用的历史消息，将按首轮问题直接展开本轮分析。\",\"status\":\"loading\",\"order\":10}\n\nevent: detail_step_completed\ndata: {\"key\":\"step_read_history\",\"kind\":\"action\",\"title\":\"读取历史上下文\",\"content\":\"当前没有可复用的历史消息，将按首轮问题直接展开本轮分析。\",\"status\":\"success\",\"order\":10}\n\nevent: thinking_started\ndata: {\"title\":\"深度思考\"}\n\nevent: thinking_delta\ndata: {\"delta\":\"先判断这轮问题更需要过程细节还是结果摘要，避免一开始就走错输出方向。\\n\"}\n\nevent: thinking_delta\ndata: {\"delta\":\"当前输入里最需要优先抓住的是项目定位、现状和接下来怎么讲清楚。\\n\"}\n\nevent: thinking_completed\ndata: {\"content\":\"先判断这轮问题更需要过程细节还是结果摘要，避免一开始就走错输出方向。\\n当前输入里最需要优先抓住的是项目定位、现状和接下来怎么讲清楚。\\n接下来会继续组织结构，再进入最终正文生成。\"}\n\nevent: detail_step_started\ndata: {\"key\":\"step_generate_answer\",\"kind\":\"action\",\"title\":\"生成正文\",\"content\":\"已进入正文生成阶段，接下来会持续输出最终回答。\",\"status\":\"loading\",\"order\":50}\n\nevent: assistant_token\ndata: {\"token\":\"这个项目目前处于 AI 助手基础阶段，重点提供流式对话能力。\"}\n\nevent: assistant_token\ndata: {\"token\":\"\\n\\n当前已经打通会话、历史消息和流式输出闭环。\"}\n\nevent: message_completed\ndata: {\"content\":\"这个项目目前处于 AI 助手基础阶段，重点提供流式对话能力。\\n\\n当前已经打通会话、历史消息和流式输出闭环。\"}\n\nevent: detail_step_completed\ndata: {\"key\":\"step_generate_answer\",\"kind\":\"action\",\"title\":\"生成正文\",\"content\":\"最终正文已经全部生成完成。\",\"status\":\"success\",\"order\":50}\n\nevent: done\ndata: {}\n"
+                    "value": "event: conversation_started\ndata: {\"title\":\"介绍一下这个项目\"}\n\nevent: tool_call_started\ndata: {\"key\":\"tool_call_1\",\"tool_name\":\"get_project_snapshot\",\"title\":\"调用工具 get_project_snapshot\",\"description\":\"正在执行工具调用。\"}\n\nevent: tool_call_finished\ndata: {\"key\":\"tool_call_1\",\"tool_name\":\"get_project_snapshot\",\"description\":\"工具调用完成。\",\"duration_ms\":148,\"status\":\"success\",\"content\":\"已拿到项目当前快照和关键状态。\"}\n\nevent: assistant_token\ndata: {\"token\":\"这个项目目前处于 AI 助手基础阶段，重点提供流式对话能力。\"}\n\nevent: assistant_token\ndata: {\"token\":\"\\n\\n当前已经打通会话、历史消息和流式输出闭环。\"}\n\nevent: message_completed\ndata: {\"content\":\"这个项目目前处于 AI 助手基础阶段，重点提供流式对话能力。\\n\\n当前已经打通会话、历史消息和流式输出闭环。\"}\n\nevent: done\ndata: {}\n"
                   }
                 }
               },
@@ -809,7 +731,6 @@
       "AssistantMessageStatus": {
         "type": "string",
         "enum": [
-          "idle",
           "loading",
           "success",
           "error",
@@ -819,10 +740,10 @@
       "AssistantTraceStatus": {
         "type": "string",
         "enum": [
-          "loading",
+          "running",
           "success",
-          "error",
-          "stopped"
+          "failed",
+          "waiting"
         ]
       },
       "AssistantTraceItemKind": {
@@ -1371,8 +1292,7 @@
           "content",
           "created_at",
           "status",
-          "trace_items",
-          "ui_blocks"
+          "trace_items"
         ],
         "properties": {
           "id": {
@@ -1400,12 +1320,6 @@
               "$ref": "#/components/schemas/AssistantTraceItem"
             }
           },
-          "ui_blocks": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/AssistantA2UIBlock"
-            }
-          },
           "scope": {
             "allOf": [
               {
@@ -1423,12 +1337,8 @@
         "type": "string",
         "enum": [
           "conversation_started",
-          "thinking_started",
-          "thinking_delta",
-          "thinking_completed",
-          "detail_step_started",
-          "detail_step_updated",
-          "detail_step_completed",
+          "tool_call_started",
+          "tool_call_finished",
           "assistant_token",
           "message_completed",
           "error",
@@ -1529,6 +1439,9 @@
           "key": {
             "type": "string"
           },
+          "tool_name": {
+            "type": "string"
+          },
           "title": {
             "type": "string"
           },
@@ -1547,6 +1460,9 @@
         ],
         "properties": {
           "key": {
+            "type": "string"
+          },
+          "tool_name": {
             "type": "string"
           },
           "description": {
@@ -1689,23 +1605,11 @@
           "conversation_started": {
             "$ref": "#/components/schemas/AssistantConversationStartedPayload"
           },
-          "thinking_started": {
-            "$ref": "#/components/schemas/AssistantThinkingStartedPayload"
+          "tool_call_started": {
+            "$ref": "#/components/schemas/AssistantToolCallStartedPayload"
           },
-          "thinking_delta": {
-            "$ref": "#/components/schemas/AssistantThinkingDeltaPayload"
-          },
-          "thinking_completed": {
-            "$ref": "#/components/schemas/AssistantThinkingCompletedPayload"
-          },
-          "detail_step_started": {
-            "$ref": "#/components/schemas/AssistantDetailStepPayload"
-          },
-          "detail_step_updated": {
-            "$ref": "#/components/schemas/AssistantDetailStepPayload"
-          },
-          "detail_step_completed": {
-            "$ref": "#/components/schemas/AssistantDetailStepPayload"
+          "tool_call_finished": {
+            "$ref": "#/components/schemas/AssistantToolCallFinishedPayload"
           },
           "assistant_token": {
             "$ref": "#/components/schemas/AssistantTokenPayload"

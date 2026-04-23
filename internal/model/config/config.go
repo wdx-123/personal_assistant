@@ -22,6 +22,7 @@ type Config struct {
 	Messaging     Messaging     `json:"messaging" yaml:"messaging"`         // 消息队列配置
 	SSE           SSE           `json:"sse" yaml:"sse"`                     // SSE 实时推送配置
 	AI            AI            `json:"ai" yaml:"ai"`                       // AI Runtime / Eino 配置
+	Qdrant        Qdrant        `json:"qdrant" yaml:"qdrant"`               // Qdrant 向量数据库配置
 	RateLimit     RateLimit     `json:"rate_limit" yaml:"rate_limit"`       // 限流配置
 	Observability Observability `json:"observability" yaml:"observability"` // 观测基础设施配置
 }
@@ -323,6 +324,11 @@ func NewConfig() *Config {
 		MaxCompletionTokens: viper.GetInt("ai.max_completion_tokens"),
 	}
 
+	_qdrant := &Qdrant{
+		Endpoint: viper.GetString("qdrant.endpoint"),
+		APIKey:   viper.GetString("qdrant.api_key"),
+	}
+
 	_observability := &Observability{
 		Enabled:     viper.GetBool("observability.enabled"),
 		ServiceName: viper.GetString("observability.service_name"),
@@ -396,6 +402,7 @@ func NewConfig() *Config {
 		Messaging:     *_messaging,
 		SSE:           *_sse,
 		AI:            *_ai,
+		Qdrant:        *_qdrant,
 		RateLimit:     *_rateLimit,
 		Observability: *_observability,
 	}
