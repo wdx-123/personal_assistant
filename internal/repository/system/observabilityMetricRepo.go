@@ -184,9 +184,34 @@ func (r *observabilityMetricRepository) DeleteBeforeByGranularity(
 	granularity string,
 	before time.Time,
 ) error {
-	return r.db.WithContext(ctx).
-		Where("granularity = ? AND bucket_start < ?", granularity, before).
-		Delete(&entity.ObservabilityMetric{}).Error
+	granularity = strings.TrimSpace(granularity)
+	if granularity == "" || before.IsZero() {
+		return nil
+	}
+
+	// 使用默认作用域先筛出“仍活跃”的目标行，再按 ID 分批 Unscoped 物理删除，
+	// 避免大表保留清理落成单次长事务，同时不误删历史已软删除数据。
+	for {
+		var ids []uint
+		if err := r.db.WithContext(ctx).
+			Model(&entity.ObservabilityMetric{}).
+			Where("granularity = ? AND bucket_start < ?", granularity, before).
+			Order("bucket_start ASC").
+			Order("id ASC").
+			Limit(observabilityDeleteBatchSize).
+			Pluck("id", &ids).Error; err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		if err := r.db.WithContext(ctx).
+			Unscoped().
+			Where("id IN ?", ids).
+			Delete(&entity.ObservabilityMetric{}).Error; err != nil {
+			return err
+		}
+	}
 }
 
 func aggregateBucketExpr(granularity string) string {

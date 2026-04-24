@@ -279,7 +279,28 @@ func (r *observabilityTraceRepository) DeleteBeforeByStatus(
 	if status == "" || before.IsZero() {
 		return nil
 	}
-	return r.db.WithContext(ctx).
-		Where("status = ? AND start_at < ?", status, before).
-		Delete(&entity.ObservabilityTraceSpan{}).Error
+
+	// 对 trace 明细使用状态+时间有序分批硬删，避免千万级历史数据在一次清理里形成超大事务。
+	for {
+		var ids []uint
+		if err := r.db.WithContext(ctx).
+			Model(&entity.ObservabilityTraceSpan{}).
+			Where("status = ? AND start_at < ?", status, before).
+			Order("status ASC").
+			Order("start_at ASC").
+			Order("id ASC").
+			Limit(observabilityDeleteBatchSize).
+			Pluck("id", &ids).Error; err != nil {
+			return err
+		}
+		if len(ids) == 0 {
+			return nil
+		}
+		if err := r.db.WithContext(ctx).
+			Unscoped().
+			Where("id IN ?", ids).
+			Delete(&entity.ObservabilityTraceSpan{}).Error; err != nil {
+			return err
+		}
+	}
 }

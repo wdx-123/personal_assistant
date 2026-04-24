@@ -32,6 +32,14 @@ func Init() {
 	// 初始化日志
 	global.Log = core.InitLogger()
 
+	// 初始化 Qdrant 客户端（依赖配置；失败会导致 RAG/向量能力不可用）
+	qdrantClient, err := core.InitQdrant(context.Background())
+	if err != nil {
+		global.Log.Error("init qdrant failed", zap.Error(err))
+		os.Exit(1)
+	}
+	global.QdrantClient = qdrantClient
+
 	// 敏感数据编解码器（依赖配置）
 	if err := core.InitSensitiveDataCodec(); err != nil {
 		global.Log.Error("init sensitive data codec failed", zap.Error(err))

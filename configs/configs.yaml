@@ -245,8 +245,17 @@ ai:
   temperature: 0.2
   max_completion_tokens: 1200
 qdrant:
-  endpoint: "" # Example: http://127.0.0.1:6333
-  api_key: ""  # Use QDRANT_API_KEY in .env for real credentials
+  enabled: true
+  endpoint: ""        # HTTP/REST endpoint, example: http://127.0.0.1:6333
+  grpc_host: ""       # gRPC host for github.com/qdrant/go-client
+  grpc_port: 6334
+  api_key: ""         # Use QDRANT_API_KEY in .env for real credentials
+  collection_name: "ai_knowledge_chunks"
+  vector_size: 1024
+  distance: "cosine"
+  init_collection: true
+  timeout_seconds: 10
+  use_tls: false
 observability:
   enabled: true                      # 总开关
   service_name: "personal_assistant" # 服务名维度（需稳定）

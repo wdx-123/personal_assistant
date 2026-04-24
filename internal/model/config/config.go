@@ -325,8 +325,17 @@ func NewConfig() *Config {
 	}
 
 	_qdrant := &Qdrant{
-		Endpoint: viper.GetString("qdrant.endpoint"),
-		APIKey:   viper.GetString("qdrant.api_key"),
+		Enabled:        viper.GetBool("qdrant.enabled"),
+		Endpoint:       viper.GetString("qdrant.endpoint"),
+		GRPCHost:       viper.GetString("qdrant.grpc_host"),
+		GRPCPort:       viper.GetInt("qdrant.grpc_port"),
+		APIKey:         viper.GetString("qdrant.api_key"),
+		CollectionName: viper.GetString("qdrant.collection_name"),
+		VectorSize:     viper.GetInt("qdrant.vector_size"),
+		Distance:       viper.GetString("qdrant.distance"),
+		InitCollection: viper.GetBool("qdrant.init_collection"),
+		TimeoutSeconds: viper.GetInt("qdrant.timeout_seconds"),
+		UseTLS:         viper.GetBool("qdrant.use_tls"),
 	}
 
 	_observability := &Observability{
