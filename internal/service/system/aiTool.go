@@ -73,6 +73,12 @@ type AIDeps struct {
 	OJTask aiOJTaskService
 	// Observability 提供 trace 和指标查询能力。
 	Observability aiObservabilityService
+	// Memory 提供可选的额外记忆召回能力；未注入时保持只读历史消息路径。
+	Memory aiMemoryProvider
+	// Compressor 提供可选的上下文压缩能力；未注入时保持原始历史消息。
+	Compressor aiContextCompressor
+	// PromptBuilder 允许调用方替换默认动态 prompt 构造逻辑。
+	PromptBuilder aiPromptBuilder
 }
 
 // aiToolPolicyKind 表示工具可见性和执行前鉴权采用的策略类型。

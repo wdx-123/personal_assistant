@@ -28,6 +28,11 @@ import (
 // 注意事项：
 //   - 本函数不读取全局配置，调用方必须显式传入 Options。
 func NewChatModel(ctx context.Context, cfg Options) (einomodel.BaseChatModel, error) {
+	if cfg.ChatModelFactory != nil {
+		// 自定义工厂完全接管模型创建流程，便于未来接入模型网关或路由层。
+		return cfg.ChatModelFactory(ctx, cfg)
+	}
+
 	provider := strings.ToLower(strings.TrimSpace(cfg.Provider))
 	if provider == "" {
 		provider = "qwen"

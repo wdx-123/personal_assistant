@@ -1,6 +1,15 @@
 package eino
 
-import "time"
+import (
+	"context"
+	"time"
+
+	einomodel "github.com/cloudwego/eino/components/model"
+)
+
+// ChatModelFactory 允许调用方自定义底层 ChatModel 构造逻辑。
+// 未注入时仍走 provider 分支创建默认模型。
+type ChatModelFactory func(ctx context.Context, cfg Options) (einomodel.BaseChatModel, error)
 
 // Options 描述 Eino 基础流式 runtime 的初始化配置。
 // 作用：把外部传入的 AI 运行参数收拢成一个统一配置对象，供 NewRuntime 之类的构造函数使用。
@@ -28,6 +37,10 @@ type Options struct {
 	// APIVersion 表示 Azure 或部分模型平台要求显式传入的 API 版本号。
 	// 普通 OpenAI 兼容模式下，这个字段通常可以为空。
 	APIVersion string
+
+	// ChatModelFactory 允许未来在 infrastructure 层注入模型网关或路由工厂。
+	// 若为空，则继续使用当前 provider 对应的默认模型实现。
+	ChatModelFactory ChatModelFactory
 
 	// SystemPrompt 表示系统提示词。
 	// 它用于定义 AI 的全局角色、行为边界和回答风格。

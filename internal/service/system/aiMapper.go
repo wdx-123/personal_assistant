@@ -151,6 +151,8 @@ func messageToResp(message *entity.AIMessage) (*resp.AssistantMessageResp, error
 	}, nil
 }
 
+// messagesToRuntimeHistory 负责执行当前函数对应的核心逻辑。
+// 作用：把消息实体列表转成运行时历史消息列表。
 func messagesToRuntimeHistory(messages []*entity.AIMessage) []aidomain.Message {
 	items := make([]aidomain.Message, 0, len(messages))
 	for _, message := range messages {

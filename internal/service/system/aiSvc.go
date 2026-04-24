@@ -45,6 +45,8 @@ type AIService struct {
 	authorizationSvc aiAuthorizationService
 	// toolRegistry 负责注册、过滤并执行本轮可见 AI tool。
 	toolRegistry *aiToolRegistry
+	// contextAssembler 负责组装 runtime 所需的历史消息和动态 prompt。
+	contextAssembler aiContextAssembler
 }
 
 // NewAIService 负责组装 AIService 所需依赖。
@@ -102,6 +104,8 @@ func newAIServiceWithDeps(
 		authorizationSvc: deps.Authorization,
 		// tool registry 根据当前注入依赖决定哪些工具真正可用。
 		toolRegistry: newAIToolRegistry(deps),
+		// 上下文装配器负责收口历史消息、动态 prompt 和未来扩展点。
+		contextAssembler: newAIContextAssembler(deps),
 	}
 }
 
@@ -253,7 +257,7 @@ func (s *AIService) StreamConversation(
 		return bizerrors.New(bizerrors.CodeUserNotFound)
 	}
 
-	historyMessages, err := s.aiRepo.ListMessagesByConversation(ctx, conversation.ID)
+	storedMessages, err := s.aiRepo.ListMessagesByConversation(ctx, conversation.ID)
 	if err != nil {
 		return bizerrors.Wrap(bizerrors.CodeDBError, err)
 	}
@@ -311,6 +315,19 @@ func (s *AIService) StreamConversation(
 		return err
 	}
 
+	// 统一由上下文装配器收口历史消息和动态 prompt，方便后续接入记忆召回和压缩。
+	contextSnapshot, err := s.contextAssembler.Build(ctx, aiContextBuildArgs{
+		ConversationID: conversation.ID,
+		UserID:         userID,
+		Query:          strings.TrimSpace(req.Content),
+		StoredMessages: storedMessages,
+		VisibleTools:   visibleTools,
+		ToolCallCtx:    toolCallCtx,
+	})
+	if err != nil {
+		return bizerrors.Wrap(bizerrors.CodeInternalError, err)
+	}
+
 	// 把动态 prompt、可见工具和调用上下文一并注入 runtime。
 	_, execErr := s.runtime.Stream(ctx, aidomain.StreamInput{
 		UserID:              userID,
@@ -318,8 +335,8 @@ func (s *AIService) StreamConversation(
 		UserMessageID:       userMessage.ID,
 		AssistantMessageID:  assistantMessage.ID,
 		Content:             strings.TrimSpace(req.Content),
-		History:             messagesToRuntimeHistory(historyMessages),
-		DynamicSystemPrompt: buildAIToolDynamicPrompt(visibleTools, toolPrincipal),
+		History:             contextSnapshot.History,
+		DynamicSystemPrompt: contextSnapshot.DynamicSystemPrompt,
 		Tools:               visibleTools,
 		ToolCallContext:     toolCallCtx,
 	}, sink)

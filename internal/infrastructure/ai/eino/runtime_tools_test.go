@@ -2,6 +2,7 @@ package eino
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	einomodel "github.com/cloudwego/eino/components/model"
@@ -65,6 +66,7 @@ func (m *fakeToolCallingChatModel) WithTools(tools []*schema.ToolInfo) (einomode
 type fakeRuntimeTool struct {
 	spec       aidomain.ToolSpec
 	result     aidomain.ToolResult
+	err        error
 	calls      []aidomain.ToolCall
 	callCtxLog []aidomain.ToolCallContext
 }
@@ -80,7 +82,52 @@ func (t *fakeRuntimeTool) Call(
 ) (aidomain.ToolResult, error) {
 	t.calls = append(t.calls, call)
 	t.callCtxLog = append(t.callCtxLog, callCtx)
+	if t.err != nil {
+		return aidomain.ToolResult{}, t.err
+	}
 	return t.result, nil
+}
+
+func TestRuntimeStreamTextOnlyEmitsFinalContent(t *testing.T) {
+	model := &fakeToolCallingChatModel{
+		streams: [][]*schema.Message{
+			{
+				schema.AssistantMessage("你好，", nil),
+				schema.AssistantMessage("请继续说明需求。", nil),
+			},
+		},
+	}
+	runtime := &Runtime{
+		model:        model,
+		systemPrompt: "base system prompt",
+	}
+	sink := &runtimeEventSinkStub{}
+
+	result, err := runtime.Stream(context.Background(), aidomain.StreamInput{
+		Content: "你好",
+	}, sink)
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	if result.Content != "你好，请继续说明需求。" {
+		t.Fatalf("result.Content = %q", result.Content)
+	}
+
+	expected := []aidomain.EventName{
+		aidomain.EventConversationStarted,
+		aidomain.EventAssistantToken,
+		aidomain.EventAssistantToken,
+		aidomain.EventMessageCompleted,
+		aidomain.EventDone,
+	}
+	if len(sink.events) != len(expected) {
+		t.Fatalf("event count = %d, want %d", len(sink.events), len(expected))
+	}
+	for i, name := range expected {
+		if sink.events[i].Name != name {
+			t.Fatalf("event[%d] = %q, want %q", i, sink.events[i].Name, name)
+		}
+	}
 }
 
 func TestRuntimeStreamWithToolsEmitsToolEventsAndFinalTokens(t *testing.T) {
@@ -178,5 +225,105 @@ func TestRuntimeStreamWithToolsEmitsToolEventsAndFinalTokens(t *testing.T) {
 		if eventNames[i] != name {
 			t.Fatalf("event[%d] = %q, want %q", i, eventNames[i], name)
 		}
+	}
+}
+
+func TestRuntimeStreamWithToolsCanNaturallyAskForMissingParams(t *testing.T) {
+	model := &fakeToolCallingChatModel{
+		streams: [][]*schema.Message{
+			{
+				schema.AssistantMessage("你想查哪个平台，是 leetcode、luogu 还是 lanqiao？", nil),
+			},
+		},
+	}
+	runtime := &Runtime{
+		model:        model,
+		systemPrompt: "base system prompt",
+	}
+	tool := &fakeRuntimeTool{
+		spec: aidomain.ToolSpec{
+			Name:        "get_my_oj_stats",
+			Description: "获取当前用户 OJ 统计",
+			Parameters: []aidomain.ToolParameter{
+				{Name: "platform", Type: aidomain.ToolParameterTypeString, Required: true},
+			},
+		},
+	}
+	sink := &runtimeEventSinkStub{}
+
+	result, err := runtime.Stream(context.Background(), aidomain.StreamInput{
+		Content:             "帮我看一下我的统计",
+		DynamicSystemPrompt: "缺少平台时不要猜，直接追问。",
+		Tools:               []aidomain.Tool{tool},
+	}, sink)
+	if err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	if len(tool.calls) != 0 {
+		t.Fatalf("tool calls = %d, want 0", len(tool.calls))
+	}
+	if result.Content == "" {
+		t.Fatal("result.Content = empty")
+	}
+	if sink.events[1].Name != aidomain.EventAssistantToken {
+		t.Fatalf("event[1] = %q, want assistant_token", sink.events[1].Name)
+	}
+}
+
+func TestRuntimeStreamWithToolsEmitsFailedTraceBeforeReturningError(t *testing.T) {
+	model := &fakeToolCallingChatModel{
+		streams: [][]*schema.Message{
+			{
+				schema.AssistantMessage("", []schema.ToolCall{
+					{
+						ID:   "call_1",
+						Type: "function",
+						Function: schema.FunctionCall{
+							Name:      "get_my_oj_stats",
+							Arguments: `{"platform":"leetcode"}`,
+						},
+					},
+				}),
+			},
+		},
+	}
+	runtime := &Runtime{
+		model:        model,
+		systemPrompt: "base system prompt",
+	}
+	tool := &fakeRuntimeTool{
+		spec: aidomain.ToolSpec{
+			Name:        "get_my_oj_stats",
+			Description: "获取当前用户 OJ 统计",
+			Parameters: []aidomain.ToolParameter{
+				{Name: "platform", Type: aidomain.ToolParameterTypeString, Required: true},
+			},
+		},
+		err: errors.New("tool failed"),
+	}
+	sink := &runtimeEventSinkStub{}
+
+	_, err := runtime.Stream(context.Background(), aidomain.StreamInput{
+		Content: "帮我看 leetcode 统计",
+		Tools:   []aidomain.Tool{tool},
+	}, sink)
+	if err == nil {
+		t.Fatal("Stream() error = nil, want tool failure")
+	}
+	if len(sink.events) != 3 {
+		t.Fatalf("event count = %d, want 3", len(sink.events))
+	}
+	if sink.events[1].Name != aidomain.EventToolCallStarted {
+		t.Fatalf("event[1] = %q, want tool_call_started", sink.events[1].Name)
+	}
+	if sink.events[2].Name != aidomain.EventToolCallFinished {
+		t.Fatalf("event[2] = %q, want tool_call_finished", sink.events[2].Name)
+	}
+	payload, ok := sink.events[2].Payload.(aidomain.ToolCallFinishedPayload)
+	if !ok {
+		t.Fatalf("event[2] payload type = %T", sink.events[2].Payload)
+	}
+	if payload.Status != "failed" {
+		t.Fatalf("payload.Status = %q, want failed", payload.Status)
 	}
 }
