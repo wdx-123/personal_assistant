@@ -1,13 +1,19 @@
 package system
 
 import (
+	"context"
 	"strings"
 
 	"personal_assistant/global"
+	infraeino "personal_assistant/internal/infrastructure/ai/eino"
 	obsquery "personal_assistant/internal/observability/query"
 	obsdecorator "personal_assistant/internal/observability/trace/decorator"
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/service/contract"
+	"personal_assistant/internal/service/system/aiselect"
+	"personal_assistant/internal/service/system/aitool"
+
+	"go.uber.org/zap"
 )
 
 var defaultServiceTraceModules = []string{
@@ -81,12 +87,37 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 		observabilitySvc = obsdecorator.WrapObservabilityService(observabilitySvc)
 	}
 
+	var progressiveSelector aiselect.Selector
+	if global.Config != nil && strings.EqualFold(strings.TrimSpace(global.Config.SSE.AIRuntimeMode), "eino") {
+		selector, err := infraeino.NewProgressiveToolSelector(context.Background(), infraeino.Options{
+			Provider:            global.Config.AI.Provider,
+			APIKey:              global.Config.AI.APIKey,
+			BaseURL:             global.Config.AI.BaseURL,
+			Model:               global.Config.AI.Model,
+			ByAzure:             global.Config.AI.ByAzure,
+			APIVersion:          global.Config.AI.APIVersion,
+			SystemPrompt:        global.Config.AI.SystemPrompt,
+			Temperature:         global.Config.AI.Temperature,
+			MaxCompletionTokens: global.Config.AI.MaxCompletionTokens,
+		})
+		if err != nil {
+			if global.Log != nil {
+				global.Log.Warn("AI progressive selector 初始化失败，回退单阶段工具暴露", zap.Error(err))
+			}
+		} else {
+			progressiveSelector = selector
+		}
+	}
+
 	// AIService 在这里注入 runtime 所需的最小依赖，让 tool 可见性和执行鉴权都走正式 Service。
 	rawAI := NewAIServiceWithRuntimeAndDeps(repositoryGroup, global.AIRuntime, AIDeps{
-		Authorization: authorizationSvc,
-		OJ:            ojSvc,
-		OJTask:        ojTaskSvc,
-		Observability: observabilitySvc,
+		Tools: aitool.Deps{
+			Authorization: authorizationSvc,
+			OJ:            ojSvc,
+			OJTask:        ojTaskSvc,
+			Observability: observabilitySvc,
+		},
+		Selector: progressiveSelector,
 	})
 	// 对外仍只暴露统一的 AIService 契约，不把具体 tool 依赖细节泄露到上层。
 	aiSvc := contract.AIServiceContract(rawAI)

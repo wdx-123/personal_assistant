@@ -1,9 +1,8 @@
-package system
+package aitool
 
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	aidomain "personal_assistant/internal/domain/ai"
@@ -13,73 +12,10 @@ import (
 	bizerrors "personal_assistant/pkg/errors"
 )
 
-// aiAuthorizationService 表示 AI tool 侧依赖的最小授权能力集合。
-// 它只暴露可见性过滤和执行前鉴权必需的方法，不泄露完整授权服务细节。
-type aiAuthorizationService interface {
-	IsSuperAdmin(ctx context.Context, userID uint) (bool, error)
-	CheckUserCapabilityInOrg(ctx context.Context, userID, orgID uint, capabilityCode string) (bool, error)
-	AuthorizeOrgCapability(ctx context.Context, operatorID, orgID uint, capabilityCode string) error
-}
-
-// aiOJService 表示 AI tool 查询个人或组织 OJ 统计时依赖的最小 OJ 能力。
-type aiOJService interface {
-	GetRankingList(ctx context.Context, userID uint, req *request.OJRankingListReq) (*resp.OJRankingListResp, error)
-	GetUserStats(ctx context.Context, userID uint, req *request.OJStatsReq) (*resp.OJStatsResp, error)
-	GetCurve(ctx context.Context, userID uint, req *request.OJCurveReq) (*resp.OJCurveResp, error)
-}
-
-// aiOJTaskService 表示 AI tool 查询 OJ 任务、执行和分析结果时依赖的最小任务能力。
-type aiOJTaskService interface {
-	AnalyzeTaskTitles(ctx context.Context, req *request.AnalyzeOJTaskTitlesReq) (*resp.OJTaskAnalyzeResp, error)
-	GetTaskDetail(ctx context.Context, userID, taskID uint) (*resp.OJTaskDetailResp, error)
-	GetTaskExecutionDetail(ctx context.Context, userID, taskID, executionID uint) (*resp.OJTaskExecutionResp, error)
-	GetTaskExecutionUsers(
-		ctx context.Context,
-		userID, taskID, executionID uint,
-		req *request.OJTaskExecutionUserListReq,
-	) (*resp.OJTaskExecutionUserListResp, error)
-	GetTaskExecutionUserDetail(
-		ctx context.Context,
-		userID, taskID, executionID, targetUserID uint,
-	) (*resp.OJTaskExecutionUserDetailResp, error)
-}
-
-// aiObservabilityService 表示 AI tool 查询 trace 和指标时依赖的最小观测能力。
-type aiObservabilityService interface {
-	QueryMetrics(ctx context.Context, req *request.ObservabilityMetricsQueryReq) (*resp.ObservabilityMetricsQueryResp, error)
-	QueryRuntimeMetrics(
-		ctx context.Context,
-		req *request.ObservabilityRuntimeMetricQueryReq,
-	) (*resp.ObservabilityRuntimeMetricQueryResp, error)
-	QueryTraceDetail(
-		ctx context.Context,
-		id string,
-		idType string,
-		limit int,
-		offset int,
-		includePayload bool,
-		includeErrorDetail bool,
-	) (*resp.ObservabilityTraceQueryResp, error)
-	QueryTrace(ctx context.Context, req *request.ObservabilityTraceQueryReq) (*resp.ObservabilityTraceSummaryQueryResp, error)
-}
-
-// AIDeps 表示 AIService 构建 tool loop 时需要的最小服务依赖。
-type AIDeps struct {
-	// Authorization 提供工具可见性过滤和执行前二次鉴权所需的授权能力。
-	Authorization aiAuthorizationService
-	// OJ 提供个人排行、统计和曲线等 OJ 查询能力。
-	OJ aiOJService
-	// OJTask 提供任务执行和题目分析等 OJ 任务能力。
-	OJTask aiOJTaskService
-	// Observability 提供 trace 和指标查询能力。
-	Observability aiObservabilityService
-	// Memory 提供可选的额外记忆召回能力；未注入时保持只读历史消息路径。
-	Memory aiMemoryProvider
-	// Compressor 提供可选的上下文压缩能力；未注入时保持原始历史消息。
-	Compressor aiContextCompressor
-	// PromptBuilder 允许调用方替换默认动态 prompt 构造逻辑。
-	PromptBuilder aiPromptBuilder
-}
+type aiAuthorizationService = AuthorizationService
+type aiOJService = OJService
+type aiOJTaskService = OJTaskService
+type aiObservabilityService = ObservabilityService
 
 // aiToolPolicyKind 表示工具可见性和执行前鉴权采用的策略类型。
 type aiToolPolicyKind string
@@ -103,10 +39,12 @@ type aiToolPolicy struct {
 
 // aiServiceTool 表示 service 层注册的一个具体 AI tool 实现。
 type aiServiceTool struct {
-	// spec 是暴露给 runtime 和模型的稳定工具协议。
-	spec aidomain.ToolSpec
+	// descriptor 是单个工具的稳定元数据真相。
+	descriptor aidomain.ToolDescriptor
 	// policy 描述工具的可见性和执行前鉴权要求。
 	policy aiToolPolicy
+	// validate 承载跨字段或条件参数校验逻辑；为空时只走 schema 级预校验。
+	validate func(ctx context.Context, call aidomain.ToolCall, callCtx aidomain.ToolCallContext) error
 	// call 承载工具的实际业务执行逻辑。
 	call func(ctx context.Context, call aidomain.ToolCall, callCtx aidomain.ToolCallContext) (aidomain.ToolResult, error)
 }
@@ -114,7 +52,7 @@ type aiServiceTool struct {
 // Spec 返回工具的稳定协议定义。
 func (t *aiServiceTool) Spec() aidomain.ToolSpec {
 	// spec 在注册阶段就已固定，不在运行时动态变更。
-	return t.spec
+	return t.descriptor.Spec
 }
 
 // Call 执行具体工具逻辑。
@@ -132,25 +70,50 @@ func (t *aiServiceTool) Call(
 	return t.call(ctx, call, callCtx)
 }
 
-// aiToolRegistry 负责注册工具、过滤可见性，并提供执行前定位能力。
-type aiToolRegistry struct {
+// Validate 执行 tool 的补充参数校验。
+func (t *aiServiceTool) Validate(
+	ctx context.Context,
+	call aidomain.ToolCall,
+	callCtx aidomain.ToolCallContext,
+) error {
+	if t == nil || t.validate == nil {
+		return nil
+	}
+	return t.validate(ctx, call, callCtx)
+}
+
+// Registry 负责注册工具、过滤可见性，并提供执行前定位能力。
+type Registry struct {
 	// authorization 用于按 principal 判断组织能力类工具是否可见。
 	authorization aiAuthorizationService
 	// tools 保存当前进程可注册的全部工具目录。
 	tools []*aiServiceTool
+	// byName 提供工具名到工具元数据的直接索引。
+	byName map[string]*aiServiceTool
 }
 
 // newAIToolRegistry 创建 AI tool 注册表。
-func newAIToolRegistry(deps AIDeps) *aiToolRegistry {
+func newAIToolRegistry(deps Deps) *Registry {
 	// 先创建空注册表，并挂上可见性过滤会用到的授权服务。
-	r := &aiToolRegistry{authorization: deps.Authorization}
+	r := &Registry{authorization: deps.Authorization}
 	// 再根据当前注入依赖构建完整工具目录。
 	r.tools = r.buildCatalog(deps)
+	r.byName = make(map[string]*aiServiceTool, len(r.tools))
+	for _, tool := range r.tools {
+		if tool == nil {
+			continue
+		}
+		name := strings.TrimSpace(tool.Spec().Name)
+		if name == "" {
+			continue
+		}
+		r.byName[name] = tool
+	}
 	return r
 }
 
 // buildCatalog 根据当前依赖拼出本进程真正可提供的工具目录。
-func (r *aiToolRegistry) buildCatalog(deps AIDeps) []*aiServiceTool {
+func (r *Registry) buildCatalog(deps Deps) []*aiServiceTool {
 	// 先按预估容量创建切片，减少追加时的扩容次数。
 	tools := make([]*aiServiceTool, 0, 11)
 	if deps.OJ != nil {
@@ -187,7 +150,7 @@ func (r *aiToolRegistry) buildCatalog(deps AIDeps) []*aiServiceTool {
 }
 
 // FilterVisibleTools 按本轮 principal 过滤出模型真正可见的工具集合。
-func (r *aiToolRegistry) FilterVisibleTools(
+func (r *Registry) FilterVisibleTools(
 	ctx context.Context,
 	callCtx aidomain.ToolCallContext,
 ) ([]aidomain.Tool, error) {
@@ -212,7 +175,7 @@ func (r *aiToolRegistry) FilterVisibleTools(
 }
 
 // isVisible 判断某个 policy 在当前 principal 下是否应该暴露给模型。
-func (r *aiToolRegistry) isVisible(
+func (r *Registry) isVisible(
 	ctx context.Context,
 	policy aiToolPolicy,
 	principal aidomain.AIToolPrincipal,
@@ -247,120 +210,96 @@ func (r *aiToolRegistry) isVisible(
 }
 
 // findTool 按名称从注册表里查找具体工具实现。
-func (r *aiToolRegistry) findTool(name string) *aiServiceTool {
+func (r *Registry) findTool(name string) *aiServiceTool {
 	// 统一 trim 输入，避免调用方传入带空白的工具名。
 	normalizedName := strings.TrimSpace(name)
-	for _, tool := range r.tools {
-		// 只返回名称完全匹配的工具实现。
-		if tool != nil && tool.spec.Name == normalizedName {
-			return tool
-		}
+	if r == nil || normalizedName == "" {
+		return nil
 	}
-	return nil
+	return r.byName[normalizedName]
 }
 
-// buildAIToolDynamicPrompt 生成“本轮工具使用说明”提示词。
-//
-// 该提示词会喂给模型，用于约束模型的工具使用行为，包括：
-//  1. 只能使用本轮明确列出的工具；
-//  2. 缺少精确标识时不要猜；
-//  3. 工具可见 ≠ 最终一定执行成功，执行期仍会鉴权；
-//  4. 当前组织上下文是什么；
-//  5. 每个工具的参数定义是什么。
-//
-// 设计价值：
-// - 减少模型臆造工具；
-// - 减少模型胡乱猜 org_id / task_id / request_id；
-// - 将“后端权限事实”同步给模型，提高调用成功率。
-func buildAIToolDynamicPrompt(
-	tools []aidomain.Tool,
-	principal aidomain.AIToolPrincipal,
-) string {
-	// builder 按顺序拼出固定约束、组织上下文和可见工具清单。
-	var builder strings.Builder
-	builder.WriteString("你是 personal_assistant 的 AI 助手。\n")
-	builder.WriteString("本轮只能使用下面明确列出的工具；不要假设还有其他工具。\n")
-	builder.WriteString("如果用户请求需要 org_id、task_id、execution_id、request_id 等精确标识，而上下文里没有，不要猜测，直接向用户索取。\n")
-	builder.WriteString("工具可见性已经按当前授权事实过滤，但真正执行时仍会再次鉴权；如果工具报权限错误，直接向用户说明。\n")
-	if principal.CurrentOrgID != nil && *principal.CurrentOrgID > 0 {
-		// 当前组织上下文单独写进 prompt，帮助模型优先复用默认 org_id。
-		builder.WriteString(fmt.Sprintf("当前组织上下文 org_id=%d。\n", *principal.CurrentOrgID))
-	}
-	if len(tools) == 0 {
-		// 无工具时明确告知模型只能基于上下文回答，避免虚构工具调用。
-		builder.WriteString("本轮没有可用工具，请直接基于已有上下文回答，无法确认的数据不要编造。")
-		return builder.String()
-	}
-
-	// 有工具时逐个列出名称、描述和参数协议。
-	builder.WriteString("本轮可用工具清单：\n")
-	for idx, tool := range tools {
-		spec := tool.Spec()
-		builder.WriteString(fmt.Sprintf("%d. %s: %s\n", idx+1, spec.Name, spec.Description))
-		if len(spec.Parameters) == 0 {
-			builder.WriteString("   参数：无\n")
+// ListVisibleToolGroupBriefs 按当前可见工具生成第一阶段 selector 需要的组简介。
+func (r *Registry) ListVisibleToolGroupBriefs(tools []aidomain.Tool) []aidomain.ToolGroupBrief {
+	seen := make(map[aidomain.ToolGroupID]struct{}, len(tools))
+	items := make([]aidomain.ToolGroupBrief, 0, len(tools))
+	for _, tool := range tools {
+		metaTool := r.findTool(tool.Spec().Name)
+		if metaTool == nil || metaTool.descriptor.GroupID == "" {
 			continue
 		}
-		builder.WriteString("   参数：\n")
-		for _, param := range spec.Parameters {
-			builder.WriteString("   - ")
-			builder.WriteString(formatAIToolParameterPrompt(param))
-			builder.WriteString("\n")
+		if _, ok := seen[metaTool.descriptor.GroupID]; ok {
+			continue
 		}
+		seen[metaTool.descriptor.GroupID] = struct{}{}
+		groupTools := r.ExpandVisibleToolsByGroup(tools, metaTool.descriptor.GroupID)
+		items = append(items, buildToolGroupBrief(metaTool.descriptor.GroupID, groupTools))
 	}
-	return strings.TrimSpace(builder.String())
+	return items
 }
 
-// formatAIToolParameterPrompt 把单个参数协议转成可读的 prompt 文本。
-func formatAIToolParameterPrompt(param aidomain.ToolParameter) string {
-	// meta 先拼出类型、必填性和枚举约束。
-	meta := string(param.Type)
-	if param.Required {
-		meta += ", required"
-	} else {
-		meta += ", optional"
+// ListVisibleToolBriefsByGroup 返回指定组内、当前仍然可见的工具简介列表。
+func (r *Registry) ListVisibleToolBriefsByGroup(
+	tools []aidomain.Tool,
+	groupID aidomain.ToolGroupID,
+) []aidomain.ToolBrief {
+	items := make([]aidomain.ToolBrief, 0, len(tools))
+	for _, tool := range tools {
+		metaTool := r.findTool(tool.Spec().Name)
+		if metaTool == nil || metaTool.descriptor.GroupID != groupID {
+			continue
+		}
+		items = append(items, metaTool.descriptor.Brief)
 	}
-	if len(param.Enum) > 0 {
-		meta += ", enum=" + strings.Join(param.Enum, "|")
-	}
-	if param.Type == aidomain.ToolParameterTypeArray && param.Items != nil {
-		// array 参数额外补出元素类型说明。
-		meta += ", items=" + describeAIToolParameterType(*param.Items)
-	}
-
-	// line 是当前参数的主描述行。
-	line := fmt.Sprintf("%s (%s)", param.Name, meta)
-	if strings.TrimSpace(param.Description) != "" {
-		line += ": " + strings.TrimSpace(param.Description)
-	}
-	if len(param.Properties) == 0 {
-		return line
-	}
-
-	// object 参数递归列出所有子字段，方便模型一次性看懂结构。
-	children := make([]string, 0, len(param.Properties))
-	for _, child := range param.Properties {
-		children = append(children, formatAIToolParameterPrompt(child))
-	}
-	return line + "; fields={" + strings.Join(children, "; ") + "}"
+	return items
 }
 
-// describeAIToolParameterType 返回参数类型的简短可读描述。
-func describeAIToolParameterType(param aidomain.ToolParameter) string {
-	switch param.Type {
-	case aidomain.ToolParameterTypeObject:
-		// object 直接返回 object 标记。
-		return "object"
-	case aidomain.ToolParameterTypeArray:
-		// array 继续递归描述元素类型。
-		if param.Items == nil {
-			return "array"
-		}
-		return "array<" + describeAIToolParameterType(*param.Items) + ">"
-	default:
-		// 基础类型直接返回底层 type 值。
-		return string(param.Type)
+// ExpandVisibleToolsByNames 按名称从当前可见工具集中展开最终要暴露的工具子集。
+func (r *Registry) ExpandVisibleToolsByNames(tools []aidomain.Tool, names []string) []aidomain.Tool {
+	if len(tools) == 0 || len(names) == 0 {
+		return nil
 	}
+	visibleByName := make(map[string]aidomain.Tool, len(tools))
+	for _, tool := range tools {
+		if tool == nil {
+			continue
+		}
+		visibleByName[tool.Spec().Name] = tool
+	}
+	items := make([]aidomain.Tool, 0, len(names))
+	seen := make(map[string]struct{}, len(names))
+	for _, name := range names {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		tool, ok := visibleByName[name]
+		if !ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		items = append(items, tool)
+		if len(items) >= 3 {
+			break
+		}
+	}
+	return items
+}
+
+// ExpandVisibleToolsByGroup 在低置信度场景下回退到指定组的全部可见工具。
+func (r *Registry) ExpandVisibleToolsByGroup(tools []aidomain.Tool, groupID aidomain.ToolGroupID) []aidomain.Tool {
+	items := make([]aidomain.Tool, 0, len(tools))
+	for _, tool := range tools {
+		metaTool := r.findTool(tool.Spec().Name)
+		if metaTool == nil || metaTool.descriptor.GroupID != groupID {
+			continue
+		}
+		items = append(items, tool)
+	}
+	return items
 }
 
 // newAISelfOnlyPolicy 创建 SelfOnly 访问策略。
@@ -392,7 +331,16 @@ func decodeAIToolArgs(call aidomain.ToolCall, out any) error {
 	}
 	// JSON 解析失败时统一包装成参数错误，方便前端和模型理解。
 	if err := json.Unmarshal([]byte(call.ArgumentsJSON), out); err != nil {
-		return bizerrors.WrapWithMsg(bizerrors.CodeInvalidParams, "AI tool 参数解析失败", err)
+		return aidomain.NewRepairableInvalidParamErrorWithCause(
+			"AI tool 参数解析失败，请按 JSON 对象格式重新组织参数。",
+			err,
+			aidomain.ToolFieldError{
+				Field:    "arguments",
+				Reason:   "invalid_json",
+				Expected: "合法的 JSON 对象",
+				Example:  `{"platform":"leetcode"}`,
+			},
+		)
 	}
 	return nil
 }
@@ -413,7 +361,7 @@ func buildAIToolResult(payload any, summary string) (aidomain.ToolResult, error)
 	// 未显式提供 summary 时，从原始 JSON 截断一份短摘要。
 	summary = strings.TrimSpace(summary)
 	if summary == "" {
-		summary = truncateRunes(string(raw), 120)
+		summary = truncateToolSummary(string(raw), 120)
 	}
 	return aidomain.ToolResult{
 		Output:         string(raw),
@@ -532,15 +480,30 @@ type aiMyRankingArgs struct {
 func newAIGetMyRankingTool(ojSvc aiOJService) *aiServiceTool {
 	// 个人排行工具只面向当前登录用户自己的数据。
 	return &aiServiceTool{
-		// spec 描述模型可见的工具协议。
-		spec: aidomain.ToolSpec{
+		// descriptor 在工具定义时直接声明稳定协议和渐进式 brief。
+		descriptor: newAIToolDescriptor(aidomain.ToolSpec{
 			Name:        "get_my_ranking",
 			Description: "获取当前登录用户在指定 OJ 排行榜中的个人排名摘要，不返回其他用户完整榜单。",
 			Parameters: []aidomain.ToolParameter{
-				{Name: "platform", Type: aidomain.ToolParameterTypeString, Description: "OJ 平台", Required: true, Enum: []string{"leetcode", "luogu", "lanqiao"}},
-				{Name: "scope", Type: aidomain.ToolParameterTypeString, Description: "排行范围，默认 current_org", Enum: []string{"current_org", "all_members"}},
+				{
+					Name:         "platform",
+					Type:         aidomain.ToolParameterTypeString,
+					Description:  "OJ 平台，只支持个人已绑定数据的平台。",
+					Required:     true,
+					Enum:         []string{"leetcode", "luogu", "lanqiao"},
+					Examples:     []string{"leetcode", "luogu"},
+					DefaultValue: "",
+				},
+				{
+					Name:         "scope",
+					Type:         aidomain.ToolParameterTypeString,
+					Description:  "排行范围；省略时默认 current_org。",
+					Enum:         []string{"current_org", "all_members"},
+					Examples:     []string{"current_org"},
+					DefaultValue: "current_org",
+				},
 			},
-		},
+		}, aidomain.ToolGroupOJPersonal, "查询当前用户在指定 OJ 平台的个人排名。", "用户明确想看自己的排名或名次时使用。", "oj", "personal", "ranking"),
 		// policy 声明该工具只围绕当前用户自己的数据执行。
 		policy: newAISelfOnlyPolicy(),
 		// call 负责查询当前用户在指定平台下的个人排行摘要。
@@ -588,14 +551,20 @@ type aiMyPlatformArgs struct {
 func newAIGetMyOJStatsTool(ojSvc aiOJService) *aiServiceTool {
 	// 个人统计工具只查询当前用户在单个平台上的统计。
 	return &aiServiceTool{
-		// spec 描述模型可见的工具名、描述和参数协议。
-		spec: aidomain.ToolSpec{
+		descriptor: newAIToolDescriptor(aidomain.ToolSpec{
 			Name:        "get_my_oj_stats",
 			Description: "获取当前登录用户在指定 OJ 平台上的个人统计。",
 			Parameters: []aidomain.ToolParameter{
-				{Name: "platform", Type: aidomain.ToolParameterTypeString, Description: "OJ 平台", Required: true, Enum: []string{"leetcode", "luogu", "lanqiao"}},
+				{
+					Name:        "platform",
+					Type:        aidomain.ToolParameterTypeString,
+					Description: "OJ 平台。",
+					Required:    true,
+					Enum:        []string{"leetcode", "luogu", "lanqiao"},
+					Examples:    []string{"leetcode"},
+				},
 			},
-		},
+		}, aidomain.ToolGroupOJPersonal, "查询当前用户在指定 OJ 平台的个人统计。", "用户想看自己的通过数、题量或个人统计时使用。", "oj", "personal", "stats"),
 		// policy 仍然是 SelfOnly。
 		policy: newAISelfOnlyPolicy(),
 		// call 负责查询并返回当前用户的平台统计。
@@ -622,14 +591,20 @@ func newAIGetMyOJStatsTool(ojSvc aiOJService) *aiServiceTool {
 func newAIGetMyOJCurveTool(ojSvc aiOJService) *aiServiceTool {
 	// 个人曲线工具只查询当前用户自己的做题趋势。
 	return &aiServiceTool{
-		// spec 定义模型如何调用该工具。
-		spec: aidomain.ToolSpec{
+		descriptor: newAIToolDescriptor(aidomain.ToolSpec{
 			Name:        "get_my_oj_curve",
 			Description: "获取当前登录用户在指定 OJ 平台上的最近做题曲线。",
 			Parameters: []aidomain.ToolParameter{
-				{Name: "platform", Type: aidomain.ToolParameterTypeString, Description: "OJ 平台", Required: true, Enum: []string{"leetcode", "luogu", "lanqiao"}},
+				{
+					Name:        "platform",
+					Type:        aidomain.ToolParameterTypeString,
+					Description: "OJ 平台。",
+					Required:    true,
+					Enum:        []string{"leetcode", "luogu", "lanqiao"},
+					Examples:    []string{"leetcode"},
+				},
 			},
-		},
+		}, aidomain.ToolGroupOJPersonal, "查询当前用户在指定 OJ 平台的曲线趋势。", "用户想看自己的刷题变化趋势或曲线时使用。", "oj", "personal", "curve"),
 		// policy 声明这是 SelfOnly 工具。
 		policy: newAISelfOnlyPolicy(),
 		// call 负责查询并返回个人曲线。
@@ -671,17 +646,45 @@ func newAIGetOrgRankingSummaryTool(
 ) *aiServiceTool {
 	// 组织排行工具要求目标组织具备 OJ 任务管理能力。
 	return &aiServiceTool{
-		// spec 告诉模型可以按 org_id 和 platform 查询组织排行摘要。
-		spec: aidomain.ToolSpec{
+		descriptor: newAIToolDescriptor(aidomain.ToolSpec{
 			Name:        "get_org_ranking_summary",
 			Description: "获取指定组织在指定 OJ 平台排行榜中的摘要，需要 OJ 任务管理能力。",
 			Parameters: []aidomain.ToolParameter{
-				{Name: "org_id", Type: aidomain.ToolParameterTypeInteger, Description: "目标组织 ID；省略时默认当前组织"},
-				{Name: "platform", Type: aidomain.ToolParameterTypeString, Description: "OJ 平台", Required: true, Enum: []string{"leetcode", "luogu", "lanqiao"}},
-				{Name: "page", Type: aidomain.ToolParameterTypeInteger, Description: "页码，默认 1"},
-				{Name: "page_size", Type: aidomain.ToolParameterTypeInteger, Description: "分页大小，默认 20"},
+				{
+					Name:         "org_id",
+					Type:         aidomain.ToolParameterTypeInteger,
+					Description:  "目标组织 ID；省略时默认当前组织。",
+					Minimum:      aiFloatPtr(1),
+					Examples:     []string{"12"},
+					DefaultValue: "current_org_id",
+				},
+				{
+					Name:        "platform",
+					Type:        aidomain.ToolParameterTypeString,
+					Description: "OJ 平台。",
+					Required:    true,
+					Enum:        []string{"leetcode", "luogu", "lanqiao"},
+					Examples:    []string{"leetcode"},
+				},
+				{
+					Name:         "page",
+					Type:         aidomain.ToolParameterTypeInteger,
+					Description:  "页码。",
+					Minimum:      aiFloatPtr(1),
+					Examples:     []string{"1"},
+					DefaultValue: "1",
+				},
+				{
+					Name:         "page_size",
+					Type:         aidomain.ToolParameterTypeInteger,
+					Description:  "分页大小。",
+					Minimum:      aiFloatPtr(1),
+					Maximum:      aiFloatPtr(100),
+					Examples:     []string{"20"},
+					DefaultValue: "20",
+				},
 			},
-		},
+		}, aidomain.ToolGroupOJOrg, "查询组织范围内的 OJ 排名汇总。", "用户想看组织排行榜、榜单分页或组织范围排名时使用。", "oj", "org", "ranking"),
 		// policy 声明该工具受组织 capability 控制。
 		policy: newAIOrgCapabilityPolicy(consts.CapabilityCodeOJTaskManage),
 		// call 负责解析目标组织、做真实鉴权并查询组织排行摘要。
@@ -739,15 +742,28 @@ func newAIGetTaskExecutionSummaryTool(
 ) *aiServiceTool {
 	// 任务执行摘要工具既要复用任务可见性，也要对关联组织做 capability 收口。
 	return &aiServiceTool{
-		// spec 描述模型需要提供 task_id 和 execution_id。
-		spec: aidomain.ToolSpec{
+		descriptor: newAIToolDescriptor(aidomain.ToolSpec{
 			Name:        "get_task_execution_summary",
 			Description: "获取指定任务执行的摘要，需要先具备任务可见性，再通过关联组织能力校验。",
 			Parameters: []aidomain.ToolParameter{
-				{Name: "task_id", Type: aidomain.ToolParameterTypeInteger, Description: "任务 ID", Required: true},
-				{Name: "execution_id", Type: aidomain.ToolParameterTypeInteger, Description: "执行 ID", Required: true},
+				{
+					Name:        "task_id",
+					Type:        aidomain.ToolParameterTypeInteger,
+					Description: "任务 ID。",
+					Required:    true,
+					Minimum:     aiFloatPtr(1),
+					Examples:    []string{"101"},
+				},
+				{
+					Name:        "execution_id",
+					Type:        aidomain.ToolParameterTypeInteger,
+					Description: "执行 ID。",
+					Required:    true,
+					Minimum:     aiFloatPtr(1),
+					Examples:    []string{"202"},
+				},
 			},
-		},
+		}, aidomain.ToolGroupOJTask, "查询任务执行摘要。", "用户想看某个任务执行结果、状态或概览时使用。", "oj", "task", "summary"),
 		// policy 用于控制该工具是否在当前组织上下文里可见。
 		policy: newAIOrgCapabilityPolicy(consts.CapabilityCodeOJTaskManage),
 		// call 负责先校验任务可见性，再按任务关联组织做能力收口。
@@ -807,19 +823,59 @@ func newAIListTaskExecutionUsersTool(
 ) *aiServiceTool {
 	// 用户列表工具复用任务可见性和组织能力双重收口。
 	return &aiServiceTool{
-		// spec 描述模型可传的分页和筛选参数。
-		spec: aidomain.ToolSpec{
+		descriptor: newAIToolDescriptor(aidomain.ToolSpec{
 			Name:        "list_task_execution_users",
 			Description: "分页列出指定任务执行下的用户结果，需要任务可见性和组织能力。",
 			Parameters: []aidomain.ToolParameter{
-				{Name: "task_id", Type: aidomain.ToolParameterTypeInteger, Description: "任务 ID", Required: true},
-				{Name: "execution_id", Type: aidomain.ToolParameterTypeInteger, Description: "执行 ID", Required: true},
-				{Name: "page", Type: aidomain.ToolParameterTypeInteger, Description: "页码，默认 1"},
-				{Name: "page_size", Type: aidomain.ToolParameterTypeInteger, Description: "分页大小，默认 20"},
-				{Name: "all_completed", Type: aidomain.ToolParameterTypeBoolean, Description: "是否只看已全部完成的用户"},
-				{Name: "username", Type: aidomain.ToolParameterTypeString, Description: "用户名关键字"},
+				{
+					Name:        "task_id",
+					Type:        aidomain.ToolParameterTypeInteger,
+					Description: "任务 ID。",
+					Required:    true,
+					Minimum:     aiFloatPtr(1),
+					Examples:    []string{"101"},
+				},
+				{
+					Name:        "execution_id",
+					Type:        aidomain.ToolParameterTypeInteger,
+					Description: "执行 ID。",
+					Required:    true,
+					Minimum:     aiFloatPtr(1),
+					Examples:    []string{"202"},
+				},
+				{
+					Name:         "page",
+					Type:         aidomain.ToolParameterTypeInteger,
+					Description:  "页码。",
+					Minimum:      aiFloatPtr(1),
+					Examples:     []string{"1"},
+					DefaultValue: "1",
+				},
+				{
+					Name:         "page_size",
+					Type:         aidomain.ToolParameterTypeInteger,
+					Description:  "分页大小。",
+					Minimum:      aiFloatPtr(1),
+					Maximum:      aiFloatPtr(200),
+					Examples:     []string{"20"},
+					DefaultValue: "20",
+				},
+				{
+					Name:         "all_completed",
+					Type:         aidomain.ToolParameterTypeBoolean,
+					Description:  "是否只看已全部完成的用户。",
+					Examples:     []string{"true"},
+					DefaultValue: "false",
+				},
+				{
+					Name:        "username",
+					Type:        aidomain.ToolParameterTypeString,
+					Description: "用户名关键字。",
+					MaxLength:   aiIntPtr(50),
+					Examples:    []string{"alice"},
+				},
 			},
-		},
+		}, aidomain.ToolGroupOJTask, "列出任务执行用户名单。", "用户想看某次执行有哪些人、分页结果或按用户名筛选时使用。", "oj", "task", "users"),
 		// policy 声明这是组织能力类工具。
 		policy: newAIOrgCapabilityPolicy(consts.CapabilityCodeOJTaskManage),
 		// call 负责按任务执行分页查询用户结果。
@@ -878,16 +934,36 @@ func newAIGetTaskExecutionUserDetailTool(
 ) *aiServiceTool {
 	// 用户详情工具与任务摘要工具共享同一套权限收口思路。
 	return &aiServiceTool{
-		// spec 要求模型给出 task、execution 和 target user 三个关键标识。
-		spec: aidomain.ToolSpec{
+		descriptor: newAIToolDescriptor(aidomain.ToolSpec{
 			Name:        "get_task_execution_user_detail",
 			Description: "获取指定任务执行中某个用户的详细结果，需要任务可见性和组织能力。",
 			Parameters: []aidomain.ToolParameter{
-				{Name: "task_id", Type: aidomain.ToolParameterTypeInteger, Description: "任务 ID", Required: true},
-				{Name: "execution_id", Type: aidomain.ToolParameterTypeInteger, Description: "执行 ID", Required: true},
-				{Name: "target_user_id", Type: aidomain.ToolParameterTypeInteger, Description: "目标用户 ID", Required: true},
+				{
+					Name:        "task_id",
+					Type:        aidomain.ToolParameterTypeInteger,
+					Description: "任务 ID。",
+					Required:    true,
+					Minimum:     aiFloatPtr(1),
+					Examples:    []string{"101"},
+				},
+				{
+					Name:        "execution_id",
+					Type:        aidomain.ToolParameterTypeInteger,
+					Description: "执行 ID。",
+					Required:    true,
+					Minimum:     aiFloatPtr(1),
+					Examples:    []string{"202"},
+				},
+				{
+					Name:        "target_user_id",
+					Type:        aidomain.ToolParameterTypeInteger,
+					Description: "目标用户 ID。",
+					Required:    true,
+					Minimum:     aiFloatPtr(1),
+					Examples:    []string{"303"},
+				},
 			},
-		},
+		}, aidomain.ToolGroupOJTask, "查询单个用户的任务执行明细。", "用户想看某个同学或指定用户的执行详情时使用。", "oj", "task", "user_detail"),
 		// policy 仍然是 OJ 任务管理能力。
 		policy: newAIOrgCapabilityPolicy(consts.CapabilityCodeOJTaskManage),
 		// call 负责查询指定执行里某个用户的详细结果。
@@ -955,20 +1031,49 @@ func newAIAnalyzeTaskTitlesTool(
 	itemParam := aidomain.ToolParameter{
 		Type: aidomain.ToolParameterTypeObject,
 		Properties: []aidomain.ToolParameter{
-			{Name: "platform", Type: aidomain.ToolParameterTypeString, Description: "OJ 平台", Required: true, Enum: []string{"luogu", "leetcode", "lanqiao"}},
-			{Name: "title", Type: aidomain.ToolParameterTypeString, Description: "题目标题", Required: true},
+			{
+				Name:        "platform",
+				Type:        aidomain.ToolParameterTypeString,
+				Description: "OJ 平台。",
+				Required:    true,
+				Enum:        []string{"luogu", "leetcode", "lanqiao"},
+				Examples:    []string{"leetcode"},
+			},
+			{
+				Name:        "title",
+				Type:        aidomain.ToolParameterTypeString,
+				Description: "题目标题。",
+				Required:    true,
+				MinLength:   aiIntPtr(1),
+				MaxLength:   aiIntPtr(255),
+				Examples:    []string{"Two Sum"},
+			},
 		},
 	}
 	return &aiServiceTool{
-		// spec 描述按组织上下文分析一组题目标题的能力。
-		spec: aidomain.ToolSpec{
+		descriptor: newAIToolDescriptor(aidomain.ToolSpec{
 			Name:        "analyze_task_titles",
 			Description: "分析一组 OJ 题目标题并返回可解析结果，需要指定组织并具备 OJ 任务管理能力。",
 			Parameters: []aidomain.ToolParameter{
-				{Name: "org_id", Type: aidomain.ToolParameterTypeInteger, Description: "目标组织 ID；省略时默认当前组织"},
-				{Name: "items", Type: aidomain.ToolParameterTypeArray, Description: "待分析题目列表", Required: true, Items: &itemParam},
+				{
+					Name:         "org_id",
+					Type:         aidomain.ToolParameterTypeInteger,
+					Description:  "目标组织 ID；省略时默认当前组织。",
+					Minimum:      aiFloatPtr(1),
+					Examples:     []string{"12"},
+					DefaultValue: "current_org_id",
+				},
+				{
+					Name:        "items",
+					Type:        aidomain.ToolParameterTypeArray,
+					Description: "待分析题目列表。",
+					Required:    true,
+					MinItems:    aiIntPtr(1),
+					Examples:    []string{`[{"platform":"leetcode","title":"Two Sum"}]`},
+					Items:       &itemParam,
+				},
 			},
-		},
+		}, aidomain.ToolGroupOJTask, "分析题目标题并生成任务题目建议。", "用户提供题目标题列表，希望做任务题目分析时使用。", "oj", "task", "analyze"),
 		// policy 声明该工具需要组织能力。
 		policy: newAIOrgCapabilityPolicy(consts.CapabilityCodeOJTaskManage),
 		// call 负责解析题目列表、校验组织能力并调用任务分析服务。
@@ -1035,18 +1140,51 @@ func newAIQueryTraceDetailByRequestIDTool(
 ) *aiServiceTool {
 	// trace 详情属于观测类工具，只允许超级管理员使用。
 	return &aiServiceTool{
-		// spec 描述按 request_id 查询链路详情的能力。
-		spec: aidomain.ToolSpec{
+		descriptor: newAIToolDescriptor(aidomain.ToolSpec{
 			Name:        "query_trace_detail_by_request_id",
 			Description: "按 request_id 查询链路详情，仅超级管理员可用。",
 			Parameters: []aidomain.ToolParameter{
-				{Name: "request_id", Type: aidomain.ToolParameterTypeString, Description: "请求 ID", Required: true},
-				{Name: "limit", Type: aidomain.ToolParameterTypeInteger, Description: "返回条数，默认 100"},
-				{Name: "offset", Type: aidomain.ToolParameterTypeInteger, Description: "偏移量，默认 0"},
-				{Name: "include_payload", Type: aidomain.ToolParameterTypeBoolean, Description: "是否包含请求/响应摘要"},
-				{Name: "include_error_detail", Type: aidomain.ToolParameterTypeBoolean, Description: "是否包含错误详情"},
+				{
+					Name:        "request_id",
+					Type:        aidomain.ToolParameterTypeString,
+					Description: "请求 ID。",
+					Required:    true,
+					MinLength:   aiIntPtr(1),
+					Examples:    []string{"req_01hxyz"},
+				},
+				{
+					Name:         "limit",
+					Type:         aidomain.ToolParameterTypeInteger,
+					Description:  "返回条数。",
+					Minimum:      aiFloatPtr(1),
+					Maximum:      aiFloatPtr(1000),
+					Examples:     []string{"200"},
+					DefaultValue: "200",
+				},
+				{
+					Name:         "offset",
+					Type:         aidomain.ToolParameterTypeInteger,
+					Description:  "偏移量。",
+					Minimum:      aiFloatPtr(0),
+					Examples:     []string{"0"},
+					DefaultValue: "0",
+				},
+				{
+					Name:         "include_payload",
+					Type:         aidomain.ToolParameterTypeBoolean,
+					Description:  "是否包含请求/响应摘要。",
+					Examples:     []string{"true"},
+					DefaultValue: "false",
+				},
+				{
+					Name:         "include_error_detail",
+					Type:         aidomain.ToolParameterTypeBoolean,
+					Description:  "是否包含错误详情。",
+					Examples:     []string{"true"},
+					DefaultValue: "false",
+				},
 			},
-		},
+		}, aidomain.ToolGroupObservabilityTrace, "按 request_id 或 trace_id 查询链路详情。", "用户要排查某次请求的完整链路详情时使用。", "observability", "trace", "detail"),
 		// policy 声明该工具只对超级管理员可见。
 		policy: newAISuperAdminOnlyPolicy(),
 		// call 负责执行超级管理员校验并查询 trace 详情。
@@ -1109,29 +1247,78 @@ func newAIQueryTraceSummaryTool(
 ) *aiServiceTool {
 	// trace 摘要属于观测类工具，只允许超级管理员使用。
 	return &aiServiceTool{
-		// spec 描述 trace 列表支持的过滤字段。
-		spec: aidomain.ToolSpec{
+		descriptor: newAIToolDescriptor(aidomain.ToolSpec{
 			Name:        "query_trace_summary",
 			Description: "查询链路摘要列表，仅超级管理员可用。",
 			Parameters: []aidomain.ToolParameter{
-				{Name: "trace_id", Type: aidomain.ToolParameterTypeString, Description: "trace_id"},
-				{Name: "request_id", Type: aidomain.ToolParameterTypeString, Description: "request_id"},
-				{Name: "service", Type: aidomain.ToolParameterTypeString, Description: "服务名"},
-				{Name: "status", Type: aidomain.ToolParameterTypeString, Description: "状态"},
-				{Name: "root_stage", Type: aidomain.ToolParameterTypeString, Description: "root stage", Enum: []string{request.TraceRootStageHTTP, request.TraceRootStageTask, request.TraceRootStageAll}},
-				{Name: "start_at", Type: aidomain.ToolParameterTypeString, Description: "开始时间"},
-				{Name: "end_at", Type: aidomain.ToolParameterTypeString, Description: "结束时间"},
-				{Name: "limit", Type: aidomain.ToolParameterTypeInteger, Description: "返回条数"},
-				{Name: "offset", Type: aidomain.ToolParameterTypeInteger, Description: "偏移量"},
+				{Name: "trace_id", Type: aidomain.ToolParameterTypeString, Description: "trace_id。", Examples: []string{"trace_01hxyz"}},
+				{Name: "request_id", Type: aidomain.ToolParameterTypeString, Description: "request_id。", Examples: []string{"req_01hxyz"}},
+				{Name: "service", Type: aidomain.ToolParameterTypeString, Description: "服务名。", Examples: []string{"personal_assistant"}},
+				{
+					Name:        "status",
+					Type:        aidomain.ToolParameterTypeString,
+					Description: "链路状态。",
+					Enum:        []string{"ok", "error"},
+					Examples:    []string{"ok"},
+				},
+				{
+					Name:         "root_stage",
+					Type:         aidomain.ToolParameterTypeString,
+					Description:  "根阶段。",
+					Enum:         []string{request.TraceRootStageHTTP, request.TraceRootStageTask, request.TraceRootStageAll},
+					Examples:     []string{request.TraceRootStageHTTP},
+					DefaultValue: request.TraceRootStageHTTP,
+				},
+				{
+					Name:        "start_at",
+					Type:        aidomain.ToolParameterTypeString,
+					Description: "开始时间。",
+					Format:      aidomain.ToolParameterFormatRFC3339,
+					Examples:    []string{"2026-04-24T09:20:00Z"},
+				},
+				{
+					Name:        "end_at",
+					Type:        aidomain.ToolParameterTypeString,
+					Description: "结束时间。",
+					Format:      aidomain.ToolParameterFormatRFC3339,
+					Examples:    []string{"2026-04-24T10:20:00Z"},
+				},
+				{
+					Name:         "limit",
+					Type:         aidomain.ToolParameterTypeInteger,
+					Description:  "返回条数。",
+					Minimum:      aiFloatPtr(1),
+					Maximum:      aiFloatPtr(1000),
+					Examples:     []string{"200"},
+					DefaultValue: "200",
+				},
+				{
+					Name:         "offset",
+					Type:         aidomain.ToolParameterTypeInteger,
+					Description:  "偏移量。",
+					Minimum:      aiFloatPtr(0),
+					Examples:     []string{"0"},
+					DefaultValue: "0",
+				},
 			},
-		},
+		}, aidomain.ToolGroupObservabilityTrace, "查询链路追踪摘要列表。", "用户要按时间、状态或阶段筛 trace 摘要时使用。", "observability", "trace", "summary"),
 		// policy 声明该工具只对超级管理员可见。
 		policy: newAISuperAdminOnlyPolicy(),
+		validate: func(_ context.Context, call aidomain.ToolCall, _ aidomain.ToolCallContext) error {
+			var args aiTraceSummaryArgs
+			if err := decodeAIToolArgs(call, &args); err != nil {
+				return err
+			}
+			return aiValidateTraceSummaryArgs(args)
+		},
 		// call 负责执行超级管理员鉴权并查询 trace 摘要列表。
 		call: func(ctx context.Context, call aidomain.ToolCall, callCtx aidomain.ToolCallContext) (aidomain.ToolResult, error) {
 			// 先解析各种 trace 过滤条件。
 			var args aiTraceSummaryArgs
 			if err := decodeAIToolArgs(call, &args); err != nil {
+				return aidomain.ToolResult{}, err
+			}
+			if err := aiValidateTraceSummaryArgs(args); err != nil {
 				return aidomain.ToolResult{}, err
 			}
 
@@ -1187,28 +1374,84 @@ func newAIQueryRuntimeMetricsTool(
 ) *aiServiceTool {
 	// 运行时指标属于观测类工具，只允许超级管理员使用。
 	return &aiServiceTool{
-		// spec 描述指标查询支持的过滤参数。
-		spec: aidomain.ToolSpec{
+		descriptor: newAIToolDescriptor(aidomain.ToolSpec{
 			Name:        "query_runtime_metrics",
 			Description: "查询运行时指标，仅超级管理员可用。",
 			Parameters: []aidomain.ToolParameter{
-				{Name: "metric", Type: aidomain.ToolParameterTypeString, Description: "指标名称", Required: true},
-				{Name: "start_at", Type: aidomain.ToolParameterTypeString, Description: "开始时间"},
-				{Name: "end_at", Type: aidomain.ToolParameterTypeString, Description: "结束时间"},
-				{Name: "granularity", Type: aidomain.ToolParameterTypeString, Description: "粒度"},
-				{Name: "task_name", Type: aidomain.ToolParameterTypeString, Description: "任务名"},
-				{Name: "topic", Type: aidomain.ToolParameterTypeString, Description: "topic"},
-				{Name: "status", Type: aidomain.ToolParameterTypeString, Description: "状态"},
-				{Name: "limit", Type: aidomain.ToolParameterTypeInteger, Description: "返回条数"},
+				{
+					Name:        "metric",
+					Type:        aidomain.ToolParameterTypeString,
+					Description: "指标名称。",
+					Required:    true,
+					Enum: []string{
+						"task_execution_total",
+						"task_duration_seconds",
+						"outbox_events_total",
+						"outbox_publish_duration_seconds",
+						"event_consume_total",
+						"event_consume_duration_seconds",
+					},
+					Examples: []string{"task_execution_total"},
+				},
+				{
+					Name:        "start_at",
+					Type:        aidomain.ToolParameterTypeString,
+					Description: "开始时间。部分 metric 必填。",
+					Format:      aidomain.ToolParameterFormatRFC3339,
+					Examples:    []string{"2026-04-24T09:20:00Z"},
+				},
+				{
+					Name:        "end_at",
+					Type:        aidomain.ToolParameterTypeString,
+					Description: "结束时间。部分 metric 必填，且必须大于 start_at。",
+					Format:      aidomain.ToolParameterFormatRFC3339,
+					Examples:    []string{"2026-04-24T10:20:00Z"},
+				},
+				{
+					Name:         "granularity",
+					Type:         aidomain.ToolParameterTypeString,
+					Description:  "聚合粒度；省略时默认 5m。",
+					Enum:         []string{"1m", "5m", "1h", "1d"},
+					Examples:     []string{"5m"},
+					DefaultValue: "5m",
+				},
+				{Name: "task_name", Type: aidomain.ToolParameterTypeString, Description: "任务名；仅任务类 metric 使用。", Examples: []string{"sync_ranking_projection"}},
+				{Name: "topic", Type: aidomain.ToolParameterTypeString, Description: "topic；仅事件类 metric 使用。", Examples: []string{"permission_projection"}},
+				{
+					Name:        "status",
+					Type:        aidomain.ToolParameterTypeString,
+					Description: "状态；不同 metric 支持的状态集合不同。",
+					Enum:        []string{"success", "error", "skipped", "pending", "published", "failed"},
+					Examples:    []string{"success", "pending"},
+				},
+				{
+					Name:         "limit",
+					Type:         aidomain.ToolParameterTypeInteger,
+					Description:  "返回条数。",
+					Minimum:      aiFloatPtr(1),
+					Maximum:      aiFloatPtr(2000),
+					Examples:     []string{"500"},
+					DefaultValue: "500",
+				},
 			},
-		},
+		}, aidomain.ToolGroupObservabilityMetrics, "查询运行时指标。", "用户要看任务执行、事件消费、outbox 或时长类运行时指标时使用。", "observability", "metrics", "runtime"),
 		// policy 声明该工具只对超级管理员可见。
 		policy: newAISuperAdminOnlyPolicy(),
+		validate: func(_ context.Context, call aidomain.ToolCall, _ aidomain.ToolCallContext) error {
+			var args aiRuntimeMetricsArgs
+			if err := decodeAIToolArgs(call, &args); err != nil {
+				return err
+			}
+			return aiValidateRuntimeMetricsArgs(args)
+		},
 		// call 负责鉴权并查询运行时指标。
 		call: func(ctx context.Context, call aidomain.ToolCall, callCtx aidomain.ToolCallContext) (aidomain.ToolResult, error) {
 			// 先解析指标查询参数。
 			var args aiRuntimeMetricsArgs
 			if err := decodeAIToolArgs(call, &args); err != nil {
+				return aidomain.ToolResult{}, err
+			}
+			if err := aiValidateRuntimeMetricsArgs(args); err != nil {
 				return aidomain.ToolResult{}, err
 			}
 
@@ -1265,29 +1508,74 @@ func newAIQueryObservabilityMetricsTool(
 ) *aiServiceTool {
 	// HTTP 观测指标属于观测类工具，只允许超级管理员使用。
 	return &aiServiceTool{
-		// spec 描述 HTTP 指标查询需要的时间窗口和过滤参数。
-		spec: aidomain.ToolSpec{
+		descriptor: newAIToolDescriptor(aidomain.ToolSpec{
 			Name:        "query_observability_metrics",
 			Description: "查询 HTTP 观测指标，仅超级管理员可用。",
 			Parameters: []aidomain.ToolParameter{
-				{Name: "granularity", Type: aidomain.ToolParameterTypeString, Description: "聚合粒度", Required: true},
-				{Name: "start_at", Type: aidomain.ToolParameterTypeString, Description: "开始时间", Required: true},
-				{Name: "end_at", Type: aidomain.ToolParameterTypeString, Description: "结束时间", Required: true},
-				{Name: "service", Type: aidomain.ToolParameterTypeString, Description: "服务名"},
-				{Name: "route_template", Type: aidomain.ToolParameterTypeString, Description: "路由模板"},
-				{Name: "method", Type: aidomain.ToolParameterTypeString, Description: "HTTP 方法"},
-				{Name: "status_class", Type: aidomain.ToolParameterTypeInteger, Description: "状态码段，例如 2 / 4 / 5"},
-				{Name: "error_code", Type: aidomain.ToolParameterTypeString, Description: "错误码"},
-				{Name: "limit", Type: aidomain.ToolParameterTypeInteger, Description: "返回条数"},
+				{
+					Name:        "granularity",
+					Type:        aidomain.ToolParameterTypeString,
+					Description: "聚合粒度。",
+					Required:    true,
+					Enum:        []string{"1m", "5m", "1d", "1w"},
+					Examples:    []string{"1m"},
+				},
+				{
+					Name:        "start_at",
+					Type:        aidomain.ToolParameterTypeString,
+					Description: "开始时间。",
+					Required:    true,
+					Format:      aidomain.ToolParameterFormatRFC3339,
+					Examples:    []string{"2026-04-24T09:20:00Z"},
+				},
+				{
+					Name:        "end_at",
+					Type:        aidomain.ToolParameterTypeString,
+					Description: "结束时间，必须大于 start_at。",
+					Required:    true,
+					Format:      aidomain.ToolParameterFormatRFC3339,
+					Examples:    []string{"2026-04-24T10:20:00Z"},
+				},
+				{Name: "service", Type: aidomain.ToolParameterTypeString, Description: "服务名。", Examples: []string{"personal_assistant"}},
+				{Name: "route_template", Type: aidomain.ToolParameterTypeString, Description: "路由模板。", Examples: []string{"/api/system/ai/conversations/:id/stream"}},
+				{Name: "method", Type: aidomain.ToolParameterTypeString, Description: "HTTP 方法。", Examples: []string{"GET"}},
+				{
+					Name:        "status_class",
+					Type:        aidomain.ToolParameterTypeInteger,
+					Description: "状态码段，例如 2 / 4 / 5。",
+					Minimum:     aiFloatPtr(1),
+					Maximum:     aiFloatPtr(5),
+					Examples:    []string{"2"},
+				},
+				{Name: "error_code", Type: aidomain.ToolParameterTypeString, Description: "错误码。", Examples: []string{"10001"}},
+				{
+					Name:         "limit",
+					Type:         aidomain.ToolParameterTypeInteger,
+					Description:  "返回条数。",
+					Minimum:      aiFloatPtr(1),
+					Maximum:      aiFloatPtr(50000),
+					Examples:     []string{"5000"},
+					DefaultValue: "5000",
+				},
 			},
-		},
+		}, aidomain.ToolGroupObservabilityMetrics, "查询 HTTP 观测指标。", "用户要看 HTTP 请求量、时延、状态码等观测指标时使用。", "observability", "metrics", "http"),
 		// policy 声明该工具只对超级管理员可见。
 		policy: newAISuperAdminOnlyPolicy(),
+		validate: func(_ context.Context, call aidomain.ToolCall, _ aidomain.ToolCallContext) error {
+			var args aiObservabilityMetricsArgs
+			if err := decodeAIToolArgs(call, &args); err != nil {
+				return err
+			}
+			return aiValidateObservabilityMetricsArgs(args)
+		},
 		// call 负责鉴权并查询 HTTP 观测指标。
 		call: func(ctx context.Context, call aidomain.ToolCall, callCtx aidomain.ToolCallContext) (aidomain.ToolResult, error) {
 			// 先解析时间窗口和过滤参数。
 			var args aiObservabilityMetricsArgs
 			if err := decodeAIToolArgs(call, &args); err != nil {
+				return aidomain.ToolResult{}, err
+			}
+			if err := aiValidateObservabilityMetricsArgs(args); err != nil {
 				return aidomain.ToolResult{}, err
 			}
 
@@ -1327,7 +1615,15 @@ func resolveAIOrgID(orgID *uint, currentOrgID *uint) (uint, error) {
 		return *currentOrgID, nil
 	}
 	// 两者都没有时无法继续执行组织能力类工具。
-	return 0, bizerrors.NewWithMsg(bizerrors.CodeInvalidParams, "缺少可用的 org_id")
+	return 0, aidomain.NewMissingUserInputError(
+		"缺少可用的 org_id，请先确认要查询的组织。",
+		aidomain.ToolFieldError{
+			Field:    "org_id",
+			Reason:   "missing_required",
+			Expected: "大于 0 的组织 ID，或当前会话存在 current_org_id",
+			Example:  "12",
+		},
+	)
 }
 
 // defaultString 在空字符串时返回兜底值。

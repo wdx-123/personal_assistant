@@ -1,6 +1,9 @@
 package eino
 
 import (
+	"fmt"
+	"strings"
+
 	aidomain "personal_assistant/internal/domain/ai"
 
 	"github.com/cloudwego/eino/schema"
@@ -31,7 +34,7 @@ func buildSchemaParameterInfo(param aidomain.ToolParameter) (*schema.ParameterIn
 	// 先填充当前参数节点的基础元信息。
 	info := &schema.ParameterInfo{
 		Type:     schema.DataType(param.Type),
-		Desc:     param.Description,
+		Desc:     buildSchemaParameterDesc(param),
 		Enum:     param.Enum,
 		Required: param.Required,
 	}
@@ -56,4 +59,42 @@ func buildSchemaParameterInfo(param aidomain.ToolParameter) (*schema.ParameterIn
 		info.SubParams = subParams
 	}
 	return info, nil
+}
+
+func buildSchemaParameterDesc(param aidomain.ToolParameter) string {
+	parts := make([]string, 0, 8)
+	if desc := strings.TrimSpace(param.Description); desc != "" {
+		parts = append(parts, desc)
+	}
+	if strings.TrimSpace(param.Format) != "" {
+		parts = append(parts, "format="+strings.TrimSpace(param.Format))
+	}
+	if strings.TrimSpace(param.Pattern) != "" {
+		parts = append(parts, "pattern="+strings.TrimSpace(param.Pattern))
+	}
+	if param.MinLength != nil {
+		parts = append(parts, fmt.Sprintf("min_length=%d", *param.MinLength))
+	}
+	if param.MaxLength != nil {
+		parts = append(parts, fmt.Sprintf("max_length=%d", *param.MaxLength))
+	}
+	if param.Minimum != nil {
+		parts = append(parts, "min="+formatConstraintNumber(*param.Minimum))
+	}
+	if param.Maximum != nil {
+		parts = append(parts, "max="+formatConstraintNumber(*param.Maximum))
+	}
+	if param.MinItems != nil {
+		parts = append(parts, fmt.Sprintf("min_items=%d", *param.MinItems))
+	}
+	if param.MaxItems != nil {
+		parts = append(parts, fmt.Sprintf("max_items=%d", *param.MaxItems))
+	}
+	if defaultValue := strings.TrimSpace(param.DefaultValue); defaultValue != "" {
+		parts = append(parts, "default="+defaultValue)
+	}
+	if len(param.Examples) > 0 {
+		parts = append(parts, "examples="+strings.Join(param.Examples, " | "))
+	}
+	return strings.Join(parts, "; ")
 }

@@ -2,7 +2,6 @@ package system
 
 import (
 	"context"
-	"strings"
 	"testing"
 
 	aidomain "personal_assistant/internal/domain/ai"
@@ -51,7 +50,16 @@ func (f *fakePromptBuilder) BuildDynamicPrompt([]aidomain.Tool, aidomain.AIToolP
 	return f.output
 }
 
-func TestDefaultAIContextAssemblerUsesStoredHistoryAndDefaultPrompt(t *testing.T) {
+func (f *fakePromptBuilder) BuildDecisionPrompt(
+	aidomain.ToolSelectionDecision,
+	string,
+	[]string,
+) string {
+	f.calls++
+	return f.output
+}
+
+func TestDefaultAIContextAssemblerUsesStoredHistory(t *testing.T) {
 	assembler := newAIContextAssembler(AIDeps{})
 	tool := &fakeContextTool{
 		spec: aidomain.ToolSpec{
@@ -90,15 +98,6 @@ func TestDefaultAIContextAssemblerUsesStoredHistoryAndDefaultPrompt(t *testing.T
 	if snapshot.History[1].Role != aidomain.RoleAssistant {
 		t.Fatalf("history[1].Role = %q", snapshot.History[1].Role)
 	}
-	if snapshot.DynamicSystemPrompt == "" {
-		t.Fatal("DynamicSystemPrompt = empty")
-	}
-	if want := "get_my_oj_stats"; !strings.Contains(snapshot.DynamicSystemPrompt, want) {
-		t.Fatalf("DynamicSystemPrompt = %q, want contains %q", snapshot.DynamicSystemPrompt, want)
-	}
-	if want := "不要猜测"; !strings.Contains(snapshot.DynamicSystemPrompt, want) {
-		t.Fatalf("DynamicSystemPrompt = %q, want contains %q", snapshot.DynamicSystemPrompt, want)
-	}
 }
 
 func TestDefaultAIContextAssemblerCallsOptionalProviders(t *testing.T) {
@@ -112,11 +111,9 @@ func TestDefaultAIContextAssemblerCallsOptionalProviders(t *testing.T) {
 			{ID: "cmp_1", Role: aidomain.RoleAssistant, Content: "压缩后的上下文"},
 		},
 	}
-	promptBuilder := &fakePromptBuilder{output: "custom prompt"}
 	assembler := newAIContextAssembler(AIDeps{
-		Memory:        memory,
-		Compressor:    compressor,
-		PromptBuilder: promptBuilder,
+		Memory:     memory,
+		Compressor: compressor,
 	})
 
 	snapshot, err := assembler.Build(context.Background(), aiContextBuildArgs{
@@ -136,13 +133,7 @@ func TestDefaultAIContextAssemblerCallsOptionalProviders(t *testing.T) {
 	if compressor.calls != 1 {
 		t.Fatalf("compressor calls = %d, want 1", compressor.calls)
 	}
-	if promptBuilder.calls != 1 {
-		t.Fatalf("promptBuilder calls = %d, want 1", promptBuilder.calls)
-	}
 	if len(snapshot.History) != 1 || snapshot.History[0].ID != "cmp_1" {
 		t.Fatalf("snapshot.History = %+v, want compressed output", snapshot.History)
-	}
-	if snapshot.DynamicSystemPrompt != "custom prompt" {
-		t.Fatalf("DynamicSystemPrompt = %q", snapshot.DynamicSystemPrompt)
 	}
 }

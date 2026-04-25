@@ -14,6 +14,8 @@ import (
 	"personal_assistant/internal/model/entity"
 	"personal_assistant/internal/repository"
 	"personal_assistant/internal/repository/interfaces"
+	"personal_assistant/internal/service/system/aiselect"
+	"personal_assistant/internal/service/system/aitool"
 	bizerrors "personal_assistant/pkg/errors"
 
 	"go.uber.org/zap"
@@ -42,11 +44,13 @@ type AIService struct {
 	runtime  aidomain.Runtime
 	policy   streamsse.ConnectionPolicy
 	// authorizationSvc 用于补充超级管理员和组织能力的真实鉴权。
-	authorizationSvc aiAuthorizationService
+	authorizationSvc aitool.AuthorizationService
 	// toolRegistry 负责注册、过滤并执行本轮可见 AI tool。
-	toolRegistry *aiToolRegistry
+	toolRegistry *aitool.Registry
 	// contextAssembler 负责组装 runtime 所需的历史消息和动态 prompt。
 	contextAssembler aiContextAssembler
+	// toolPlanner 负责渐进式工具选择与动态 prompt 组装。
+	toolPlanner *aiselect.Planner
 }
 
 // NewAIService 负责组装 AIService 所需依赖。
@@ -94,6 +98,8 @@ func newAIServiceWithDeps(
 		policy = global.StreamInfra.Policy
 	}
 
+	registry := aitool.NewRegistry(deps.Tools)
+
 	return &AIService{
 		txRunner: repositoryGroup,
 		aiRepo:   repositoryGroup.SystemRepositorySupplier.GetAIRepository(),
@@ -101,11 +107,13 @@ func newAIServiceWithDeps(
 		runtime:  runtime,
 		policy:   policy.Normalize(),
 		// 授权服务只保存到 AIService，供构造 principal 和执行前鉴权复用。
-		authorizationSvc: deps.Authorization,
+		authorizationSvc: deps.Tools.Authorization,
 		// tool registry 根据当前注入依赖决定哪些工具真正可用。
-		toolRegistry: newAIToolRegistry(deps),
+		toolRegistry: registry,
 		// 上下文装配器负责收口历史消息、动态 prompt 和未来扩展点。
 		contextAssembler: newAIContextAssembler(deps),
+		// 渐进式 planner 负责把 selector 和 prompt builder 组合成本轮执行计划。
+		toolPlanner: aiselect.NewPlanner(registry, deps.Selector, deps.PromptBuilder),
 	}
 }
 
@@ -328,7 +336,19 @@ func (s *AIService) StreamConversation(
 		return bizerrors.Wrap(bizerrors.CodeInternalError, err)
 	}
 
-	// 把动态 prompt、可见工具和调用上下文一并注入 runtime。
+	// 按渐进式 selector 解析最终执行计划；失败时自动回退单阶段全量工具。
+	executionPlan, err := s.buildAIToolExecutionPlan(
+		ctx,
+		strings.TrimSpace(req.Content),
+		contextSnapshot.History,
+		visibleTools,
+		toolPrincipal,
+	)
+	if err != nil {
+		return bizerrors.Wrap(bizerrors.CodeInternalError, err)
+	}
+
+	// 把最终 prompt、已选工具和调用上下文一并注入 runtime。
 	_, execErr := s.runtime.Stream(ctx, aidomain.StreamInput{
 		UserID:              userID,
 		ConversationID:      conversation.ID,
@@ -336,8 +356,8 @@ func (s *AIService) StreamConversation(
 		AssistantMessageID:  assistantMessage.ID,
 		Content:             strings.TrimSpace(req.Content),
 		History:             contextSnapshot.History,
-		DynamicSystemPrompt: contextSnapshot.DynamicSystemPrompt,
-		Tools:               visibleTools,
+		DynamicSystemPrompt: executionPlan.DynamicSystemPrompt,
+		Tools:               executionPlan.Tools,
 		ToolCallContext:     toolCallCtx,
 	}, sink)
 

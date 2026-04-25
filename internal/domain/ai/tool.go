@@ -5,6 +5,7 @@ import "context"
 // ToolParameterType 表示工具参数的 JSON 类型。
 type ToolParameterType string
 
+// ToolParameterType 枚举了工具参数可使用的 JSON 基础类型。
 const (
 	ToolParameterTypeObject  ToolParameterType = "object"
 	ToolParameterTypeString  ToolParameterType = "string"
@@ -12,6 +13,11 @@ const (
 	ToolParameterTypeNumber  ToolParameterType = "number"
 	ToolParameterTypeBoolean ToolParameterType = "boolean"
 	ToolParameterTypeArray   ToolParameterType = "array"
+)
+
+const (
+	// ToolParameterFormatRFC3339 表示字符串必须符合 RFC3339 时间格式。
+	ToolParameterFormatRFC3339 = "rfc3339"
 )
 
 // ToolParameter 描述单个工具参数。
@@ -27,6 +33,26 @@ type ToolParameter struct {
 	Required bool
 	// Enum 给出允许的枚举值范围，便于模型约束输入。
 	Enum []string
+	// Format 描述字符串参数的格式约束，如 RFC3339。
+	Format string
+	// Pattern 描述字符串参数的正则模式约束。
+	Pattern string
+	// MinLength 描述字符串最小长度约束。
+	MinLength *int
+	// MaxLength 描述字符串最大长度约束。
+	MaxLength *int
+	// Minimum 描述 number/integer 参数的最小值约束。
+	Minimum *float64
+	// Maximum 描述 number/integer 参数的最大值约束。
+	Maximum *float64
+	// MinItems 描述数组最少元素个数。
+	MinItems *int
+	// MaxItems 描述数组最多元素个数。
+	MaxItems *int
+	// Examples 给出推荐示例值，帮助模型修正参数。
+	Examples []string
+	// DefaultValue 仅用于提示默认值，不代表 runtime 会静默注入。
+	DefaultValue string
 	// Properties 描述 object 参数的子字段结构。
 	Properties []ToolParameter
 	// Items 描述 array 参数的元素结构。

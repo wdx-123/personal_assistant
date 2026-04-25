@@ -189,6 +189,7 @@ func (r *Runtime) streamWithTools(
 
 	// maxToolTurns 防止模型持续循环调用工具导致请求无限悬挂。
 	const maxToolTurns = 8
+	repairState := newToolRepairState()
 	for turn := 0; turn < maxToolTurns; turn++ {
 		// 每一轮都让模型基于最新 messages 再生成一次 assistant 响应。
 		reader, err := modelWithTools.Stream(ctx, messages)
@@ -249,7 +250,14 @@ func (r *Runtime) streamWithTools(
 		}
 
 		// assistant 返回 tool call 后，顺序执行工具并把 tool message 追加回上下文。
-		toolMessages, err := r.executeToolCalls(ctx, toolMap, assistantMessage.ToolCalls, input.ToolCallContext, sink)
+		toolMessages, err := r.executeToolCalls(
+			ctx,
+			toolMap,
+			assistantMessage.ToolCalls,
+			input.ToolCallContext,
+			sink,
+			repairState,
+		)
 		if err != nil {
 			return aidomain.StreamResult{}, err
 		}
@@ -343,6 +351,7 @@ func (r *Runtime) executeToolCalls(
 	toolCalls []schema.ToolCall,
 	callCtx aidomain.ToolCallContext,
 	sink aidomain.Sink,
+	repairState *toolRepairState,
 ) ([]*schema.Message, error) {
 	// 每个工具执行完成后都会生成一条 tool message 回填给模型。
 	messages := make([]*schema.Message, 0, len(toolCalls))
@@ -368,15 +377,43 @@ func (r *Runtime) executeToolCalls(
 			return nil, err
 		}
 
-		// 记录耗时并执行真实工具实现。
+		// 记录耗时，并在执行前先做 schema/补充校验。
 		startedAt := time.Now()
-		result, err := toolImpl.Call(ctx, aidomain.ToolCall{
+		validatedArgs, validationErr := validateToolCallArguments(toolImpl.Spec(), toolCall.Function.Arguments)
+		runtimeCall := aidomain.ToolCall{
 			ID:            callID,
 			Name:          toolName,
-			ArgumentsJSON: toolCall.Function.Arguments,
-		}, callCtx)
+			ArgumentsJSON: validatedArgs.NormalizedJSON,
+		}
+
+		if validationErr == nil {
+			if validatingTool, ok := toolImpl.(runtimeValidatingTool); ok {
+				validationErr = validatingTool.Validate(ctx, runtimeCall, callCtx)
+			}
+		}
+
+		var (
+			result aidomain.ToolResult
+			err    error
+		)
+		if validationErr != nil {
+			err = validationErr
+		} else {
+			result, err = toolImpl.Call(ctx, runtimeCall, callCtx)
+		}
 		durationMS := time.Since(startedAt).Milliseconds()
 		if err != nil {
+			issue := classifyToolError(err)
+			summary := err.Error()
+			detail := err.Error()
+			if issue != nil {
+				summary = issue.Message
+				if compact, pretty := marshalToolObservation(issue.Observation(toolName)); compact != "" {
+					summary = compact
+					detail = pretty
+				}
+			}
+
 			// 工具失败时也要补 finished 事件，让前端和 trace 看到失败状态。
 			if emitErr := sink.Emit(ctx, aidomain.Event{
 				Name: aidomain.EventToolCallFinished,
@@ -386,13 +423,28 @@ func (r *Runtime) executeToolCalls(
 					Description:    "工具调用失败。",
 					DurationMS:     durationMS,
 					Status:         "failed",
-					Content:        summarizeToolOutput(err.Error()),
-					DetailMarkdown: err.Error(),
+					Content:        summarizeToolOutput(summary),
+					DetailMarkdown: detail,
 				},
 			}); emitErr != nil {
 				return nil, emitErr
 			}
-			return nil, err
+
+			if issue == nil || issue.Classification == aidomain.ToolObservationTerminalToolError {
+				return nil, err
+			}
+
+			observation := issue.Observation(toolName)
+			if observation.Classification == aidomain.ToolObservationRepairableInvalidParam {
+				retryKey := toolName + ":" + runtimeCall.ArgumentsJSON
+				if !repairState.consume(retryKey) {
+					return nil, err
+				}
+			}
+
+			observationOutput, _ := marshalToolObservation(observation)
+			messages = append(messages, schema.ToolMessage(observationOutput, callID, schema.WithToolName(toolName)))
+			break
 		}
 
 		// 工具成功后把摘要和详情折叠进 finished 事件。

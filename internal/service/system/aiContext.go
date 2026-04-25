@@ -47,8 +47,7 @@ type aiContextBuildArgs struct {
 
 // aiContextSnapshot 表示装配完成后可直接喂给 runtime 的上下文片段。
 type aiContextSnapshot struct {
-	History             []aidomain.Message
-	DynamicSystemPrompt string // 未来可扩展 DynamicToolPrompt、MemoryAugmentation 等片段。
+	History []aidomain.Message
 }
 
 // aiContextAssembler 负责统一收口历史消息、记忆扩展点、压缩扩展点和动态 prompt。
@@ -57,20 +56,14 @@ type aiContextAssembler interface {
 }
 
 type defaultAIContextAssembler struct {
-	memory        aiMemoryProvider
-	compressor    aiContextCompressor
-	promptBuilder aiPromptBuilder
+	memory     aiMemoryProvider
+	compressor aiContextCompressor
 }
 
 func newAIContextAssembler(deps AIDeps) aiContextAssembler {
-	builder := deps.PromptBuilder
-	if builder == nil {
-		builder = defaultAIToolPromptBuilder{}
-	}
 	return &defaultAIContextAssembler{
-		memory:        deps.Memory,
-		compressor:    deps.Compressor,
-		promptBuilder: builder,
+		memory:     deps.Memory,
+		compressor: deps.Compressor,
 	}
 }
 
@@ -109,7 +102,6 @@ func (a *defaultAIContextAssembler) Build(
 	}
 
 	return aiContextSnapshot{
-		History:             history,
-		DynamicSystemPrompt: a.promptBuilder.BuildDynamicPrompt(args.VisibleTools, args.ToolCallCtx.Principal),
+		History: history,
 	}, nil
 }
