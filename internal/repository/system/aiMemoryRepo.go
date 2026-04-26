@@ -300,6 +300,28 @@ func (r *AIMemoryGormRepository) ListDocumentChunks(
 	return rows, nil
 }
 
+// ListDocumentChunksByPointIDs 按 Qdrant point ids 回查仍有效的 chunks。
+func (r *AIMemoryGormRepository) ListDocumentChunksByPointIDs(
+	ctx context.Context,
+	pointIDs []string,
+) ([]*entity.AIMemoryDocumentChunk, error) {
+	normalizedIDs := normalizeMemoryPointIDs(pointIDs)
+	if len(normalizedIDs) == 0 {
+		return []*entity.AIMemoryDocumentChunk{}, nil
+	}
+	var rows []*entity.AIMemoryDocumentChunk
+	now := time.Now()
+	if err := r.db.WithContext(ctx).
+		Model(&entity.AIMemoryDocumentChunk{}).
+		Joins("JOIN ai_memory_documents d ON d.id = ai_memory_document_chunks.document_id AND d.deleted_at IS NULL").
+		Where("ai_memory_document_chunks.qdrant_point_id IN ?", normalizedIDs).
+		Where("(d.expires_at IS NULL OR d.expires_at > ?)", now).
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 // GetConversationSummary 获取指定会话的压缩摘要。
 func (r *AIMemoryGormRepository) GetConversationSummary(
 	ctx context.Context,
@@ -448,6 +470,26 @@ func buildScopedDocumentDedupIdentity(scopeKey string, dedupKey string) string {
 }
 
 func normalizeMemoryDocumentIDs(ids []string) []string {
+	if len(ids) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(ids))
+	items := make([]string, 0, len(ids))
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		items = append(items, id)
+	}
+	return items
+}
+
+func normalizeMemoryPointIDs(ids []string) []string {
 	if len(ids) == 0 {
 		return nil
 	}

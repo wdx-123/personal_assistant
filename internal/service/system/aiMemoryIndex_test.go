@@ -199,7 +199,10 @@ func (f *fakeMemoryEmbedder) Embed(
 type fakeMemoryVectorStore struct {
 	deletedDocumentID string
 	upserted          []aidomain.MemoryVectorChunk
+	searchInput       aidomain.MemoryVectorSearchInput
+	searchResults     []aidomain.MemoryVectorSearchResult
 	err               error
+	searchErr         error
 }
 
 func (f *fakeMemoryVectorStore) DeleteDocumentChunks(_ context.Context, documentID string) error {
@@ -210,4 +213,15 @@ func (f *fakeMemoryVectorStore) DeleteDocumentChunks(_ context.Context, document
 func (f *fakeMemoryVectorStore) UpsertChunks(_ context.Context, chunks []aidomain.MemoryVectorChunk) error {
 	f.upserted = append([]aidomain.MemoryVectorChunk(nil), chunks...)
 	return f.err
+}
+
+func (f *fakeMemoryVectorStore) SearchChunks(
+	_ context.Context,
+	input aidomain.MemoryVectorSearchInput,
+) ([]aidomain.MemoryVectorSearchResult, error) {
+	f.searchInput = input
+	if f.searchErr != nil {
+		return nil, f.searchErr
+	}
+	return f.searchResults, nil
 }

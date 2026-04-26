@@ -64,8 +64,62 @@ func TestQdrantVectorStoreDeletesAndUpsertsMemoryChunks(t *testing.T) {
 	}
 }
 
+func TestQdrantVectorStoreSearchesMemoryChunksWithSelfFilter(t *testing.T) {
+	client := &fakeQdrantPointsClient{
+		queryResponse: []*qdrant.ScoredPoint{
+			{
+				Id:    qdrant.NewID("11111111-1111-1111-1111-111111111111"),
+				Score: 0.87,
+				Payload: qdrant.NewValueMap(map[string]any{
+					"document_id": "doc-1",
+					"chunk_id":    "chunk-1",
+				}),
+			},
+		},
+	}
+	store := NewQdrantVectorStore(client, VectorStoreOptions{CollectionName: "ai_memory_chunks"})
+
+	results, err := store.SearchChunks(context.Background(), aidomain.MemoryVectorSearchInput{
+		Vector:     []float32{0.1, 0.2, 0.3},
+		ScopeKey:   aidomain.BuildSelfMemoryScopeKey(7),
+		Visibility: string(aidomain.MemoryVisibilitySelf),
+		UserID:     7,
+		Limit:      5,
+		MinScore:   0.2,
+	})
+	if err != nil {
+		t.Fatalf("SearchChunks() error = %v", err)
+	}
+	if client.queryRequest == nil || client.queryRequest.CollectionName != "ai_memory_chunks" {
+		t.Fatalf("query request = %+v", client.queryRequest)
+	}
+	if client.queryRequest.GetLimit() != 5 {
+		t.Fatalf("query limit = %d, want 5", client.queryRequest.GetLimit())
+	}
+	if client.queryRequest.GetScoreThreshold() != float32(0.2) {
+		t.Fatalf("score threshold = %f, want 0.2", client.queryRequest.GetScoreThreshold())
+	}
+	must := client.queryRequest.GetFilter().GetMust()
+	if len(must) != 3 {
+		t.Fatalf("filter must len = %d, want 3: %+v", len(must), must)
+	}
+	assertQdrantMatchKeyword(t, must[0], "scope_key", "self:user:7")
+	assertQdrantMatchKeyword(t, must[1], "visibility", "self")
+	assertQdrantMatchInt(t, must[2], "user_id", 7)
+	if len(results) != 1 ||
+		results[0].QdrantPointID != "11111111-1111-1111-1111-111111111111" ||
+		results[0].DocumentID != "doc-1" ||
+		results[0].ChunkID != "chunk-1" ||
+		results[0].Score < 0.86 ||
+		results[0].Score > 0.88 {
+		t.Fatalf("results = %+v", results)
+	}
+}
+
 type fakeQdrantPointsClient struct {
 	deleteRequest *qdrant.DeletePoints
+	queryRequest  *qdrant.QueryPoints
+	queryResponse []*qdrant.ScoredPoint
 	upsertRequest *qdrant.UpsertPoints
 }
 
@@ -74,7 +128,28 @@ func (f *fakeQdrantPointsClient) Delete(_ context.Context, request *qdrant.Delet
 	return &qdrant.UpdateResult{}, nil
 }
 
+func (f *fakeQdrantPointsClient) Query(_ context.Context, request *qdrant.QueryPoints) ([]*qdrant.ScoredPoint, error) {
+	f.queryRequest = request
+	return f.queryResponse, nil
+}
+
 func (f *fakeQdrantPointsClient) Upsert(_ context.Context, request *qdrant.UpsertPoints) (*qdrant.UpdateResult, error) {
 	f.upsertRequest = request
 	return &qdrant.UpdateResult{}, nil
+}
+
+func assertQdrantMatchKeyword(t *testing.T, condition *qdrant.Condition, key string, value string) {
+	t.Helper()
+	field := condition.GetField()
+	if field == nil || field.GetKey() != key || field.GetMatch().GetKeyword() != value {
+		t.Fatalf("condition = %+v, want %s=%s", condition, key, value)
+	}
+}
+
+func assertQdrantMatchInt(t *testing.T, condition *qdrant.Condition, key string, value int64) {
+	t.Helper()
+	field := condition.GetField()
+	if field == nil || field.GetKey() != key || field.GetMatch().GetInteger() != value {
+		t.Fatalf("condition = %+v, want %s=%d", condition, key, value)
+	}
 }

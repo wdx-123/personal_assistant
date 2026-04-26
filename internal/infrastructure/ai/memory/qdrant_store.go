@@ -13,6 +13,7 @@ import (
 // QdrantPointsClient 是 Qdrant client 在 memory index 阶段需要的最小能力。
 type QdrantPointsClient interface {
 	Delete(ctx context.Context, request *qdrant.DeletePoints) (*qdrant.UpdateResult, error)
+	Query(ctx context.Context, request *qdrant.QueryPoints) ([]*qdrant.ScoredPoint, error)
 	Upsert(ctx context.Context, request *qdrant.UpsertPoints) (*qdrant.UpdateResult, error)
 }
 
@@ -91,6 +92,56 @@ func (s *QdrantVectorStore) UpsertChunks(ctx context.Context, chunks []aidomain.
 	return err
 }
 
+// SearchChunks 按 query vector 检索 memory chunk 候选。
+func (s *QdrantVectorStore) SearchChunks(
+	ctx context.Context,
+	input aidomain.MemoryVectorSearchInput,
+) ([]aidomain.MemoryVectorSearchResult, error) {
+	if s == nil || s.client == nil || len(input.Vector) == 0 {
+		return nil, nil
+	}
+	if s.collectionName == "" {
+		return nil, fmt.Errorf("qdrant memory collection name is required")
+	}
+	limit := uint64(input.Limit)
+	if limit == 0 {
+		return nil, nil
+	}
+	scoreThreshold := float32(input.MinScore)
+	request := &qdrant.QueryPoints{
+		CollectionName: s.collectionName,
+		Query:          qdrant.NewQueryDense(input.Vector),
+		Filter:         buildMemoryVectorSearchFilter(input),
+		Limit:          &limit,
+		WithPayload:    qdrant.NewWithPayloadInclude("document_id", "chunk_id", "scope_key", "visibility", "user_id"),
+	}
+	if input.MinScore > 0 {
+		request.ScoreThreshold = &scoreThreshold
+	}
+	points, err := s.client.Query(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	results := make([]aidomain.MemoryVectorSearchResult, 0, len(points))
+	for _, point := range points {
+		if point == nil {
+			continue
+		}
+		pointID := memoryQdrantPointID(point.GetId())
+		if pointID == "" {
+			continue
+		}
+		payload := point.GetPayload()
+		results = append(results, aidomain.MemoryVectorSearchResult{
+			QdrantPointID: pointID,
+			ChunkID:       memoryQdrantPayloadString(payload, "chunk_id"),
+			DocumentID:    memoryQdrantPayloadString(payload, "document_id"),
+			Score:         float64(point.GetScore()),
+		})
+	}
+	return results, nil
+}
+
 func buildMemoryVectorPayload(chunk aidomain.MemoryDocumentChunk) map[string]any {
 	payload := map[string]any{
 		"document_id":  chunk.DocumentID,
@@ -112,4 +163,45 @@ func buildMemoryVectorPayload(chunk aidomain.MemoryDocumentChunk) map[string]any
 		payload["org_id"] = int64(*chunk.OrgID)
 	}
 	return payload
+}
+
+func buildMemoryVectorSearchFilter(input aidomain.MemoryVectorSearchInput) *qdrant.Filter {
+	must := make([]*qdrant.Condition, 0, 3)
+	if scopeKey := strings.TrimSpace(input.ScopeKey); scopeKey != "" {
+		must = append(must, qdrant.NewMatchKeyword("scope_key", scopeKey))
+	}
+	if visibility := strings.TrimSpace(input.Visibility); visibility != "" {
+		must = append(must, qdrant.NewMatchKeyword("visibility", visibility))
+	}
+	if input.UserID > 0 {
+		must = append(must, qdrant.NewMatchInt("user_id", int64(input.UserID)))
+	}
+	if len(must) == 0 {
+		return nil
+	}
+	return &qdrant.Filter{Must: must}
+}
+
+func memoryQdrantPointID(pointID *qdrant.PointId) string {
+	if pointID == nil {
+		return ""
+	}
+	if uuid := strings.TrimSpace(pointID.GetUuid()); uuid != "" {
+		return uuid
+	}
+	if num := pointID.GetNum(); num > 0 {
+		return fmt.Sprintf("%d", num)
+	}
+	return ""
+}
+
+func memoryQdrantPayloadString(payload map[string]*qdrant.Value, key string) string {
+	if len(payload) == 0 {
+		return ""
+	}
+	value := payload[key]
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(value.GetStringValue())
 }

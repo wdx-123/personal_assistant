@@ -29,6 +29,8 @@ type AIMemoryRepository interface {
 	ReplaceDocumentChunks(ctx context.Context, documentID string, chunks []*entity.AIMemoryDocumentChunk) error
 	// ListDocumentChunks 按 document 读取 chunks，按 chunk_index 升序返回。
 	ListDocumentChunks(ctx context.Context, documentID string) ([]*entity.AIMemoryDocumentChunk, error)
+	// ListDocumentChunksByPointIDs 按 Qdrant point ids 回查仍有效的 chunks。
+	ListDocumentChunksByPointIDs(ctx context.Context, pointIDs []string) ([]*entity.AIMemoryDocumentChunk, error)
 
 	// GetConversationSummary 按 conversation_id + user_id + org_id + scope_key 读取当前有效摘要。
 	GetConversationSummary(ctx context.Context, query aidomain.MemoryConversationSummaryQuery) (*entity.AIConversationSummary, error)

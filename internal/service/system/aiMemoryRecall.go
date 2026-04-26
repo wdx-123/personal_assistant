@@ -9,16 +9,25 @@ import (
 	"personal_assistant/global"
 	aidomain "personal_assistant/internal/domain/ai"
 	"personal_assistant/internal/model/entity"
+
+	"go.uber.org/zap"
 )
 
 const (
 	defaultAIMemoryRecallTopK          = 10
 	defaultAIMemoryRecallMaxChars      = 4000
+	defaultAIMemoryRecallMinScore      = 0.2
+	defaultAIMemoryRAGMaxChars         = 2000
 	defaultAIMemoryRecentRawTurns      = 8
 	aiMemoryContextMessageIDPrefix     = "memory_context"
 	aiMemoryContextMessageHeader       = "以下是系统恢复的记忆上下文，仅作为背景，不代表用户本轮新输入。"
 	aiMemoryContextTruncationIndicator = "\n..."
 )
+
+type aiMemoryRAGRecallItem struct {
+	Score float64
+	Chunk *entity.AIMemoryDocumentChunk
+}
 
 // Recall 从已沉淀的 summary 和 self facts 中恢复本轮可读的记忆上下文。
 func (s *AIMemoryService) Recall(ctx context.Context, input aiMemoryRecallInput) (aiMemoryRecallResult, error) {
@@ -34,8 +43,9 @@ func (s *AIMemoryService) Recall(ctx context.Context, input aiMemoryRecallInput)
 	if err != nil {
 		return aiMemoryRecallResult{}, err
 	}
+	ragItems := s.recallLongTermDocumentsFailOpen(ctx, input)
 
-	content := buildAIMemoryContextContent(summary, facts, input.Query, aiMemoryRecallMaxChars())
+	content := buildAIMemoryContextContent(summary, facts, ragItems, input.Query, aiMemoryRecallMaxChars())
 	if strings.TrimSpace(content) == "" {
 		return aiMemoryRecallResult{}, nil
 	}
@@ -106,9 +116,117 @@ func (s *AIMemoryService) recallSelfFacts(ctx context.Context, userID uint) ([]*
 	})
 }
 
+func (s *AIMemoryService) recallLongTermDocumentsFailOpen(
+	ctx context.Context,
+	input aiMemoryRecallInput,
+) []aiMemoryRAGRecallItem {
+	items, err := s.recallLongTermDocuments(ctx, input)
+	if err == nil {
+		return items
+	}
+	if global.Log != nil {
+		global.Log.Warn(
+			"AI memory RAG recall failed",
+			zap.String("conversation_id", input.ConversationID),
+			zap.Uint("user_id", input.UserID),
+			zap.Error(err),
+		)
+	}
+	return nil
+}
+
+func (s *AIMemoryService) recallLongTermDocuments(
+	ctx context.Context,
+	input aiMemoryRecallInput,
+) ([]aiMemoryRAGRecallItem, error) {
+	query := strings.TrimSpace(input.Query)
+	if !aiMemoryLongTermEnabled() ||
+		query == "" ||
+		s == nil ||
+		s.repo == nil ||
+		s.embedder == nil ||
+		s.vectorSearcher == nil ||
+		input.UserID == 0 {
+		return nil, nil
+	}
+
+	embedding, err := s.embedder.Embed(ctx, aidomain.MemoryEmbeddingInput{Texts: []string{query}})
+	if err != nil {
+		return nil, err
+	}
+	if len(embedding.Vectors) != 1 {
+		return nil, fmt.Errorf("memory query embedding count = %d, want 1", len(embedding.Vectors))
+	}
+	vector := embedding.Vectors[0]
+	if len(vector) != aiMemoryEmbedDimension() {
+		return nil, fmt.Errorf("memory query embedding dimension = %d, want %d", len(vector), aiMemoryEmbedDimension())
+	}
+
+	minScore := aiMemoryRecallMinScore()
+	results, err := s.vectorSearcher.SearchChunks(ctx, aidomain.MemoryVectorSearchInput{
+		Vector:     vector,
+		ScopeKey:   aidomain.BuildSelfMemoryScopeKey(input.UserID),
+		Visibility: string(aidomain.MemoryVisibilitySelf),
+		UserID:     input.UserID,
+		Limit:      aiMemoryRecallTopK(),
+		MinScore:   minScore,
+	})
+	if err != nil {
+		return nil, err
+	}
+	pointIDs := make([]string, 0, len(results))
+	for _, result := range results {
+		if result.Score < minScore {
+			continue
+		}
+		if pointID := strings.TrimSpace(result.QdrantPointID); pointID != "" {
+			pointIDs = append(pointIDs, pointID)
+		}
+	}
+	if len(pointIDs) == 0 {
+		return nil, nil
+	}
+
+	chunks, err := s.repo.ListDocumentChunksByPointIDs(ctx, pointIDs)
+	if err != nil {
+		return nil, err
+	}
+	chunkByPointID := make(map[string]*entity.AIMemoryDocumentChunk, len(chunks))
+	scopeKey := aidomain.BuildSelfMemoryScopeKey(input.UserID)
+	for _, chunk := range chunks {
+		if chunk == nil {
+			continue
+		}
+		if chunk.EmbeddingModel != aiMemoryEmbedModel() || chunk.EmbeddingDimension != aiMemoryEmbedDimension() {
+			continue
+		}
+		if chunk.ScopeKey != scopeKey || chunk.Visibility != string(aidomain.MemoryVisibilitySelf) {
+			continue
+		}
+		if chunk.UserID == nil || *chunk.UserID != input.UserID {
+			continue
+		}
+		chunkByPointID[strings.TrimSpace(chunk.QdrantPointID)] = chunk
+	}
+
+	items := make([]aiMemoryRAGRecallItem, 0, len(results))
+	for _, result := range results {
+		if result.Score < minScore {
+			continue
+		}
+		chunk := chunkByPointID[strings.TrimSpace(result.QdrantPointID)]
+		if chunk == nil {
+			continue
+		}
+		items = append(items, aiMemoryRAGRecallItem{Score: result.Score, Chunk: chunk})
+	}
+	return items, nil
+}
+
 func buildAIMemoryContextContent(
 	summary *entity.AIConversationSummary,
 	facts []*entity.AIMemoryFact,
+	ragItems []aiMemoryRAGRecallItem,
 	query string,
 	maxChars int,
 ) string {
@@ -117,8 +235,9 @@ func buildAIMemoryContextContent(
 		summaryText = normalizeAIMemoryContextLine(summary.SummaryText)
 	}
 	factLines := renderAIMemoryFactLines(facts)
+	ragSection := renderAIMemoryRAGSection(ragItems, aiMemoryRAGMaxChars())
 	currentQuery := normalizeAIMemoryContextLine(query)
-	if summaryText == "" && len(factLines) == 0 {
+	if summaryText == "" && len(factLines) == 0 && ragSection == "" {
 		return ""
 	}
 
@@ -137,6 +256,10 @@ func buildAIMemoryContextContent(
 			builder.WriteString(line)
 			builder.WriteString("\n")
 		}
+	}
+	if ragSection != "" {
+		builder.WriteString("\n\n## Long-term Documents\n")
+		builder.WriteString(ragSection)
 	}
 	if currentQuery != "" {
 		builder.WriteString("\n## Current Query\n")
@@ -166,6 +289,41 @@ func renderAIMemoryFactLines(facts []*entity.AIMemoryFact) []string {
 		lines = append(lines, fmt.Sprintf("%s/%s: %s", namespace, factKey, value))
 	}
 	return lines
+}
+
+func renderAIMemoryRAGSection(items []aiMemoryRAGRecallItem, maxChars int) string {
+	if len(items) == 0 {
+		return ""
+	}
+	var builder strings.Builder
+	for _, item := range items {
+		if item.Chunk == nil {
+			continue
+		}
+		content := normalizeAIMemoryContextLine(item.Chunk.ContentText)
+		if content == "" {
+			continue
+		}
+		topic := normalizeAIMemoryContextLine(item.Chunk.Topic)
+		memoryType := normalizeAIMemoryContextLine(item.Chunk.MemoryType)
+		builder.WriteString("- ")
+		if topic != "" || memoryType != "" {
+			builder.WriteString("[")
+			if memoryType != "" {
+				builder.WriteString(memoryType)
+			}
+			if topic != "" {
+				if memoryType != "" {
+					builder.WriteString("/")
+				}
+				builder.WriteString(topic)
+			}
+			builder.WriteString(fmt.Sprintf(" score=%.3f] ", item.Score))
+		}
+		builder.WriteString(content)
+		builder.WriteString("\n")
+	}
+	return strings.TrimSpace(truncateAIMemoryContext(builder.String(), maxChars))
 }
 
 func splitAIMemoryContextMessages(messages []aidomain.Message) ([]aidomain.Message, []aidomain.Message) {
@@ -257,6 +415,20 @@ func aiMemoryRecallMaxChars() int {
 		return defaultAIMemoryRecallMaxChars
 	}
 	return global.Config.AI.Memory.RecallMaxChars
+}
+
+func aiMemoryRecallMinScore() float64 {
+	if global.Config == nil || global.Config.AI.Memory.RecallMinScore <= 0 {
+		return defaultAIMemoryRecallMinScore
+	}
+	return global.Config.AI.Memory.RecallMinScore
+}
+
+func aiMemoryRAGMaxChars() int {
+	if global.Config == nil || global.Config.AI.Memory.RAGMaxChars <= 0 {
+		return defaultAIMemoryRAGMaxChars
+	}
+	return global.Config.AI.Memory.RAGMaxChars
 }
 
 func aiMemoryRecentRawMessageLimit() int {

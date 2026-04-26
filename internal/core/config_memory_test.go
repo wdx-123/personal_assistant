@@ -23,6 +23,8 @@ func TestInitConfigBindsAIMemoryAndQdrantCompatibility(t *testing.T) {
 	t.Setenv("AI_MEMORY_ENABLED", "true")
 	t.Setenv("AI_MEMORY_RECALL_TOP_K", "9")
 	t.Setenv("AI_MEMORY_RECALL_MAX_CHARS", "4096")
+	t.Setenv("AI_MEMORY_RECALL_MIN_SCORE", "0.42")
+	t.Setenv("AI_MEMORY_RAG_MAX_CHARS", "1024")
 	t.Setenv("AI_MEMORY_EMBED_DIMENSION", "1024")
 	t.Setenv("AI_MEMORY_INDEX_BATCH_SIZE", "11")
 	t.Setenv("QDRANT_COLLECTION_NAME", "legacy-knowledge")
@@ -41,6 +43,12 @@ func TestInitConfigBindsAIMemoryAndQdrantCompatibility(t *testing.T) {
 	}
 	if global.Config.AI.Memory.RecallMaxChars != 4096 {
 		t.Fatalf("AI.Memory.RecallMaxChars = %d, want 4096", global.Config.AI.Memory.RecallMaxChars)
+	}
+	if global.Config.AI.Memory.RecallMinScore != 0.42 {
+		t.Fatalf("AI.Memory.RecallMinScore = %f, want 0.42", global.Config.AI.Memory.RecallMinScore)
+	}
+	if global.Config.AI.Memory.RAGMaxChars != 1024 {
+		t.Fatalf("AI.Memory.RAGMaxChars = %d, want 1024", global.Config.AI.Memory.RAGMaxChars)
 	}
 	if global.Config.AI.Memory.SummaryRefreshEveryTurns != 10 {
 		t.Fatalf(

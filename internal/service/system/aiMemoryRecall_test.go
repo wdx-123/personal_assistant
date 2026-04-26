@@ -3,6 +3,7 @@ package system
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"strings"
 	"testing"
 	"time"
@@ -74,6 +75,127 @@ func TestAIMemoryRecallMessagesBuildsSummaryAndFactsContext(t *testing.T) {
 	assertAIMemoryRecallContains(t, message.Content, "以后回答尽量简洁")
 	assertAIMemoryRecallContains(t, message.Content, "## Current Query")
 	assertAIMemoryRecallContains(t, message.Content, "下一步怎么实现压缩？")
+}
+
+func TestAIMemoryRecallMessagesInjectsRAGDocumentsInScoreOrder(t *testing.T) {
+	db := newAIMemoryWritebackTestDB(t)
+	service := newAIMemoryWritebackTestService(db, nil)
+	service.embedder = &fakeMemoryEmbedder{vectors: [][]float32{{0.1, 0.2, 0.3}}}
+	vectorSearcher := &fakeMemoryVectorStore{
+		searchResults: []aidomain.MemoryVectorSearchResult{
+			{QdrantPointID: "22222222-2222-2222-2222-222222222222", Score: 0.91},
+			{QdrantPointID: "11111111-1111-1111-1111-111111111111", Score: 0.82},
+			{QdrantPointID: "33333333-3333-3333-3333-333333333333", Score: 0.42},
+		},
+	}
+	service.vectorSearcher = vectorSearcher
+	restore := setAIMemoryTestConfig(t, config.AIMemory{
+		Enabled:              true,
+		EnableLongTermMemory: true,
+		RecallTopK:           3,
+		RecallMaxChars:       4000,
+		RecallMinScore:       0.5,
+		RAGMaxChars:          2000,
+		EmbedModel:           "qwen3-vl-embedding",
+		EmbedDimension:       3,
+	})
+	defer restore()
+
+	ctx := context.Background()
+	userID := uint(16)
+	upsertAIMemoryRecallDocumentChunk(
+		t,
+		service,
+		userID,
+		"doc-rag-1",
+		"chunk-rag-1",
+		"11111111-1111-1111-1111-111111111111",
+		"较低分但仍然命中的长期知识片段。",
+	)
+	upsertAIMemoryRecallDocumentChunk(
+		t,
+		service,
+		userID,
+		"doc-rag-2",
+		"chunk-rag-2",
+		"22222222-2222-2222-2222-222222222222",
+		"最高分的长期知识片段，应排在前面。",
+	)
+	upsertAIMemoryRecallDocumentChunk(
+		t,
+		service,
+		userID,
+		"doc-rag-low-score",
+		"chunk-rag-low-score",
+		"33333333-3333-3333-3333-333333333333",
+		"低分片段不应注入。",
+	)
+
+	messages, err := service.RecallMessages(ctx, aiMemoryRecallInput{
+		ConversationID: "conv-rag-recall",
+		UserID:         userID,
+		Query:          "RAG 召回如何做？",
+	})
+	if err != nil {
+		t.Fatalf("RecallMessages() error = %v", err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("RecallMessages() len = %d, want 1", len(messages))
+	}
+	content := messages[0].Content
+	assertAIMemoryRecallContains(t, content, "## Long-term Documents")
+	assertAIMemoryRecallContains(t, content, "最高分的长期知识片段")
+	assertAIMemoryRecallContains(t, content, "较低分但仍然命中的长期知识片段")
+	if strings.Contains(content, "低分片段不应注入") {
+		t.Fatalf("low score RAG content was injected:\n%s", content)
+	}
+	first := strings.Index(content, "最高分的长期知识片段")
+	second := strings.Index(content, "较低分但仍然命中的长期知识片段")
+	if first < 0 || second < 0 || first > second {
+		t.Fatalf("RAG order not preserved by Qdrant score:\n%s", content)
+	}
+	if vectorSearcher.searchInput.ScopeKey != aidomain.BuildSelfMemoryScopeKey(userID) ||
+		vectorSearcher.searchInput.Visibility != string(aidomain.MemoryVisibilitySelf) ||
+		vectorSearcher.searchInput.UserID != userID ||
+		vectorSearcher.searchInput.Limit != 3 ||
+		vectorSearcher.searchInput.MinScore != 0.5 {
+		t.Fatalf("search input = %+v", vectorSearcher.searchInput)
+	}
+}
+
+func TestAIMemoryRecallMessagesRAGFailureKeepsSummary(t *testing.T) {
+	db := newAIMemoryWritebackTestDB(t)
+	service := newAIMemoryWritebackTestService(db, nil)
+	service.embedder = &fakeMemoryEmbedder{err: stderrors.New("embedding failed")}
+	service.vectorSearcher = &fakeMemoryVectorStore{}
+	restore := setAIMemoryTestConfig(t, config.AIMemory{
+		Enabled:              true,
+		EnableLongTermMemory: true,
+		RecallMaxChars:       4000,
+		EmbedModel:           "qwen3-vl-embedding",
+		EmbedDimension:       3,
+	})
+	defer restore()
+
+	userID := uint(17)
+	conversationID := "conv-rag-fail-open"
+	upsertAIMemoryRecallSummary(t, service, conversationID, userID, "RAG 失败时仍应保留摘要。")
+
+	messages, err := service.RecallMessages(context.Background(), aiMemoryRecallInput{
+		ConversationID: conversationID,
+		UserID:         userID,
+		Query:          "触发 RAG 召回",
+	})
+	if err != nil {
+		t.Fatalf("RecallMessages() error = %v", err)
+	}
+	if len(messages) != 1 {
+		t.Fatalf("RecallMessages() len = %d, want 1", len(messages))
+	}
+	assertAIMemoryRecallContains(t, messages[0].Content, "RAG 失败时仍应保留摘要。")
+	if strings.Contains(messages[0].Content, "## Long-term Documents") {
+		t.Fatalf("RAG section should be empty on fail-open:\n%s", messages[0].Content)
+	}
 }
 
 func TestAIMemoryRecallMessagesEmptyWhenNoSummaryOrFacts(t *testing.T) {
@@ -246,6 +368,58 @@ func upsertAIMemoryRecallFact(t *testing.T, service *AIMemoryService, userID uin
 		UpdatedAt:     now,
 	}); err != nil {
 		t.Fatalf("upsert fact: %v", err)
+	}
+}
+
+func upsertAIMemoryRecallDocumentChunk(
+	t *testing.T,
+	service *AIMemoryService,
+	userID uint,
+	documentID string,
+	chunkID string,
+	pointID string,
+	content string,
+) {
+	t.Helper()
+	now := time.Now()
+	scopeKey := aidomain.BuildSelfMemoryScopeKey(userID)
+	doc := &entity.AIMemoryDocument{
+		ID:          documentID,
+		ScopeKey:    scopeKey,
+		ScopeType:   string(aidomain.MemoryScopeSelf),
+		Visibility:  string(aidomain.MemoryVisibilitySelf),
+		UserID:      &userID,
+		MemoryType:  string(aidomain.MemoryTypeSemantic),
+		Topic:       "rag",
+		Title:       "rag",
+		Summary:     "rag summary",
+		ContentText: content,
+		SourceKind:  string(aidomain.MemorySourceModelInferred),
+		SourceID:    chunkID,
+	}
+	if err := service.repo.BatchUpsertDocuments(context.Background(), []*entity.AIMemoryDocument{doc}); err != nil {
+		t.Fatalf("BatchUpsertDocuments() error = %v", err)
+	}
+	if err := service.repo.ReplaceDocumentChunks(context.Background(), documentID, []*entity.AIMemoryDocumentChunk{
+		{
+			ID:                 chunkID,
+			DocumentID:         documentID,
+			ScopeKey:           scopeKey,
+			ScopeType:          string(aidomain.MemoryScopeSelf),
+			Visibility:         string(aidomain.MemoryVisibilitySelf),
+			UserID:             &userID,
+			MemoryType:         string(aidomain.MemoryTypeSemantic),
+			Topic:              "rag",
+			ChunkIndex:         0,
+			ContentText:        content,
+			ContentHash:        aidomain.BuildMemoryDocumentContentHash(content),
+			EmbeddingModel:     "qwen3-vl-embedding",
+			EmbeddingDimension: 3,
+			QdrantPointID:      pointID,
+			IndexedAt:          &now,
+		},
+	}); err != nil {
+		t.Fatalf("ReplaceDocumentChunks() error = %v", err)
 	}
 }
 

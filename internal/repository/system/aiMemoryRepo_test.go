@@ -488,6 +488,90 @@ func TestAIMemoryRepositoryReplaceDocumentChunksOverwrites(t *testing.T) {
 	}
 }
 
+func TestAIMemoryRepositoryListDocumentChunksByPointIDsFiltersInvalidDocuments(t *testing.T) {
+	db := newAIMemoryRepositoryTestDB(t)
+	repo := NewAIMemoryRepository(db)
+	ctx := context.Background()
+	userID := uint(108)
+	scopeKey := aidomain.BuildSelfMemoryScopeKey(userID)
+	expiredAt := time.Now().Add(-time.Hour)
+	now := time.Now()
+
+	docs := []*entity.AIMemoryDocument{
+		{
+			ID:          "doc-point-active",
+			ScopeKey:    scopeKey,
+			ScopeType:   string(aidomain.MemoryScopeSelf),
+			Visibility:  string(aidomain.MemoryVisibilitySelf),
+			UserID:      &userID,
+			MemoryType:  string(aidomain.MemoryTypeSemantic),
+			Topic:       "rag",
+			Title:       "active",
+			Summary:     "active",
+			ContentText: "active content",
+		},
+		{
+			ID:          "doc-point-expired",
+			ScopeKey:    scopeKey,
+			ScopeType:   string(aidomain.MemoryScopeSelf),
+			Visibility:  string(aidomain.MemoryVisibilitySelf),
+			UserID:      &userID,
+			MemoryType:  string(aidomain.MemoryTypeSemantic),
+			Topic:       "rag",
+			Title:       "expired",
+			Summary:     "expired",
+			ContentText: "expired content",
+			ExpiresAt:   &expiredAt,
+		},
+		{
+			ID:          "doc-point-deleted",
+			ScopeKey:    scopeKey,
+			ScopeType:   string(aidomain.MemoryScopeSelf),
+			Visibility:  string(aidomain.MemoryVisibilitySelf),
+			UserID:      &userID,
+			MemoryType:  string(aidomain.MemoryTypeSemantic),
+			Topic:       "rag",
+			Title:       "deleted",
+			Summary:     "deleted",
+			ContentText: "deleted content",
+		},
+	}
+	if err := repo.BatchUpsertDocuments(ctx, docs); err != nil {
+		t.Fatalf("BatchUpsertDocuments() error = %v", err)
+	}
+	chunksByDocument := map[string][]*entity.AIMemoryDocumentChunk{
+		"doc-point-active": {
+			buildAIMemoryRepositoryTestChunk("chunk-point-active", "doc-point-active", scopeKey, "11111111-1111-1111-1111-111111111111", now),
+		},
+		"doc-point-expired": {
+			buildAIMemoryRepositoryTestChunk("chunk-point-expired", "doc-point-expired", scopeKey, "22222222-2222-2222-2222-222222222222", now),
+		},
+		"doc-point-deleted": {
+			buildAIMemoryRepositoryTestChunk("chunk-point-deleted", "doc-point-deleted", scopeKey, "33333333-3333-3333-3333-333333333333", now),
+		},
+	}
+	for documentID, chunks := range chunksByDocument {
+		if err := repo.ReplaceDocumentChunks(ctx, documentID, chunks); err != nil {
+			t.Fatalf("ReplaceDocumentChunks(%s) error = %v", documentID, err)
+		}
+	}
+	if err := db.Delete(&entity.AIMemoryDocument{}, "id = ?", "doc-point-deleted").Error; err != nil {
+		t.Fatalf("soft delete document: %v", err)
+	}
+
+	rows, err := repo.ListDocumentChunksByPointIDs(ctx, []string{
+		"33333333-3333-3333-3333-333333333333",
+		"22222222-2222-2222-2222-222222222222",
+		"11111111-1111-1111-1111-111111111111",
+	})
+	if err != nil {
+		t.Fatalf("ListDocumentChunksByPointIDs() error = %v", err)
+	}
+	if len(rows) != 1 || rows[0].ID != "chunk-point-active" {
+		t.Fatalf("chunks = %+v, want only active chunk", rows)
+	}
+}
+
 func TestAIMemoryRepositoryListDocumentsNeedingIndex(t *testing.T) {
 	db := newAIMemoryRepositoryTestDB(t)
 	repo := NewAIMemoryRepository(db)
@@ -561,6 +645,30 @@ func TestAIMemoryRepositoryListDocumentsNeedingIndex(t *testing.T) {
 	}
 	if len(rows) != 1 || rows[0].ID != doc.ID {
 		t.Fatalf("documents needing index after update = %+v, want %s", rows, doc.ID)
+	}
+}
+
+func buildAIMemoryRepositoryTestChunk(
+	id string,
+	documentID string,
+	scopeKey string,
+	pointID string,
+	indexedAt time.Time,
+) *entity.AIMemoryDocumentChunk {
+	return &entity.AIMemoryDocumentChunk{
+		ID:                 id,
+		DocumentID:         documentID,
+		ScopeKey:           scopeKey,
+		ScopeType:          string(aidomain.MemoryScopeSelf),
+		Visibility:         string(aidomain.MemoryVisibilitySelf),
+		MemoryType:         string(aidomain.MemoryTypeSemantic),
+		ChunkIndex:         0,
+		ContentText:        id + " content",
+		ContentHash:        id + "-hash",
+		EmbeddingModel:     "qwen3-vl-embedding",
+		EmbeddingDimension: 1024,
+		QdrantPointID:      pointID,
+		IndexedAt:          &indexedAt,
 	}
 }
 

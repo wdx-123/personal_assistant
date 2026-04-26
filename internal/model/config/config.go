@@ -330,6 +330,8 @@ func NewConfig() *Config {
 			Enabled:                  viper.GetBool("ai.memory.enabled"),
 			RecallTopK:               viper.GetInt("ai.memory.recall_top_k"),
 			RecallMaxChars:           viper.GetInt("ai.memory.recall_max_chars"),
+			RecallMinScore:           viper.GetFloat64("ai.memory.recall_min_score"),
+			RAGMaxChars:              viper.GetInt("ai.memory.rag_max_chars"),
 			RecentRawTurns:           viper.GetInt("ai.memory.recent_raw_turns"),
 			CompressThresholdTokens:  viper.GetInt("ai.memory.compress_threshold_tokens"),
 			SummaryRefreshEveryTurns: viper.GetInt("ai.memory.summary_refresh_every_turns"),

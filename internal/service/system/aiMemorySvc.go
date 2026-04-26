@@ -56,6 +56,8 @@ type AIMemoryService struct {
 	embedder aidomain.MemoryEmbedder
 	// vectorStore 负责把 chunk 向量写入 Qdrant。
 	vectorStore aidomain.MemoryVectorStore
+	// vectorSearcher 负责从 Qdrant 召回 memory chunks。
+	vectorSearcher aidomain.MemoryVectorSearcher
 }
 
 // NewAIMemoryService 基于正式 repository group 构造记忆服务骨架。
@@ -64,6 +66,7 @@ func NewAIMemoryService(repositoryGroup *repository.Group) *AIMemoryService {
 		// Phase 1 先保证骨架可安全构造，不把 memory 变成启动期硬依赖。
 		return &AIMemoryService{}
 	}
+	qdrantStore := newAIMemoryQdrantStore()
 	return &AIMemoryService{
 		aiRepo:     repositoryGroup.SystemRepositorySupplier.GetAIRepository(),
 		repo:       repositoryGroup.SystemRepositorySupplier.GetAIMemoryRepository(),
@@ -81,7 +84,8 @@ func NewAIMemoryService(repositoryGroup *repository.Group) *AIMemoryService {
 			Dimension: aiMemoryEmbedDimension(),
 			Timeout:   time.Duration(aiMemoryIndexTimeoutSeconds()) * time.Second,
 		}),
-		vectorStore: newAIMemoryVectorStore(),
+		vectorStore:    qdrantStore,
+		vectorSearcher: qdrantStore,
 	}
 }
 
@@ -116,6 +120,10 @@ func (s *AIMemoryService) ScheduleDocumentUpsert(ctx context.Context, docs []*en
 }
 
 func newAIMemoryVectorStore() aidomain.MemoryVectorStore {
+	return newAIMemoryQdrantStore()
+}
+
+func newAIMemoryQdrantStore() *aimemory.QdrantVectorStore {
 	if global.QdrantClient == nil {
 		return nil
 	}

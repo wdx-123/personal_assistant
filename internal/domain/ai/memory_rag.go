@@ -57,6 +57,24 @@ type MemoryVectorChunk struct {
 	Vector []float32
 }
 
+// MemoryVectorSearchInput 描述一次 memory vector 检索请求。
+type MemoryVectorSearchInput struct {
+	Vector     []float32
+	ScopeKey   string
+	Visibility string
+	UserID     uint
+	Limit      int
+	MinScore   float64
+}
+
+// MemoryVectorSearchResult 描述 Qdrant 返回的候选 chunk。
+type MemoryVectorSearchResult struct {
+	QdrantPointID string
+	ChunkID       string
+	DocumentID    string
+	Score         float64
+}
+
 // MemoryChunker 负责把长期记忆文档切分成可 embedding 的 chunks。
 type MemoryChunker interface {
 	Chunk(ctx context.Context, doc MemoryDocumentForIndex) ([]MemoryDocumentChunk, error)
@@ -71,6 +89,11 @@ type MemoryEmbedder interface {
 type MemoryVectorStore interface {
 	DeleteDocumentChunks(ctx context.Context, documentID string) error
 	UpsertChunks(ctx context.Context, chunks []MemoryVectorChunk) error
+}
+
+// MemoryVectorSearcher 负责按 query vector 从向量库召回候选 chunks。
+type MemoryVectorSearcher interface {
+	SearchChunks(ctx context.Context, input MemoryVectorSearchInput) ([]MemoryVectorSearchResult, error)
 }
 
 // MemoryDocumentIndexer 定义 memory documents 的索引建设能力。

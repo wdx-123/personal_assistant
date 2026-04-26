@@ -25,6 +25,10 @@ type AIMemory struct {
 	// RecallMaxChars 控制记忆召回结果在拼装 prompt 前允许占用的最大字符数。
 	// 这个值用于防止召回文本过长，导致压缩摘要和最近消息被挤出上下文。
 	RecallMaxChars int `json:"recall_max_chars" yaml:"recall_max_chars"`
+	// RecallMinScore 控制 RAG 向量召回候选的最低相似度分数。
+	RecallMinScore float64 `json:"recall_min_score" yaml:"recall_min_score"`
+	// RAGMaxChars 控制长期文档片段注入 memory message 的最大字符数。
+	RAGMaxChars int `json:"rag_max_chars" yaml:"rag_max_chars"`
 	// RecentRawTurns 控制上下文恢复时保留多少轮最近原始消息。
 	// 后续会采用 “summary + recent turns” 的组合，这个值决定 recent turns 的窗口大小。
 	RecentRawTurns int `json:"recent_raw_turns" yaml:"recent_raw_turns"`
