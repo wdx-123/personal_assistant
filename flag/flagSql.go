@@ -27,6 +27,10 @@ func SQL() error {
 		&entity.AIConversation{},          // AI 会话表
 		&entity.AIMessage{},               // AI 消息表
 		&entity.AIInterrupt{},             // AI 中断表
+		&entity.AIMemoryFact{},            // AI 结构化事实记忆表
+		&entity.AIMemoryDocument{},        // AI 长期记忆文档表
+		&entity.AIMemoryDocumentChunk{},   // AI 长期记忆文档切块表
+		&entity.AIConversationSummary{},   // AI 会话压缩摘要表
 		&entity.User{},                    // 用户表
 		&entity.Org{},                     // 组织表
 		&entity.OrgMember{},               // 组织成员状态表 - 身份上的

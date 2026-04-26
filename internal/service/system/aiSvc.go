@@ -49,6 +49,8 @@ type AIService struct {
 	toolRegistry *aitool.Registry
 	// contextAssembler 负责组装 runtime 所需的历史消息和动态 prompt。
 	contextAssembler aiContextAssembler
+	// memoryWriteback 在成功轮次完成后异步/同步写入记忆。
+	memoryWriteback aiMemoryWritebackHook
 	// toolPlanner 负责渐进式工具选择与动态 prompt 组装。
 	toolPlanner *aiselect.Planner
 }
@@ -112,6 +114,7 @@ func newAIServiceWithDeps(
 		toolRegistry: registry,
 		// 上下文装配器负责收口历史消息、动态 prompt 和未来扩展点。
 		contextAssembler: newAIContextAssembler(deps),
+		memoryWriteback:  deps.Writeback,
 		// 渐进式 planner 负责把 selector 和 prompt builder 组合成本轮执行计划。
 		toolPlanner: aiselect.NewPlanner(registry, deps.Selector, deps.PromptBuilder),
 	}
@@ -362,7 +365,14 @@ func (s *AIService) StreamConversation(
 	}, sink)
 
 	// 所有已开始的流式请求都统一走 finishStream 收尾，避免成功和失败路径各自写一套状态处理逻辑。
-	return s.finishStream(ctx, conversation, sink, execErr)
+	finishErr := s.finishStream(ctx, conversation, sink, execErr)
+	if finishErr != nil {
+		return finishErr
+	}
+	if execErr == nil {
+		s.triggerMemoryWriteback(ctx, conversation, userMessage, assistantMessage, toolPrincipal)
+	}
+	return nil
 }
 
 // requireConversationOwner 负责校验当前用户是否拥有指定会话。

@@ -45,6 +45,7 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 	rawMenu := NewMenuService(repositoryGroup, rawPermissionProjection)
 	rawRole := NewRoleService(repositoryGroup, rawPermissionProjection)
 	rawImage := NewImageService(repositoryGroup)
+	rawAIMemory := NewAIMemoryService(repositoryGroup)
 	rawObservability := obsquery.NewQueryService(
 		global.ObservabilityMetrics,
 		global.ObservabilityTraces,
@@ -117,7 +118,10 @@ func SetUp(repositoryGroup *repository.Group) contract.Supplier {
 			OJTask:        ojTaskSvc,
 			Observability: observabilitySvc,
 		},
-		Selector: progressiveSelector,
+		Memory:     rawAIMemory,
+		Compressor: rawAIMemory,
+		Writeback:  rawAIMemory,
+		Selector:   progressiveSelector,
 	})
 	// 对外仍只暴露统一的 AIService 契约，不把具体 tool 依赖细节泄露到上层。
 	aiSvc := contract.AIServiceContract(rawAI)

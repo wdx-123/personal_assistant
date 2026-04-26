@@ -16,6 +16,12 @@ type Qdrant struct {
 	// CollectionName 是启动期需要确保存在的单向量 collection 名称。
 	CollectionName string `json:"collection_name" yaml:"collection_name"`
 
+	// KnowledgeCollectionName 是知识库类向量集合名称；为空时兼容回退到 CollectionName。
+	KnowledgeCollectionName string `json:"knowledge_collection_name" yaml:"knowledge_collection_name"`
+
+	// MemoryCollectionName 是记忆类向量集合名称；Phase 1 仅保留配置，不在启动期初始化。
+	MemoryCollectionName string `json:"memory_collection_name" yaml:"memory_collection_name"`
+
 	// VectorSize 是 collection 的向量维度，必须和 embedding 模型输出保持一致。
 	VectorSize int `json:"vector_size" yaml:"vector_size"`
 

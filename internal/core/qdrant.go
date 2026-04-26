@@ -57,7 +57,7 @@ func InitQdrant(ctx context.Context) (*qdrant.Client, error) {
 	global.Log.Info("Qdrant health check succeeded", zap.String("version", health.GetVersion()))
 
 	if qdrantCfg.InitCollection {
-		if err := ensureQdrantCollection(runCtx, client, qdrantCfg); err != nil {
+		if err := ensureQdrantCollections(runCtx, client, qdrantCfg); err != nil {
 			_ = client.Close()
 			return nil, err
 		}
@@ -102,12 +102,40 @@ func newQdrantClient(qdrantCfg config.Qdrant) (*qdrant.Client, error) {
 // 生产约束：
 //   - 已存在 collection 的维度或距离算法不匹配时必须返回错误。
 //   - 这里不自动删除或重建 collection，避免误删线上已有向量数据。
-func ensureQdrantCollection(
+func ensureQdrantCollections(
 	ctx context.Context,
 	client *qdrant.Client,
 	qdrantCfg config.Qdrant,
 ) error {
-	collectionName := strings.TrimSpace(qdrantCfg.CollectionName)
+	if err := ensureQdrantCollection(ctx, client, qdrantCfg, qdrantCfg.CollectionName); err != nil {
+		return err
+	}
+	memoryCollectionName := strings.TrimSpace(qdrantCfg.MemoryCollectionName)
+	if memoryCollectionName == "" {
+		memoryCollectionName = strings.TrimSpace(qdrantCfg.CollectionName)
+	}
+	if memoryCollectionName == "" || memoryCollectionName == strings.TrimSpace(qdrantCfg.CollectionName) {
+		return nil
+	}
+	if global.Config != nil &&
+		global.Config.AI.Memory.EmbedDimension > 0 &&
+		global.Config.AI.Memory.EmbedDimension != qdrantCfg.VectorSize {
+		return fmt.Errorf(
+			"qdrant memory collection vector size mismatch: qdrant.vector_size=%d ai.memory.embed_dimension=%d",
+			qdrantCfg.VectorSize,
+			global.Config.AI.Memory.EmbedDimension,
+		)
+	}
+	return ensureQdrantCollection(ctx, client, qdrantCfg, memoryCollectionName)
+}
+
+func ensureQdrantCollection(
+	ctx context.Context,
+	client *qdrant.Client,
+	qdrantCfg config.Qdrant,
+	collectionName string,
+) error {
+	collectionName = strings.TrimSpace(collectionName)
 	if collectionName == "" {
 		return errors.New("qdrant collection name is empty")
 	}

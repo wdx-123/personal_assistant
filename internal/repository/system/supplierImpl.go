@@ -13,6 +13,7 @@ import (
 type RepositorySupplier struct {
 	db                   *gorm.DB
 	aiRepository         interfaces.AIRepository
+	aiMemoryRepository   interfaces.AIMemoryRepository
 	userRepository       interfaces.UserRepository
 	jwtRepository        interfaces.JWTRepository
 	roleRepository       interfaces.RoleRepository
@@ -57,6 +58,11 @@ type RepositorySupplier struct {
 //   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func (r *RepositorySupplier) GetAIRepository() interfaces.AIRepository {
 	return r.aiRepository
+}
+
+// GetAIMemoryRepository 返回记忆模块正式仓储依赖。
+func (r *RepositorySupplier) GetAIMemoryRepository() interfaces.AIMemoryRepository {
+	return r.aiMemoryRepository
 }
 
 // GetUserRepository 用于获取当前场景需要的对象或数据。

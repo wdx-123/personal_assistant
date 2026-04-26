@@ -1,6 +1,10 @@
 package config
 
-import "github.com/spf13/viper"
+import (
+	"os"
+
+	"github.com/spf13/viper"
+)
 
 // Config 应用全局配置结构体，包含所有核心模块配置
 type Config struct {
@@ -322,20 +326,49 @@ func NewConfig() *Config {
 		SystemPrompt:        viper.GetString("ai.system_prompt"),
 		Temperature:         viper.GetFloat64("ai.temperature"),
 		MaxCompletionTokens: viper.GetInt("ai.max_completion_tokens"),
+		Memory: AIMemory{
+			Enabled:                  viper.GetBool("ai.memory.enabled"),
+			RecallTopK:               viper.GetInt("ai.memory.recall_top_k"),
+			RecallMaxChars:           viper.GetInt("ai.memory.recall_max_chars"),
+			RecentRawTurns:           viper.GetInt("ai.memory.recent_raw_turns"),
+			CompressThresholdTokens:  viper.GetInt("ai.memory.compress_threshold_tokens"),
+			SummaryRefreshEveryTurns: viper.GetInt("ai.memory.summary_refresh_every_turns"),
+			WritebackAsync:           viper.GetBool("ai.memory.writeback_async"),
+			EnableEntityMemory:       viper.GetBool("ai.memory.enable_entity_memory"),
+			EnableLongTermMemory:     viper.GetBool("ai.memory.enable_long_term_memory"),
+			EnableOrgMemory:          viper.GetBool("ai.memory.enable_org_memory"),
+			EnableOpsMemory:          viper.GetBool("ai.memory.enable_ops_memory"),
+			MinImportance:            viper.GetFloat64("ai.memory.min_importance"),
+			EmbedModel:               viper.GetString("ai.memory.embed_model"),
+			EmbedEndpoint:            viper.GetString("ai.memory.embed_endpoint"),
+			EmbedDimension:           viper.GetInt("ai.memory.embed_dimension"),
+			ChunkMaxChars:            viper.GetInt("ai.memory.chunk_max_chars"),
+			ChunkOverlapChars:        viper.GetInt("ai.memory.chunk_overlap_chars"),
+			IndexBatchSize:           viper.GetInt("ai.memory.index_batch_size"),
+			IndexTimeoutSeconds:      viper.GetInt("ai.memory.index_timeout_seconds"),
+		},
+	}
+
+	legacyCollectionName := viper.GetString("qdrant.collection_name")
+	knowledgeCollectionName := viper.GetString("qdrant.knowledge_collection_name")
+	if !hasExplicitConfigValue("qdrant.knowledge_collection_name", "QDRANT_KNOWLEDGE_COLLECTION_NAME") {
+		knowledgeCollectionName = firstNonEmptyString(legacyCollectionName, knowledgeCollectionName)
 	}
 
 	_qdrant := &Qdrant{
-		Enabled:        viper.GetBool("qdrant.enabled"),
-		Endpoint:       viper.GetString("qdrant.endpoint"),
-		GRPCHost:       viper.GetString("qdrant.grpc_host"),
-		GRPCPort:       viper.GetInt("qdrant.grpc_port"),
-		APIKey:         viper.GetString("qdrant.api_key"),
-		CollectionName: viper.GetString("qdrant.collection_name"),
-		VectorSize:     viper.GetInt("qdrant.vector_size"),
-		Distance:       viper.GetString("qdrant.distance"),
-		InitCollection: viper.GetBool("qdrant.init_collection"),
-		TimeoutSeconds: viper.GetInt("qdrant.timeout_seconds"),
-		UseTLS:         viper.GetBool("qdrant.use_tls"),
+		Enabled:                 viper.GetBool("qdrant.enabled"),
+		Endpoint:                viper.GetString("qdrant.endpoint"),
+		GRPCHost:                viper.GetString("qdrant.grpc_host"),
+		GRPCPort:                viper.GetInt("qdrant.grpc_port"),
+		APIKey:                  viper.GetString("qdrant.api_key"),
+		CollectionName:          knowledgeCollectionName,
+		KnowledgeCollectionName: knowledgeCollectionName,
+		MemoryCollectionName:    viper.GetString("qdrant.memory_collection_name"),
+		VectorSize:              viper.GetInt("qdrant.vector_size"),
+		Distance:                viper.GetString("qdrant.distance"),
+		InitCollection:          viper.GetBool("qdrant.init_collection"),
+		TimeoutSeconds:          viper.GetInt("qdrant.timeout_seconds"),
+		UseTLS:                  viper.GetBool("qdrant.use_tls"),
 	}
 
 	_observability := &Observability{
@@ -435,4 +468,25 @@ func getCrawlerAPIPrefix(key string) string {
 		return "/v2"
 	}
 	return viper.GetString(key)
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func hasExplicitConfigValue(key string, envKeys ...string) bool {
+	if viper.InConfig(key) {
+		return true
+	}
+	for _, envKey := range envKeys {
+		if _, ok := os.LookupEnv(envKey); ok {
+			return true
+		}
+	}
+	return false
 }
