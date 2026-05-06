@@ -97,6 +97,9 @@ type MemoryFactQuery struct {
 	// AllowedVisibilities 是本次调用允许暴露给当前主体的访问等级集合。
 	// scope 负责“属于谁”，visibility 负责“谁能看”，查询时必须同时满足两者。
 	AllowedVisibilities []MemoryVisibility
+	// Namespaces 用于一次查询多个业务域的结构化事实。
+	// 当它非空时优先于 Namespace 生效。
+	Namespaces []string
 	// Namespace 用于按业务域过滤结构化事实，例如 user_preference、oj_goal。
 	Namespace string
 	// FactKeys 用于在同一 namespace 下进一步收窄到具体事实键。
@@ -117,6 +120,12 @@ type MemoryDocumentQuery struct {
 	Topic string
 	// Limit 控制最大返回条数；小于等于 0 表示不主动限制。
 	Limit int
+}
+
+// MemoryDocumentChunkRef 描述指定 document 内某个 chunk 的精确定位。
+type MemoryDocumentChunkRef struct {
+	DocumentID string
+	ChunkIndex int
 }
 
 // NormalizeMemoryVisibilities 把 visibility 列表转换为稳定字符串切片。

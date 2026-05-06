@@ -32,6 +32,9 @@ type AIMemory struct {
 	// RecentRawTurns 控制上下文恢复时保留多少轮最近原始消息。
 	// 后续会采用 “summary + recent turns” 的组合，这个值决定 recent turns 的窗口大小。
 	RecentRawTurns int `json:"recent_raw_turns" yaml:"recent_raw_turns"`
+	// RecentRawTokenBudget 控制 recent turns 在压缩模式下允许占用的 token 预算。
+	// 系统会从最新消息向前回扫，直到达到这个预算或 RecentRawTurns 上限。
+	RecentRawTokenBudget int `json:"recent_raw_token_budget" yaml:"recent_raw_token_budget"`
 	// CompressThresholdTokens 表示会话历史接近多少 token 时开始触发摘要压缩。
 	// 它不是模型最大上下文，而是系统层面的提前压缩阈值。
 	CompressThresholdTokens int `json:"compress_threshold_tokens" yaml:"compress_threshold_tokens"`
@@ -56,6 +59,15 @@ type AIMemory struct {
 	// MinImportance 是记忆准入或保留时的最低重要度阈值。
 	// 后续治理阶段会用它过滤低价值候选，避免把闲聊、噪音和瞬时状态写进长期记忆。
 	MinImportance float64 `json:"min_importance" yaml:"min_importance"`
+	// ExtractorMode 控制写回候选抽取方式：rule 表示规则抽取，llm 表示 LLM 提议 + policy 裁决。
+	ExtractorMode string `json:"extractor_mode" yaml:"extractor_mode"`
+	// ExtractTimeoutSeconds 控制 LLM 候选提议的单次超时时间。
+	ExtractTimeoutSeconds int `json:"extract_timeout_seconds" yaml:"extract_timeout_seconds"`
+	// ExtractMaxChars 控制进入候选提议 prompt 的单段文本最大字符数。
+	ExtractMaxChars int `json:"extract_max_chars" yaml:"extract_max_chars"`
+	// ToolOutputTokenBudget 控制单次工具输出回喂模型前允许占用的最大 token 预算。
+	// 超预算时 runtime 会改成压缩版 feedback envelope，而不是把原始工具输出整段塞回上下文。
+	ToolOutputTokenBudget int `json:"tool_output_token_budget" yaml:"tool_output_token_budget"`
 	// EmbedModel 指定记忆文档使用的 embedding 模型名称。
 	// 默认使用阿里云百炼 qwen3-vl-embedding。
 	EmbedModel string `json:"embed_model" yaml:"embed_model"`

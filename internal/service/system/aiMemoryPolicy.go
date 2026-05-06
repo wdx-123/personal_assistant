@@ -2,6 +2,7 @@ package system
 
 import (
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -10,6 +11,8 @@ import (
 
 // aiMemoryPolicy 收口 writeback 之前的准入、权限和覆盖规则。
 type aiMemoryPolicy struct{}
+
+const minimumMemoryCandidateConfidence = 0.5
 
 func (p aiMemoryPolicy) ShouldStoreFact(
 	candidate aidomain.MemoryFactCandidate,
@@ -30,7 +33,9 @@ func (p aiMemoryPolicy) ShouldStoreFact(
 	if candidate.LowValue ||
 		strings.TrimSpace(candidate.Namespace) == "" ||
 		strings.TrimSpace(candidate.FactKey) == "" ||
-		strings.TrimSpace(candidate.FactValueJSON) == "" {
+		strings.TrimSpace(candidate.FactValueJSON) == "" ||
+		isMemoryConfidenceTooLow(candidate.Confidence) ||
+		isSessionOnlyTTLHint(candidate.TTLHint) {
 		return denyDecision(
 			aidomain.MemoryReasonDenyLowValueContent,
 			"fact candidate is empty or marked as low value",
@@ -83,7 +88,9 @@ func (p aiMemoryPolicy) ShouldStoreDocument(
 		)
 	}
 	if candidate.LowValue ||
-		(strings.TrimSpace(candidate.Summary) == "" && strings.TrimSpace(candidate.ContentText) == "") {
+		(strings.TrimSpace(candidate.Summary) == "" && strings.TrimSpace(candidate.ContentText) == "") ||
+		isMemoryConfidenceTooLow(candidate.Confidence) ||
+		isSessionOnlyTTLHint(candidate.TTLHint) {
 		return denyDocumentDecision(
 			aidomain.MemoryReasonDenyLowValueContent,
 			"document candidate is empty or marked as low value",
@@ -270,8 +277,23 @@ func (p aiMemoryPolicy) ResolveVisibility(
 	}
 }
 
-func (p aiMemoryPolicy) ResolveTTL(namespace string, memoryType aidomain.MemoryType) aidomain.MemoryTTLDecision {
+func (p aiMemoryPolicy) ResolveTTL(
+	namespace string,
+	memoryType aidomain.MemoryType,
+	hint *aidomain.MemoryTTLHint,
+) aidomain.MemoryTTLDecision {
 	now := time.Now()
+	if decision, ok := resolveTTLHint(now, strings.TrimSpace(namespace), memoryType, hint); ok {
+		return decision
+	}
+	return defaultMemoryTTLDecision(now, namespace, memoryType)
+}
+
+func defaultMemoryTTLDecision(
+	now time.Time,
+	namespace string,
+	memoryType aidomain.MemoryType,
+) aidomain.MemoryTTLDecision {
 	switch strings.TrimSpace(namespace) {
 	case aidomain.MemoryNamespaceUserPreference, aidomain.MemoryNamespaceOrgProfile,
 		aidomain.MemoryNamespaceOpsIncident, aidomain.MemoryNamespaceOpsRunbook:
@@ -325,6 +347,137 @@ func (p aiMemoryPolicy) ResolveTTL(namespace string, memoryType aidomain.MemoryT
 			"default memory ttl is persistent until explicitly invalidated",
 		),
 	}
+}
+
+func resolveTTLHint(
+	now time.Time,
+	namespace string,
+	memoryType aidomain.MemoryType,
+	hint *aidomain.MemoryTTLHint,
+) (aidomain.MemoryTTLDecision, bool) {
+	if hint == nil {
+		return aidomain.MemoryTTLDecision{}, false
+	}
+	kind := aidomain.MemoryTTLHintKind(strings.TrimSpace(string(hint.Kind)))
+	if kind == "" || kind == aidomain.MemoryTTLHintDefault {
+		return aidomain.MemoryTTLDecision{}, false
+	}
+	if kind == aidomain.MemoryTTLHintSessionOnly {
+		return aidomain.MemoryTTLDecision{}, false
+	}
+	if kind == aidomain.MemoryTTLHintPersistent {
+		if ttlPersistentAllowed(namespace, memoryType) {
+			return aidomain.MemoryTTLDecision{
+				MemoryDecision: allowDecision(
+					aidomain.MemoryReasonAllowTTLPersistent,
+					fmt.Sprintf("ttl_hint persistent accepted for namespace=%s memory_type=%s", namespace, memoryType),
+				),
+			}, true
+		}
+		return aidomain.MemoryTTLDecision{}, false
+	}
+
+	minDays, maxDays, ok := ttlDurationBounds(namespace, memoryType)
+	if !ok {
+		return aidomain.MemoryTTLDecision{}, false
+	}
+
+	var days int
+	switch kind {
+	case aidomain.MemoryTTLHintDuration:
+		parsedDays, valid := ttlHintDurationDays(hint)
+		if !valid {
+			return aidomain.MemoryTTLDecision{}, false
+		}
+		days = clampMemoryTTLDays(parsedDays, minDays, maxDays)
+	case aidomain.MemoryTTLHintUntilDate:
+		parsedUntil, valid := parseTTLHintUntilDate(hint.UntilDate)
+		if !valid || !parsedUntil.After(now) {
+			return aidomain.MemoryTTLDecision{}, false
+		}
+		days = clampMemoryTTLDays(int(math.Ceil(parsedUntil.Sub(now).Hours()/24)), minDays, maxDays)
+	default:
+		return aidomain.MemoryTTLDecision{}, false
+	}
+
+	expiresAt := now.Add(time.Duration(days) * 24 * time.Hour)
+	return aidomain.MemoryTTLDecision{
+		MemoryDecision: allowDecision(
+			aidomain.MemoryReasonAllowTTLExpiring,
+			fmt.Sprintf("ttl_hint %s accepted as %d days for namespace=%s memory_type=%s", kind, days, namespace, memoryType),
+		),
+		ExpiresAt: &expiresAt,
+	}, true
+}
+
+func ttlPersistentAllowed(namespace string, memoryType aidomain.MemoryType) bool {
+	switch namespace {
+	case aidomain.MemoryNamespaceUserPreference, aidomain.MemoryNamespaceOrgProfile,
+		aidomain.MemoryNamespaceOpsIncident, aidomain.MemoryNamespaceOpsRunbook:
+		return true
+	case "":
+		return memoryType != aidomain.MemoryTypeSessionSummary
+	default:
+		return false
+	}
+}
+
+func ttlDurationBounds(namespace string, memoryType aidomain.MemoryType) (int, int, bool) {
+	switch namespace {
+	case aidomain.MemoryNamespaceOJGoal:
+		return 1, 90, true
+	case aidomain.MemoryNamespaceOJProfile:
+		return 7, 180, true
+	case aidomain.MemoryNamespaceOrgLearning:
+		return 1, 60, true
+	}
+	if namespace == "" {
+		switch memoryType {
+		case aidomain.MemoryTypeEpisodic:
+			return 1, 180, true
+		case aidomain.MemoryTypeIncident, aidomain.MemoryTypeProcedural:
+			return 7, 365, true
+		default:
+			return 0, 0, false
+		}
+	}
+	return 0, 0, false
+}
+
+func ttlHintDurationDays(hint *aidomain.MemoryTTLHint) (int, bool) {
+	if hint == nil || hint.Value <= 0 {
+		return 0, false
+	}
+	switch strings.ToLower(strings.TrimSpace(hint.Unit)) {
+	case "", "day", "days", "d":
+		return hint.Value, true
+	default:
+		return 0, false
+	}
+}
+
+func parseTTLHintUntilDate(value string) (time.Time, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return time.Time{}, false
+	}
+	if parsed, err := time.Parse("2006-01-02", value); err == nil {
+		return parsed, true
+	}
+	if parsed, err := time.Parse(time.RFC3339, value); err == nil {
+		return parsed, true
+	}
+	return time.Time{}, false
+}
+
+func clampMemoryTTLDays(days int, minDays int, maxDays int) int {
+	if days < minDays {
+		return minDays
+	}
+	if days > maxDays {
+		return maxDays
+	}
+	return days
 }
 
 func (p aiMemoryPolicy) ShouldOverrideFact(
@@ -504,6 +657,14 @@ func isForbiddenMemorySource(sourceKind aidomain.MemorySourceKind) bool {
 	default:
 		return false
 	}
+}
+
+func isMemoryConfidenceTooLow(confidence float64) bool {
+	return confidence > 0 && confidence < minimumMemoryCandidateConfidence
+}
+
+func isSessionOnlyTTLHint(hint *aidomain.MemoryTTLHint) bool {
+	return hint != nil && hint.Kind == aidomain.MemoryTTLHintSessionOnly
 }
 
 func isApprovedOrgScope(orgID uint, access aidomain.MemoryAccessContext) bool {

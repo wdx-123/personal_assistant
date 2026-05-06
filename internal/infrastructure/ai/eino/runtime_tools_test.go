@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	einomodel "github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 
+	"personal_assistant/global"
 	aidomain "personal_assistant/internal/domain/ai"
+	"personal_assistant/internal/model/config"
 )
 
 type runtimeEventSinkStub struct {
@@ -254,6 +257,124 @@ func TestRuntimeStreamWithToolsEmitsToolEventsAndFinalTokens(t *testing.T) {
 		if eventNames[i] != name {
 			t.Fatalf("event[%d] = %q, want %q", i, eventNames[i], name)
 		}
+	}
+}
+
+func TestRuntimeStreamWithLargeToolOutputCompressesFeedbackEnvelope(t *testing.T) {
+	restore := setRuntimeAIMemoryConfig(t, config.AIMemory{ToolOutputTokenBudget: 20})
+	defer restore()
+
+	model := &fakeToolCallingChatModel{
+		streams: [][]*schema.Message{
+			{
+				schema.AssistantMessage("", []schema.ToolCall{
+					{
+						ID:   "call_big",
+						Type: "function",
+						Function: schema.FunctionCall{
+							Name:      "query_big_payload",
+							Arguments: `{}`,
+						},
+					},
+				}),
+			},
+			{
+				schema.AssistantMessage("已处理大结果。", nil),
+			},
+		},
+	}
+	runtime := &Runtime{model: model, systemPrompt: "base system prompt"}
+	tool := &fakeRuntimeTool{
+		spec: aidomain.ToolSpec{
+			Name: "query_big_payload",
+		},
+		result: aidomain.ToolResult{
+			Output:         `{"payload":"` + strings.Repeat("x", 320) + `"}`,
+			Summary:        "已返回大结果",
+			DetailMarkdown: "```json\n{\"payload\":\"...\"}\n```",
+		},
+	}
+	sink := &runtimeEventSinkStub{}
+
+	if _, err := runtime.Stream(context.Background(), aidomain.StreamInput{
+		Content: "给我大结果",
+		Tools:   []aidomain.Tool{tool},
+	}, sink); err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	if len(model.inputs) < 2 {
+		t.Fatalf("model.inputs len = %d, want second turn input", len(model.inputs))
+	}
+	foundCompressed := false
+	for _, message := range model.inputs[1] {
+		if strings.Contains(message.Content, `"truncated":true`) {
+			foundCompressed = true
+			if !strings.Contains(message.Content, `"original_token_estimate"`) {
+				t.Fatalf("compressed tool message missing token estimate: %s", message.Content)
+			}
+		}
+	}
+	if !foundCompressed {
+		t.Fatalf("second turn input did not contain compressed tool message: %+v", model.inputs[1])
+	}
+}
+
+func TestRuntimeStreamKeepsSmallToolOutputRaw(t *testing.T) {
+	restore := setRuntimeAIMemoryConfig(t, config.AIMemory{ToolOutputTokenBudget: 200})
+	defer restore()
+
+	model := &fakeToolCallingChatModel{
+		streams: [][]*schema.Message{
+			{
+				schema.AssistantMessage("", []schema.ToolCall{
+					{
+						ID:   "call_small",
+						Type: "function",
+						Function: schema.FunctionCall{
+							Name:      "query_small_payload",
+							Arguments: `{}`,
+						},
+					},
+				}),
+			},
+			{
+				schema.AssistantMessage("已处理小结果。", nil),
+			},
+		},
+	}
+	runtime := &Runtime{model: model, systemPrompt: "base system prompt"}
+	tool := &fakeRuntimeTool{
+		spec: aidomain.ToolSpec{
+			Name: "query_small_payload",
+		},
+		result: aidomain.ToolResult{
+			Output:         `{"ok":true,"count":2}`,
+			Summary:        "已返回小结果",
+			DetailMarkdown: "```json\n{\"ok\":true,\"count\":2}\n```",
+		},
+	}
+	sink := &runtimeEventSinkStub{}
+
+	if _, err := runtime.Stream(context.Background(), aidomain.StreamInput{
+		Content: "给我小结果",
+		Tools:   []aidomain.Tool{tool},
+	}, sink); err != nil {
+		t.Fatalf("Stream() error = %v", err)
+	}
+	if len(model.inputs) < 2 {
+		t.Fatalf("model.inputs len = %d, want second turn input", len(model.inputs))
+	}
+	foundRaw := false
+	for _, message := range model.inputs[1] {
+		if message.Content == `{"ok":true,"count":2}` {
+			foundRaw = true
+		}
+		if strings.Contains(message.Content, `"truncated":true`) {
+			t.Fatalf("small tool output should not be compressed: %s", message.Content)
+		}
+	}
+	if !foundRaw {
+		t.Fatalf("second turn input did not contain raw tool output: %+v", model.inputs[1])
 	}
 }
 
@@ -645,5 +766,14 @@ func TestRuntimeStreamWithToolsStopsAfterRepeatedInvalidRepairAttempts(t *testin
 	}
 	if len(sink.events) != 7 {
 		t.Fatalf("event count = %d, want 7", len(sink.events))
+	}
+}
+
+func setRuntimeAIMemoryConfig(t *testing.T, memory config.AIMemory) func() {
+	t.Helper()
+	previous := global.Config
+	global.Config = &config.Config{AI: config.AI{Memory: memory}}
+	return func() {
+		global.Config = previous
 	}
 }

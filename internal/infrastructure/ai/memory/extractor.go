@@ -69,32 +69,33 @@ func (e *RuleExtractor) Extract(
 }
 
 func (e *RuleExtractor) buildSummary(input aidomain.MemoryExtractionInput) *aidomain.ConversationSummaryDraft {
-	userText := normalizeText(input.UserMessage.Content)
-	assistantText := normalizeText(input.AssistantMessage.Content)
-	if userText == "" && assistantText == "" {
+	recentMessages := buildSummaryRecentMessages(input)
+	if len(recentMessages) == 0 {
 		return nil
 	}
 
-	parts := make([]string, 0, 3)
-	if previous := normalizeText(input.PreviousSummaryText); previous != "" {
-		parts = append(parts, previous)
+	parts := make([]string, 0, 2)
+	recentSummary := renderSummaryRecentMessages(recentMessages)
+	if recentSummary != "" {
+		parts = append(parts, "最新进展:\n"+recentSummary)
 	}
-	turn := strings.TrimSpace("用户: " + truncateRunes(userText, 320) + "\n助手: " + truncateRunes(assistantText, 900))
-	if turn != "" {
-		parts = append(parts, "最近一轮: "+turn)
+	if previous := normalizeText(input.PreviousSummaryText); previous != "" &&
+		input.SummaryRefreshMode == aidomain.MemorySummaryRefreshModeFullRefresh {
+		parts = append(parts, "历史摘要:\n"+previous)
 	}
 	summaryText := truncateRunes(strings.Join(parts, "\n\n"), e.summaryMaxRunes)
 	if summaryText == "" {
 		return nil
 	}
 
-	keyPoints, _ := json.Marshal([]string{truncateRunes(userText, 160)})
+	keyPoints, _ := json.Marshal(buildSummaryKeyPoints(recentMessages))
+	openLoops, _ := json.Marshal(buildSummaryOpenLoops(recentMessages))
 	return &aidomain.ConversationSummaryDraft{
 		ConversationID:           input.ConversationID,
 		CompressedUntilMessageID: input.AssistantMessage.ID,
 		SummaryText:              summaryText,
 		KeyPointsJSON:            string(keyPoints),
-		OpenLoopsJSON:            "[]",
+		OpenLoopsJSON:            string(openLoops),
 		TokenEstimate:            estimateTokens(summaryText),
 	}
 }
@@ -254,4 +255,104 @@ func estimateTokens(value string) int {
 		return 0
 	}
 	return (runes + 3) / 4
+}
+
+func buildSummaryRecentMessages(input aidomain.MemoryExtractionInput) []aidomain.Message {
+	if len(input.RecentMessages) > 0 {
+		return input.RecentMessages
+	}
+	messages := make([]aidomain.Message, 0, 2)
+	if strings.TrimSpace(input.UserMessage.Content) != "" {
+		messages = append(messages, input.UserMessage)
+	}
+	if strings.TrimSpace(input.AssistantMessage.Content) != "" {
+		messages = append(messages, input.AssistantMessage)
+	}
+	return messages
+}
+
+func renderSummaryRecentMessages(messages []aidomain.Message) string {
+	if len(messages) == 0 {
+		return ""
+	}
+	if len(messages) > 6 {
+		messages = messages[len(messages)-6:]
+	}
+	lines := make([]string, 0, len(messages))
+	for _, message := range messages {
+		content := normalizeText(message.Content)
+		if content == "" {
+			continue
+		}
+		roleLabel := "用户"
+		if message.Role == aidomain.RoleAssistant {
+			roleLabel = "助手"
+			content = firstParagraph(content)
+		}
+		lines = append(lines, roleLabel+": "+truncateRunes(content, 240))
+	}
+	return strings.TrimSpace(strings.Join(lines, "\n"))
+}
+
+func buildSummaryKeyPoints(messages []aidomain.Message) []string {
+	items := make([]string, 0, 4)
+	seen := map[string]struct{}{}
+	for i := len(messages) - 1; i >= 0; i-- {
+		message := messages[i]
+		if message.Role != aidomain.RoleAssistant {
+			continue
+		}
+		content := truncateRunes(normalizeText(firstParagraph(message.Content)), 180)
+		if content == "" {
+			continue
+		}
+		if _, ok := seen[content]; ok {
+			continue
+		}
+		seen[content] = struct{}{}
+		items = append(items, content)
+		if len(items) >= 4 {
+			break
+		}
+	}
+	if len(items) == 0 {
+		for i := len(messages) - 1; i >= 0; i-- {
+			content := truncateRunes(normalizeText(messages[i].Content), 180)
+			if content != "" {
+				items = append(items, content)
+				break
+			}
+		}
+	}
+	return items
+}
+
+func buildSummaryOpenLoops(messages []aidomain.Message) []string {
+	items := make([]string, 0, 2)
+	for i := len(messages) - 1; i >= 0; i-- {
+		message := messages[i]
+		if message.Role != aidomain.RoleUser {
+			continue
+		}
+		content := truncateRunes(normalizeText(message.Content), 180)
+		if content == "" || !looksLikeOpenLoop(content) {
+			continue
+		}
+		items = append(items, content)
+		break
+	}
+	return items
+}
+
+func looksLikeOpenLoop(content string) bool {
+	if strings.Contains(content, "?") || strings.Contains(content, "？") {
+		return true
+	}
+	keywords := []string{"怎么", "如何", "下一步", "还需要", "帮我", "请给我", "是否"}
+	for _, keyword := range keywords {
+		if strings.Contains(content, keyword) {
+			return true
+		}
+	}
+	return false
 }

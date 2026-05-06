@@ -25,6 +25,11 @@ func TestInitConfigBindsAIMemoryAndQdrantCompatibility(t *testing.T) {
 	t.Setenv("AI_MEMORY_RECALL_MAX_CHARS", "4096")
 	t.Setenv("AI_MEMORY_RECALL_MIN_SCORE", "0.42")
 	t.Setenv("AI_MEMORY_RAG_MAX_CHARS", "1024")
+	t.Setenv("AI_MEMORY_RECENT_RAW_TOKEN_BUDGET", "2048")
+	t.Setenv("AI_MEMORY_EXTRACTOR_MODE", "llm")
+	t.Setenv("AI_MEMORY_EXTRACT_TIMEOUT_SECONDS", "17")
+	t.Setenv("AI_MEMORY_EXTRACT_MAX_CHARS", "2048")
+	t.Setenv("AI_MEMORY_TOOL_OUTPUT_TOKEN_BUDGET", "256")
 	t.Setenv("AI_MEMORY_EMBED_DIMENSION", "1024")
 	t.Setenv("AI_MEMORY_INDEX_BATCH_SIZE", "11")
 	t.Setenv("QDRANT_COLLECTION_NAME", "legacy-knowledge")
@@ -49,6 +54,30 @@ func TestInitConfigBindsAIMemoryAndQdrantCompatibility(t *testing.T) {
 	}
 	if global.Config.AI.Memory.RAGMaxChars != 1024 {
 		t.Fatalf("AI.Memory.RAGMaxChars = %d, want 1024", global.Config.AI.Memory.RAGMaxChars)
+	}
+	if global.Config.AI.Memory.RecentRawTokenBudget != 2048 {
+		t.Fatalf(
+			"AI.Memory.RecentRawTokenBudget = %d, want 2048",
+			global.Config.AI.Memory.RecentRawTokenBudget,
+		)
+	}
+	if global.Config.AI.Memory.ExtractorMode != "llm" {
+		t.Fatalf("AI.Memory.ExtractorMode = %q, want llm", global.Config.AI.Memory.ExtractorMode)
+	}
+	if global.Config.AI.Memory.ExtractTimeoutSeconds != 17 {
+		t.Fatalf(
+			"AI.Memory.ExtractTimeoutSeconds = %d, want 17",
+			global.Config.AI.Memory.ExtractTimeoutSeconds,
+		)
+	}
+	if global.Config.AI.Memory.ExtractMaxChars != 2048 {
+		t.Fatalf("AI.Memory.ExtractMaxChars = %d, want 2048", global.Config.AI.Memory.ExtractMaxChars)
+	}
+	if global.Config.AI.Memory.ToolOutputTokenBudget != 256 {
+		t.Fatalf(
+			"AI.Memory.ToolOutputTokenBudget = %d, want 256",
+			global.Config.AI.Memory.ToolOutputTokenBudget,
+		)
 	}
 	if global.Config.AI.Memory.SummaryRefreshEveryTurns != 10 {
 		t.Fatalf(

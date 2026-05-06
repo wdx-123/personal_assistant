@@ -46,6 +46,48 @@ func TestAIMemoryIndexDocumentsPersistsChunksAndUpsertsVectors(t *testing.T) {
 	}
 }
 
+func TestAIMemoryIndexDocumentsSupportsMultiChunkStructuredContent(t *testing.T) {
+	db := newAIMemoryWritebackTestDB(t)
+	service := newAIMemoryWritebackTestService(db, nil)
+	service.chunker = aimemory.NewParagraphChunker(aimemory.ChunkerOptions{MaxChars: 36, OverlapChars: 0})
+	service.embedder = &fakeMemoryEmbedder{}
+	vectorStore := &fakeMemoryVectorStore{}
+	service.vectorStore = vectorStore
+	restore := setAIMemoryTestConfig(t, config.AIMemory{
+		Enabled:              true,
+		EnableLongTermMemory: true,
+		EmbedModel:           "qwen3-vl-embedding",
+		EmbedDimension:       3,
+	})
+	defer restore()
+
+	doc := createMemoryIndexDocument(
+		t,
+		service,
+		"doc-index-multi",
+		"第一句很短，包含逗号。第二句也很短。\n\n| 列1 | 列2 |\n| --- | --- |\n| 行1 | 数据1 |\n| 行2 | 数据2 |",
+	)
+	if err := service.IndexDocuments(context.Background(), []string{doc.ID}); err != nil {
+		t.Fatalf("IndexDocuments() error = %v", err)
+	}
+
+	chunks, err := service.repo.ListDocumentChunks(context.Background(), doc.ID)
+	if err != nil {
+		t.Fatalf("ListDocumentChunks() error = %v", err)
+	}
+	if len(chunks) < 2 {
+		t.Fatalf("chunks len = %d, want at least 2", len(chunks))
+	}
+	if len(vectorStore.upserted) != len(chunks) {
+		t.Fatalf("upserted vectors len = %d, want %d", len(vectorStore.upserted), len(chunks))
+	}
+	for _, chunk := range chunks {
+		if chunk.EmbeddingModel != "qwen3-vl-embedding" || chunk.EmbeddingDimension != 3 {
+			t.Fatalf("chunk embedding metadata = %+v", chunk)
+		}
+	}
+}
+
 func TestAIMemoryIndexDocumentsDoesNotPersistChunksWhenEmbeddingFails(t *testing.T) {
 	db := newAIMemoryWritebackTestDB(t)
 	service := newAIMemoryWritebackTestService(db, nil)

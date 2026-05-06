@@ -198,20 +198,6 @@ func (p *aiMessageProjector) upsertTraceItem(item resp.AssistantTraceItem) {
 	p.traceItems = append(p.traceItems, item)
 }
 
-// buildAITraceIndex 根据已有 trace_items 构建 key 到下标的索引。
-func buildAITraceIndex(items []resp.AssistantTraceItem) map[string]int {
-	// 预分配容量，避免后续重复扩容。
-	index := make(map[string]int, len(items))
-	for i, item := range items {
-		// 空 key 不能参与 started/finished 合并，直接跳过。
-		if item.Key == "" {
-			continue
-		}
-		index[item.Key] = i
-	}
-	return index
-}
-
 // encodeAssistantTraceItems 负责把 trace_items 安全编码成 JSON 字符串。
 func encodeAssistantTraceItems(items []resp.AssistantTraceItem) string {
 	// 空结果固定返回 []，保持数据库字段格式稳定。

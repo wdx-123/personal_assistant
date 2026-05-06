@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ type aiMemoryWritebackSnapshot struct {
 	UserMessage      aidomain.Message
 	AssistantMessage aidomain.Message
 	PreviousSummary  *entity.AIConversationSummary
+	Messages         []*entity.AIMessage
 }
 
 // OnTurnCompleted extracts and persists memory candidates after a successful AI turn.
@@ -37,6 +39,7 @@ func (s *AIMemoryService) OnTurnCompleted(ctx context.Context, input aiMemoryWri
 	if snapshot == nil || strings.TrimSpace(snapshot.AssistantMessage.Content) == "" {
 		return nil
 	}
+	summaryRefreshMode, recentMessages := buildAIMemorySummaryRefreshInput(snapshot.Messages, snapshot.PreviousSummary)
 
 	extracted, err := s.extractor.Extract(ctx, aidomain.MemoryExtractionInput{
 		ConversationID:      input.ConversationID,
@@ -45,14 +48,16 @@ func (s *AIMemoryService) OnTurnCompleted(ctx context.Context, input aiMemoryWri
 		Principal:           normalizeMemoryPrincipal(input),
 		UserMessage:         snapshot.UserMessage,
 		AssistantMessage:    snapshot.AssistantMessage,
+		RecentMessages:      recentMessages,
 		PreviousSummaryText: previousSummaryText(snapshot.PreviousSummary),
+		SummaryRefreshMode:  summaryRefreshMode,
 	})
 	if err != nil {
 		return err
 	}
 
 	access := s.buildMemoryAccessContext(input)
-	if err := s.applyConversationSummary(ctx, input, extracted.Summary); err != nil {
+	if err := s.applyConversationSummary(ctx, input, snapshot.PreviousSummary, summaryRefreshMode, extracted.Summary); err != nil {
 		return err
 	}
 	if err := s.applyFactCandidates(ctx, extracted.Facts, access); err != nil {
@@ -101,32 +106,22 @@ func (s *AIMemoryService) buildWritebackSnapshot(
 		UserMessage:      aiEntityMessageToDomain(userMessage),
 		AssistantMessage: aiEntityMessageToDomain(assistantMessage),
 		PreviousSummary:  previous,
+		Messages:         messages,
 	}, nil
 }
 
 func (s *AIMemoryService) applyConversationSummary(
 	ctx context.Context,
 	input aiMemoryWritebackInput,
+	previous *entity.AIConversationSummary,
+	refreshMode aidomain.MemorySummaryRefreshMode,
 	draft *aidomain.ConversationSummaryDraft,
 ) error {
-	if draft == nil || strings.TrimSpace(draft.SummaryText) == "" {
+	summary := buildAIMemoryConversationSummaryEntity(input, previous, refreshMode, draft)
+	if summary == nil {
 		return nil
 	}
-	now := time.Now()
-	scopeKey := aidomain.BuildConversationMemoryScopeKey(input.UserID, input.OrgID)
-	return s.repo.UpsertConversationSummary(ctx, &entity.AIConversationSummary{
-		ConversationID:           input.ConversationID,
-		UserID:                   input.UserID,
-		OrgID:                    cloneMemoryUintPtr(input.OrgID),
-		ScopeKey:                 scopeKey,
-		CompressedUntilMessageID: draft.CompressedUntilMessageID,
-		SummaryText:              draft.SummaryText,
-		KeyPointsJSON:            defaultMemoryJSONList(draft.KeyPointsJSON),
-		OpenLoopsJSON:            defaultMemoryJSONList(draft.OpenLoopsJSON),
-		TokenEstimate:            draft.TokenEstimate,
-		CreatedAt:                now,
-		UpdatedAt:                now,
-	})
+	return s.repo.UpsertConversationSummary(ctx, summary)
 }
 
 func (s *AIMemoryService) applyFactCandidates(
@@ -163,7 +158,7 @@ func (s *AIMemoryService) applyFactCandidates(
 		if !shouldUpsert {
 			continue
 		}
-		ttl := s.policy.ResolveTTL(candidate.Namespace, "")
+		ttl := s.policy.ResolveTTL(candidate.Namespace, "", candidate.TTLHint)
 		fact := buildMemoryFactEntity(candidate, scopeDecision, visibilityDecision, ttl.ExpiresAt)
 		if err := s.repo.UpsertFact(ctx, fact); err != nil {
 			return err
@@ -232,7 +227,7 @@ func (s *AIMemoryService) applyDocumentCandidates(
 		if !visibilityDecision.Allowed {
 			continue
 		}
-		ttl := s.policy.ResolveTTL("", candidate.MemoryType)
+		ttl := s.policy.ResolveTTL("", candidate.MemoryType, candidate.TTLHint)
 		docs = append(docs, buildMemoryDocumentEntity(candidate, scopeDecision, visibilityDecision, decision, ttl.ExpiresAt))
 	}
 	if len(docs) == 0 {
@@ -262,7 +257,7 @@ func buildMemoryFactEntity(
 		FactKey:       candidate.FactKey,
 		FactValueJSON: candidate.FactValueJSON,
 		Summary:       candidate.Summary,
-		Confidence:    0.9,
+		Confidence:    normalizeMemoryConfidence(candidate.Confidence, 0.9),
 		SourceKind:    string(candidate.SourceKind),
 		SourceID:      candidate.SourceID,
 		EffectiveAt:   &now,
@@ -295,8 +290,8 @@ func buildMemoryDocumentEntity(
 		ContentHash:    decision.ContentHash,
 		SummaryHash:    decision.SummaryHash,
 		DedupKey:       decision.DedupKey,
-		Importance:     0.8,
-		QualityScore:   0.8,
+		Importance:     normalizeMemoryConfidence(candidate.Confidence, 0.8),
+		QualityScore:   normalizeMemoryConfidence(candidate.Confidence, 0.8),
 		EmbeddingModel: aiMemoryEmbedModel(),
 		SourceKind:     string(candidate.SourceKind),
 		SourceID:       candidate.SourceID,
@@ -346,6 +341,179 @@ func previousSummaryText(summary *entity.AIConversationSummary) string {
 	return summary.SummaryText
 }
 
+func buildAIMemorySummaryRefreshInput(
+	messages []*entity.AIMessage,
+	previous *entity.AIConversationSummary,
+) (aidomain.MemorySummaryRefreshMode, []aidomain.Message) {
+	recentEntities := selectAIMemoryMessagesAfterSummaryBoundary(messages, previous)
+	recentMessages := aiEntityMessagesToDomain(recentEntities)
+	if previous == nil || strings.TrimSpace(previous.SummaryText) == "" {
+		return aidomain.MemorySummaryRefreshModeFullRefresh, recentMessages
+	}
+	if countAIMemoryCompletedTurns(recentEntities) >= aiMemorySummaryRefreshEveryTurns() {
+		return aidomain.MemorySummaryRefreshModeFullRefresh, recentMessages
+	}
+	return aidomain.MemorySummaryRefreshModeHeadUpdate, recentMessages
+}
+
+func selectAIMemoryMessagesAfterSummaryBoundary(
+	messages []*entity.AIMessage,
+	previous *entity.AIConversationSummary,
+) []*entity.AIMessage {
+	if len(messages) == 0 {
+		return nil
+	}
+	boundaryID := ""
+	if previous != nil {
+		boundaryID = strings.TrimSpace(previous.CompressedUntilMessageID)
+	}
+	start := 0
+	if boundaryID != "" {
+		for index, message := range messages {
+			if message != nil && message.ID == boundaryID {
+				start = index + 1
+				break
+			}
+		}
+	}
+	return append([]*entity.AIMessage(nil), messages[start:]...)
+}
+
+func aiEntityMessagesToDomain(messages []*entity.AIMessage) []aidomain.Message {
+	items := make([]aidomain.Message, 0, len(messages))
+	for _, message := range messages {
+		if message == nil {
+			continue
+		}
+		domainMessage := aiEntityMessageToDomain(message)
+		if strings.TrimSpace(domainMessage.Content) == "" {
+			continue
+		}
+		items = append(items, domainMessage)
+	}
+	return items
+}
+
+func countAIMemoryCompletedTurns(messages []*entity.AIMessage) int {
+	count := 0
+	for _, message := range messages {
+		if message == nil {
+			continue
+		}
+		if strings.TrimSpace(message.Role) == aidomain.RoleAssistant && message.Status == aiMessageStatusSuccess {
+			count++
+		}
+	}
+	return count
+}
+
+func buildAIMemoryConversationSummaryEntity(
+	input aiMemoryWritebackInput,
+	previous *entity.AIConversationSummary,
+	refreshMode aidomain.MemorySummaryRefreshMode,
+	draft *aidomain.ConversationSummaryDraft,
+) *entity.AIConversationSummary {
+	scopeKey := aidomain.BuildConversationMemoryScopeKey(input.UserID, input.OrgID)
+	now := time.Now()
+	switch refreshMode {
+	case aidomain.MemorySummaryRefreshModeHeadUpdate:
+		if previous == nil && draft == nil {
+			return nil
+		}
+		summaryText := ""
+		compressedUntilMessageID := ""
+		createdAt := now
+		if previous != nil {
+			summaryText = strings.TrimSpace(previous.SummaryText)
+			compressedUntilMessageID = strings.TrimSpace(previous.CompressedUntilMessageID)
+			createdAt = previous.CreatedAt
+		}
+		if summaryText == "" && draft != nil {
+			summaryText = strings.TrimSpace(draft.SummaryText)
+		}
+		if compressedUntilMessageID == "" && draft != nil {
+			compressedUntilMessageID = strings.TrimSpace(draft.CompressedUntilMessageID)
+		}
+		return &entity.AIConversationSummary{
+			ConversationID:           input.ConversationID,
+			UserID:                   input.UserID,
+			OrgID:                    cloneMemoryUintPtr(input.OrgID),
+			ScopeKey:                 scopeKey,
+			CompressedUntilMessageID: compressedUntilMessageID,
+			SummaryText:              summaryText,
+			KeyPointsJSON:            mergeAIMemorySummaryJSONList(summaryKeyPointsJSON(previous), summaryDraftKeyPointsJSON(draft), 8),
+			OpenLoopsJSON:            mergeAIMemorySummaryJSONList(summaryOpenLoopsJSON(previous), summaryDraftOpenLoopsJSON(draft), 8),
+			TokenEstimate:            estimateAIMemoryTokens([]aidomain.Message{{Content: summaryText}}),
+			CreatedAt:                createdAt,
+			UpdatedAt:                now,
+		}
+	default:
+		if draft == nil || strings.TrimSpace(draft.SummaryText) == "" {
+			return nil
+		}
+		createdAt := now
+		if previous != nil && !previous.CreatedAt.IsZero() {
+			createdAt = previous.CreatedAt
+		}
+		return &entity.AIConversationSummary{
+			ConversationID:           input.ConversationID,
+			UserID:                   input.UserID,
+			OrgID:                    cloneMemoryUintPtr(input.OrgID),
+			ScopeKey:                 scopeKey,
+			CompressedUntilMessageID: draft.CompressedUntilMessageID,
+			SummaryText:              strings.TrimSpace(draft.SummaryText),
+			KeyPointsJSON:            defaultMemoryJSONList(draft.KeyPointsJSON),
+			OpenLoopsJSON:            defaultMemoryJSONList(draft.OpenLoopsJSON),
+			TokenEstimate:            draft.TokenEstimate,
+			CreatedAt:                createdAt,
+			UpdatedAt:                now,
+		}
+	}
+}
+
+func mergeAIMemorySummaryJSONList(baseJSON string, newJSON string, limit int) string {
+	base := decodeAIMemorySummaryLines(baseJSON)
+	recent := decodeAIMemorySummaryLines(newJSON)
+	merged := make([]string, 0, len(recent)+len(base))
+	seen := make(map[string]struct{}, len(recent)+len(base))
+	for _, item := range append(recent, base...) {
+		item = strings.TrimSpace(item)
+		if item == "" {
+			continue
+		}
+		if _, ok := seen[item]; ok {
+			continue
+		}
+		seen[item] = struct{}{}
+		merged = append(merged, item)
+		if limit > 0 && len(merged) >= limit {
+			break
+		}
+	}
+	if len(merged) == 0 {
+		return "[]"
+	}
+	raw, err := json.Marshal(merged)
+	if err != nil {
+		return "[]"
+	}
+	return string(raw)
+}
+
+func summaryDraftKeyPointsJSON(draft *aidomain.ConversationSummaryDraft) string {
+	if draft == nil {
+		return ""
+	}
+	return draft.KeyPointsJSON
+}
+
+func summaryDraftOpenLoopsJSON(draft *aidomain.ConversationSummaryDraft) string {
+	if draft == nil {
+		return ""
+	}
+	return draft.OpenLoopsJSON
+}
+
 func defaultMemoryJSONList(value string) string {
 	if strings.TrimSpace(value) == "" {
 		return "[]"
@@ -356,6 +524,16 @@ func defaultMemoryJSONList(value string) string {
 func buildMemoryDocumentID(scopeKey string, dedupKey string) string {
 	sum := sha256.Sum256([]byte(strings.TrimSpace(scopeKey) + "\n" + strings.TrimSpace(dedupKey)))
 	return "mem_doc_" + hex.EncodeToString(sum[:])[:32]
+}
+
+func normalizeMemoryConfidence(confidence float64, fallback float64) float64 {
+	if confidence <= 0 {
+		return fallback
+	}
+	if confidence > 1 {
+		return 1
+	}
+	return confidence
 }
 
 func aiMemoryEnabled() bool {

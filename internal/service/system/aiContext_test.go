@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	aidomain "personal_assistant/internal/domain/ai"
+	"personal_assistant/internal/model/config"
 	"personal_assistant/internal/model/entity"
 )
 
@@ -38,25 +39,6 @@ type fakeContextCompressor struct {
 func (f *fakeContextCompressor) CompressMessages(context.Context, aiContextCompressionInput) ([]aidomain.Message, error) {
 	f.calls++
 	return f.output, nil
-}
-
-type fakePromptBuilder struct {
-	output string
-	calls  int
-}
-
-func (f *fakePromptBuilder) BuildDynamicPrompt([]aidomain.Tool, aidomain.AIToolPrincipal) string {
-	f.calls++
-	return f.output
-}
-
-func (f *fakePromptBuilder) BuildDecisionPrompt(
-	aidomain.ToolSelectionDecision,
-	string,
-	[]string,
-) string {
-	f.calls++
-	return f.output
 }
 
 func TestDefaultAIContextAssemblerUsesStoredHistory(t *testing.T) {
@@ -100,7 +82,10 @@ func TestDefaultAIContextAssemblerUsesStoredHistory(t *testing.T) {
 	}
 }
 
-func TestDefaultAIContextAssemblerCallsOptionalProviders(t *testing.T) {
+func TestDefaultAIContextAssemblerUsesHybridPlannerForOptionalMemory(t *testing.T) {
+	restore := setAIMemoryTestConfig(t, config.AIMemory{Enabled: true})
+	defer restore()
+
 	memory := &fakeMemoryProvider{
 		output: []aidomain.Message{
 			{ID: "mem_1", Role: aidomain.RoleAssistant, Content: "记忆片段"},
@@ -130,10 +115,10 @@ func TestDefaultAIContextAssemblerCallsOptionalProviders(t *testing.T) {
 	if memory.calls != 1 {
 		t.Fatalf("memory calls = %d, want 1", memory.calls)
 	}
-	if compressor.calls != 1 {
-		t.Fatalf("compressor calls = %d, want 1", compressor.calls)
+	if compressor.calls != 0 {
+		t.Fatalf("compressor calls = %d, want 0; hybrid planner owns compression", compressor.calls)
 	}
-	if len(snapshot.History) != 1 || snapshot.History[0].ID != "cmp_1" {
-		t.Fatalf("snapshot.History = %+v, want compressed output", snapshot.History)
+	if len(snapshot.History) != 2 || snapshot.History[0].ID != "mem_1" || snapshot.History[1].ID != "msg_1" {
+		t.Fatalf("snapshot.History = %+v, want memory first then raw history", snapshot.History)
 	}
 }

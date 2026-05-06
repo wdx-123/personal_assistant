@@ -22,6 +22,10 @@ type aiMemoryProvider interface {
 	RecallMessages(ctx context.Context, input aiMemoryRecallInput) ([]aidomain.Message, error)
 }
 
+type aiStructuredMemoryProvider interface {
+	Recall(ctx context.Context, input aiMemoryRecallInput) (aiMemoryRecallResult, error)
+}
+
 // aiContextCompressionInput 描述上下文压缩组件的输入。
 type aiContextCompressionInput struct {
 	ConversationID string
@@ -47,7 +51,8 @@ type aiContextBuildArgs struct {
 
 // aiContextSnapshot 表示装配完成后可直接喂给 runtime 的上下文片段。
 type aiContextSnapshot struct {
-	History []aidomain.Message
+	History     []aidomain.Message
+	Diagnostics aiHybridContextDiagnostics
 }
 
 // aiContextAssembler 负责统一收口历史消息、记忆扩展点、压缩扩展点和动态 prompt。
@@ -58,12 +63,14 @@ type aiContextAssembler interface {
 type defaultAIContextAssembler struct {
 	memory     aiMemoryProvider
 	compressor aiContextCompressor
+	planner    aiHybridContextPlanner
 }
 
 func newAIContextAssembler(deps AIDeps) aiContextAssembler {
 	return &defaultAIContextAssembler{
 		memory:     deps.Memory,
 		compressor: deps.Compressor,
+		planner:    newDefaultAIHybridContextPlanner(),
 	}
 }
 
@@ -74,34 +81,61 @@ func (a *defaultAIContextAssembler) Build(
 	args aiContextBuildArgs,
 ) (aiContextSnapshot, error) {
 	history := messagesToRuntimeHistory(args.StoredMessages)
+	recallResult := aiMemoryRecallResult{}
 	if a.memory != nil {
-		recalled, err := a.memory.RecallMessages(ctx, aiMemoryRecallInput{
+		input := aiMemoryRecallInput{
 			ConversationID: args.ConversationID,
 			UserID:         args.UserID,
 			Query:          args.Query,
 			History:        history,
 			ToolCallCtx:    args.ToolCallCtx,
+		}
+		if structured, ok := a.memory.(aiStructuredMemoryProvider); ok {
+			result, err := structured.Recall(ctx, input)
+			if err != nil {
+				return aiContextSnapshot{}, err
+			}
+			recallResult = result
+		} else {
+			recalled, err := a.memory.RecallMessages(ctx, input)
+			if err != nil {
+				return aiContextSnapshot{}, err
+			}
+			recallResult.Messages = recalled
+		}
+	}
+
+	if a.planner != nil {
+		planned, err := a.planner.Plan(ctx, aiHybridContextInput{
+			ConversationID: args.ConversationID,
+			Query:          args.Query,
+			RawHistory:     history,
+			Recall:         recallResult,
+			VisibleTools:   args.VisibleTools,
 		})
 		if err != nil {
 			return aiContextSnapshot{}, err
 		}
-		if len(recalled) > 0 {
-			history = append(history, recalled...)
-		}
+		return aiContextSnapshot(planned), nil
 	}
+
 	if a.compressor != nil {
+		inputMessages := joinAIMemoryFirst(recallResult.Messages, history)
 		compressed, err := a.compressor.CompressMessages(ctx, aiContextCompressionInput{
 			ConversationID: args.ConversationID,
 			Query:          args.Query,
-			Messages:       history,
+			Messages:       inputMessages,
 		})
 		if err != nil {
 			return aiContextSnapshot{}, err
 		}
 		history = compressed
+	} else {
+		history = joinAIMemoryFirst(recallResult.Messages, history)
 	}
 
 	return aiContextSnapshot{
-		History: history,
+		History:     history,
+		Diagnostics: recallResult.Diagnostics,
 	}, nil
 }

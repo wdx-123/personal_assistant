@@ -12,8 +12,17 @@ type MemoryExtractionInput struct {
 	UserMessage      Message
 	AssistantMessage Message
 
+	RecentMessages      []Message
 	PreviousSummaryText string
+	SummaryRefreshMode  MemorySummaryRefreshMode
 }
+
+type MemorySummaryRefreshMode string
+
+const (
+	MemorySummaryRefreshModeHeadUpdate  MemorySummaryRefreshMode = "head_update"
+	MemorySummaryRefreshModeFullRefresh MemorySummaryRefreshMode = "full_refresh"
+)
 
 // ConversationSummaryDraft is a technology-neutral summary proposal.
 type ConversationSummaryDraft struct {

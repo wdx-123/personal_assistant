@@ -1,7 +1,6 @@
 package aitool
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -14,76 +13,6 @@ func aiIntPtr(value int) *int {
 
 func aiFloatPtr(value float64) *float64 {
 	return &value
-}
-
-func aiFirstExample(param aidomain.ToolParameter) string {
-	if len(param.Examples) == 0 {
-		return ""
-	}
-	return param.Examples[0]
-}
-
-func aiMissingFieldError(param aidomain.ToolParameter, field string) aidomain.ToolFieldError {
-	return aidomain.ToolFieldError{
-		Field:    field,
-		Reason:   "missing_required",
-		Expected: aiExpectedSummary(param),
-		Allowed:  append([]string(nil), param.Enum...),
-		Example:  aiFirstExample(param),
-	}
-}
-
-func aiInvalidFieldError(
-	field string,
-	reason string,
-	expected string,
-	allowed []string,
-	example string,
-) aidomain.ToolFieldError {
-	return aidomain.ToolFieldError{
-		Field:    field,
-		Reason:   reason,
-		Expected: expected,
-		Allowed:  append([]string(nil), allowed...),
-		Example:  example,
-	}
-}
-
-func aiExpectedSummary(param aidomain.ToolParameter) string {
-	parts := make([]string, 0, 6)
-	parts = append(parts, string(param.Type))
-	if strings.TrimSpace(param.Format) != "" {
-		parts = append(parts, "format="+strings.TrimSpace(param.Format))
-	}
-	if len(param.Enum) > 0 {
-		parts = append(parts, "enum="+strings.Join(param.Enum, "/"))
-	}
-	if param.Minimum != nil {
-		parts = append(parts, "min="+trimFloatForPrompt(*param.Minimum))
-	}
-	if param.Maximum != nil {
-		parts = append(parts, "max="+trimFloatForPrompt(*param.Maximum))
-	}
-	if param.MinLength != nil {
-		parts = append(parts, fmt.Sprintf("min_length=%d", *param.MinLength))
-	}
-	if param.MaxLength != nil {
-		parts = append(parts, fmt.Sprintf("max_length=%d", *param.MaxLength))
-	}
-	if param.MinItems != nil {
-		parts = append(parts, fmt.Sprintf("min_items=%d", *param.MinItems))
-	}
-	if param.MaxItems != nil {
-		parts = append(parts, fmt.Sprintf("max_items=%d", *param.MaxItems))
-	}
-	return strings.Join(parts, ", ")
-}
-
-func trimFloatForPrompt(value float64) string {
-	if float64(int64(value)) == value {
-		return fmt.Sprintf("%d", int64(value))
-	}
-	return fmt.Sprintf("%g", value)
 }
 
 func aiParseRFC3339Field(field string, raw string, required bool, example string) (time.Time, error) {

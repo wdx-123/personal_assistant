@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
+	"time"
 
 	aidomain "personal_assistant/internal/domain/ai"
 )
@@ -203,6 +204,96 @@ func TestAIMemoryPolicyCanReadMemoryRejectsPlatformOpsForNonSuperAdmin(t *testin
 	}
 }
 
+func TestAIMemoryPolicyResolveTTLAcceptsOJGoalDurationHint(t *testing.T) {
+	policy := aiMemoryPolicy{}
+	before := time.Now()
+
+	decision := policy.ResolveTTL(
+		aidomain.MemoryNamespaceOJGoal,
+		"",
+		&aidomain.MemoryTTLHint{
+			Kind:  aidomain.MemoryTTLHintDuration,
+			Value: 30,
+			Unit:  "day",
+		},
+	)
+
+	if !decision.Allowed || decision.ExpiresAt == nil {
+		t.Fatalf("ResolveTTL() = %#v, want expiring decision", decision)
+	}
+	assertTTLApproxDays(t, before, *decision.ExpiresAt, 30)
+}
+
+func TestAIMemoryPolicyResolveTTLClampsOJGoalDurationHint(t *testing.T) {
+	policy := aiMemoryPolicy{}
+	before := time.Now()
+
+	decision := policy.ResolveTTL(
+		aidomain.MemoryNamespaceOJGoal,
+		"",
+		&aidomain.MemoryTTLHint{
+			Kind:  aidomain.MemoryTTLHintDuration,
+			Value: 200,
+			Unit:  "day",
+		},
+	)
+
+	if !decision.Allowed || decision.ExpiresAt == nil {
+		t.Fatalf("ResolveTTL() = %#v, want clamped expiring decision", decision)
+	}
+	assertTTLApproxDays(t, before, *decision.ExpiresAt, 90)
+}
+
+func TestAIMemoryPolicyResolveTTLIgnoresDurationForUserPreference(t *testing.T) {
+	policy := aiMemoryPolicy{}
+
+	decision := policy.ResolveTTL(
+		aidomain.MemoryNamespaceUserPreference,
+		"",
+		&aidomain.MemoryTTLHint{
+			Kind:  aidomain.MemoryTTLHintDuration,
+			Value: 3,
+			Unit:  "day",
+		},
+	)
+
+	if !decision.Allowed {
+		t.Fatalf("ResolveTTL() allowed = false, want true")
+	}
+	if decision.ExpiresAt != nil {
+		t.Fatalf("ResolveTTL() expires_at = %v, want persistent default", decision.ExpiresAt)
+	}
+}
+
+func TestAIMemoryPolicyShouldStoreFactRejectsLowConfidenceCandidate(t *testing.T) {
+	policy := aiMemoryPolicy{}
+	userID := uint(31)
+
+	decision := policy.ShouldStoreFact(
+		aidomain.MemoryFactCandidate{
+			ScopeType:     aidomain.MemoryScopeSelf,
+			UserID:        &userID,
+			Namespace:     aidomain.MemoryNamespaceUserPreference,
+			FactKey:       "answer_style",
+			FactValueJSON: `{"value":"concise"}`,
+			Summary:       "prefers concise answers",
+			Confidence:    0.2,
+			SourceKind:    aidomain.MemorySourceModelInferred,
+			SourceID:      "msg-low-confidence",
+		},
+		aidomain.MemoryAccessContext{
+			Principal: aidomain.AIToolPrincipal{UserID: userID},
+		},
+	)
+
+	if decision.Allowed {
+		t.Fatalf("ShouldStoreFact() allowed = true, want false")
+	}
+	if decision.ReasonCode != aidomain.MemoryReasonDenyLowValueContent {
+		t.Fatalf("ShouldStoreFact() reason_code = %q, want %q", decision.ReasonCode, aidomain.MemoryReasonDenyLowValueContent)
+	}
+}
+
 func sha256Hex(value string) string {
 	sum := sha256.Sum256([]byte(value))
 	return hex.EncodeToString(sum[:])
@@ -210,4 +301,13 @@ func sha256Hex(value string) string {
 
 func normalizeWhitespace(value string) string {
 	return strings.Join(strings.Fields(strings.TrimSpace(value)), " ")
+}
+
+func assertTTLApproxDays(t *testing.T, base time.Time, expiresAt time.Time, wantDays int) {
+	t.Helper()
+	got := expiresAt.Sub(base)
+	want := time.Duration(wantDays) * 24 * time.Hour
+	if got < want-time.Minute || got > want+time.Minute {
+		t.Fatalf("ttl duration = %s, want about %s", got, want)
+	}
 }

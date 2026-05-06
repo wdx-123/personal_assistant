@@ -338,6 +338,19 @@ func (s *AIService) StreamConversation(
 	if err != nil {
 		return bizerrors.Wrap(bizerrors.CodeInternalError, err)
 	}
+	if global.Log != nil {
+		global.Log.Debug(
+			"AI hybrid context planned",
+			zap.String("conversation_id", conversation.ID),
+			zap.Uint("user_id", userID),
+			zap.Int("summary_kept", contextSnapshot.Diagnostics.SummaryKept),
+			zap.Int("facts_kept", contextSnapshot.Diagnostics.FactsKept),
+			zap.Int("rag_kept", contextSnapshot.Diagnostics.RAGKept),
+			zap.Bool("compression_triggered", contextSnapshot.Diagnostics.CompressionTriggered),
+			zap.Int("recent_messages_kept", contextSnapshot.Diagnostics.RecentMessagesKept),
+			zap.Int("history_tokens", contextSnapshot.Diagnostics.HistoryTokens),
+		)
+	}
 
 	// 按渐进式 selector 解析最终执行计划；失败时自动回退单阶段全量工具。
 	executionPlan, err := s.buildAIToolExecutionPlan(

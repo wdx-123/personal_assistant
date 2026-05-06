@@ -21,6 +21,14 @@ type aiMemoryRecallResult struct {
 	PromptBlocks []string
 	// Messages 预留给后续直接注入 runtime history 的记忆消息片段。
 	Messages []aidomain.Message
+	// Summary 是本轮恢复出的会话摘要快照。
+	Summary *entity.AIConversationSummary
+	// Facts 是本轮恢复出的结构化事实候选。
+	Facts []*entity.AIMemoryFact
+	// RAGItems 是本轮按 query 召回的长期文档片段。
+	RAGItems []aiMemoryRAGRecallItem
+	// Diagnostics 记录召回侧各来源的预算和裁剪情况。
+	Diagnostics aiHybridContextDiagnostics
 }
 
 type aiMemoryWritebackInput struct {
@@ -72,7 +80,7 @@ func NewAIMemoryService(repositoryGroup *repository.Group) *AIMemoryService {
 		repo:       repositoryGroup.SystemRepositorySupplier.GetAIMemoryRepository(),
 		outboxRepo: repositoryGroup.SystemRepositorySupplier.GetOutboxRepository(),
 		policy:     aiMemoryPolicy{},
-		extractor:  aimemory.NewRuleExtractor(aimemory.Options{}),
+		extractor:  newAIMemoryExtractor(),
 		chunker: aimemory.NewParagraphChunker(aimemory.ChunkerOptions{
 			MaxChars:     aiMemoryChunkMaxChars(),
 			OverlapChars: aiMemoryChunkOverlapChars(),
@@ -117,10 +125,6 @@ func (s *AIMemoryService) ScheduleDocumentUpsert(ctx context.Context, docs []*en
 	}
 	s.triggerDocumentIndex(ctx, docs)
 	return nil
-}
-
-func newAIMemoryVectorStore() aidomain.MemoryVectorStore {
-	return newAIMemoryQdrantStore()
 }
 
 func newAIMemoryQdrantStore() *aimemory.QdrantVectorStore {

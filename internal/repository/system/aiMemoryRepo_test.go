@@ -572,6 +572,115 @@ func TestAIMemoryRepositoryListDocumentChunksByPointIDsFiltersInvalidDocuments(t
 	}
 }
 
+func TestAIMemoryRepositoryListDocumentChunksByRefsFiltersAndSorts(t *testing.T) {
+	db := newAIMemoryRepositoryTestDB(t)
+	repo := NewAIMemoryRepository(db)
+	ctx := context.Background()
+	userID := uint(109)
+	scopeKey := aidomain.BuildSelfMemoryScopeKey(userID)
+	expiredAt := time.Now().Add(-time.Hour)
+	now := time.Now()
+
+	docs := []*entity.AIMemoryDocument{
+		{
+			ID:          "doc-ref-active-a",
+			ScopeKey:    scopeKey,
+			ScopeType:   string(aidomain.MemoryScopeSelf),
+			Visibility:  string(aidomain.MemoryVisibilitySelf),
+			UserID:      &userID,
+			MemoryType:  string(aidomain.MemoryTypeSemantic),
+			Topic:       "rag",
+			Title:       "active-a",
+			Summary:     "active-a",
+			ContentText: "active-a content",
+		},
+		{
+			ID:          "doc-ref-active-b",
+			ScopeKey:    scopeKey,
+			ScopeType:   string(aidomain.MemoryScopeSelf),
+			Visibility:  string(aidomain.MemoryVisibilitySelf),
+			UserID:      &userID,
+			MemoryType:  string(aidomain.MemoryTypeSemantic),
+			Topic:       "rag",
+			Title:       "active-b",
+			Summary:     "active-b",
+			ContentText: "active-b content",
+		},
+		{
+			ID:          "doc-ref-expired",
+			ScopeKey:    scopeKey,
+			ScopeType:   string(aidomain.MemoryScopeSelf),
+			Visibility:  string(aidomain.MemoryVisibilitySelf),
+			UserID:      &userID,
+			MemoryType:  string(aidomain.MemoryTypeSemantic),
+			Topic:       "rag",
+			Title:       "expired",
+			Summary:     "expired",
+			ContentText: "expired content",
+			ExpiresAt:   &expiredAt,
+		},
+		{
+			ID:          "doc-ref-deleted",
+			ScopeKey:    scopeKey,
+			ScopeType:   string(aidomain.MemoryScopeSelf),
+			Visibility:  string(aidomain.MemoryVisibilitySelf),
+			UserID:      &userID,
+			MemoryType:  string(aidomain.MemoryTypeSemantic),
+			Topic:       "rag",
+			Title:       "deleted",
+			Summary:     "deleted",
+			ContentText: "deleted content",
+		},
+	}
+	if err := repo.BatchUpsertDocuments(ctx, docs); err != nil {
+		t.Fatalf("BatchUpsertDocuments() error = %v", err)
+	}
+
+	activeA0 := buildAIMemoryRepositoryTestChunk("chunk-ref-a-0", "doc-ref-active-a", scopeKey, "44444444-1111-1111-1111-111111111111", now)
+	activeA0.ChunkIndex = 0
+	activeB1 := buildAIMemoryRepositoryTestChunk("chunk-ref-b-1", "doc-ref-active-b", scopeKey, "55555555-1111-1111-1111-111111111111", now)
+	activeB1.ChunkIndex = 1
+	expired0 := buildAIMemoryRepositoryTestChunk("chunk-ref-expired-0", "doc-ref-expired", scopeKey, "66666666-1111-1111-1111-111111111111", now)
+	expired0.ChunkIndex = 0
+	deleted0 := buildAIMemoryRepositoryTestChunk("chunk-ref-deleted-0", "doc-ref-deleted", scopeKey, "77777777-1111-1111-1111-111111111111", now)
+	deleted0.ChunkIndex = 0
+
+	if err := repo.ReplaceDocumentChunks(ctx, "doc-ref-active-a", []*entity.AIMemoryDocumentChunk{activeA0}); err != nil {
+		t.Fatalf("ReplaceDocumentChunks(active-a) error = %v", err)
+	}
+	if err := repo.ReplaceDocumentChunks(ctx, "doc-ref-active-b", []*entity.AIMemoryDocumentChunk{activeB1}); err != nil {
+		t.Fatalf("ReplaceDocumentChunks(active-b) error = %v", err)
+	}
+	if err := repo.ReplaceDocumentChunks(ctx, "doc-ref-expired", []*entity.AIMemoryDocumentChunk{expired0}); err != nil {
+		t.Fatalf("ReplaceDocumentChunks(expired) error = %v", err)
+	}
+	if err := repo.ReplaceDocumentChunks(ctx, "doc-ref-deleted", []*entity.AIMemoryDocumentChunk{deleted0}); err != nil {
+		t.Fatalf("ReplaceDocumentChunks(deleted) error = %v", err)
+	}
+	if err := db.Delete(&entity.AIMemoryDocument{}, "id = ?", "doc-ref-deleted").Error; err != nil {
+		t.Fatalf("soft delete document: %v", err)
+	}
+
+	rows, err := repo.ListDocumentChunksByRefs(ctx, []aidomain.MemoryDocumentChunkRef{
+		{DocumentID: "doc-ref-active-b", ChunkIndex: 1},
+		{DocumentID: "doc-ref-active-a", ChunkIndex: 0},
+		{DocumentID: "doc-ref-active-b", ChunkIndex: 1},
+		{DocumentID: "doc-ref-expired", ChunkIndex: 0},
+		{DocumentID: "doc-ref-deleted", ChunkIndex: 0},
+		{DocumentID: "", ChunkIndex: 0},
+		{DocumentID: "doc-ref-active-a", ChunkIndex: -1},
+	})
+	if err != nil {
+		t.Fatalf("ListDocumentChunksByRefs() error = %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows len = %d, want 2: %+v", len(rows), rows)
+	}
+	if rows[0].ID != "chunk-ref-a-0" || rows[1].ID != "chunk-ref-b-1" {
+		t.Fatalf("rows order = %+v, want active-a then active-b", rows)
+	}
+}
+
 func TestAIMemoryRepositoryListDocumentsNeedingIndex(t *testing.T) {
 	db := newAIMemoryRepositoryTestDB(t)
 	repo := NewAIMemoryRepository(db)

@@ -82,7 +82,9 @@ func (r *AIMemoryGormRepository) ListFacts(
 		Where("scope_key IN ?", query.ScopeKeys).
 		Where("visibility IN ?", aidomain.NormalizeMemoryVisibilities(query.AllowedVisibilities)).
 		Where("(expires_at IS NULL OR expires_at > ?)", now)
-	if query.Namespace != "" {
+	if len(query.Namespaces) > 0 {
+		db = db.Where("namespace IN ?", query.Namespaces)
+	} else if query.Namespace != "" {
 		db = db.Where("namespace = ?", query.Namespace)
 	}
 	if len(query.FactKeys) > 0 {
@@ -300,6 +302,38 @@ func (r *AIMemoryGormRepository) ListDocumentChunks(
 	return rows, nil
 }
 
+// ListDocumentChunksByRefs 按 document_id + chunk_index 精确回查仍有效的 chunks。
+func (r *AIMemoryGormRepository) ListDocumentChunksByRefs(
+	ctx context.Context,
+	refs []aidomain.MemoryDocumentChunkRef,
+) ([]*entity.AIMemoryDocumentChunk, error) {
+	normalizedRefs := normalizeMemoryChunkRefs(refs)
+	if len(normalizedRefs) == 0 {
+		return []*entity.AIMemoryDocumentChunk{}, nil
+	}
+
+	var rows []*entity.AIMemoryDocumentChunk
+	now := time.Now()
+	conditions := make([]string, 0, len(normalizedRefs))
+	args := make([]any, 0, len(normalizedRefs)*2)
+	for _, ref := range normalizedRefs {
+		conditions = append(conditions, "(ai_memory_document_chunks.document_id = ? AND ai_memory_document_chunks.chunk_index = ?)")
+		args = append(args, ref.DocumentID, ref.ChunkIndex)
+	}
+	db := r.db.WithContext(ctx).
+		Model(&entity.AIMemoryDocumentChunk{}).
+		Joins("JOIN ai_memory_documents d ON d.id = ai_memory_document_chunks.document_id AND d.deleted_at IS NULL").
+		Where("(d.expires_at IS NULL OR d.expires_at > ?)", now).
+		Where(strings.Join(conditions, " OR "), args...)
+	if err := db.
+		Order("ai_memory_document_chunks.document_id ASC").
+		Order("ai_memory_document_chunks.chunk_index ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 // ListDocumentChunksByPointIDs 按 Qdrant point ids 回查仍有效的 chunks。
 func (r *AIMemoryGormRepository) ListDocumentChunksByPointIDs(
 	ctx context.Context,
@@ -505,6 +539,27 @@ func normalizeMemoryPointIDs(ids []string) []string {
 		}
 		seen[id] = struct{}{}
 		items = append(items, id)
+	}
+	return items
+}
+
+func normalizeMemoryChunkRefs(refs []aidomain.MemoryDocumentChunkRef) []aidomain.MemoryDocumentChunkRef {
+	if len(refs) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(refs))
+	items := make([]aidomain.MemoryDocumentChunkRef, 0, len(refs))
+	for _, ref := range refs {
+		ref.DocumentID = strings.TrimSpace(ref.DocumentID)
+		if ref.DocumentID == "" || ref.ChunkIndex < 0 {
+			continue
+		}
+		key := fmt.Sprintf("%s#%d", ref.DocumentID, ref.ChunkIndex)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		items = append(items, ref)
 	}
 	return items
 }

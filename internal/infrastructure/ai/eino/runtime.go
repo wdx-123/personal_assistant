@@ -2,16 +2,19 @@ package eino
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	einomodel "github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
 
+	"personal_assistant/global"
 	aidomain "personal_assistant/internal/domain/ai"
 )
 
@@ -22,6 +25,11 @@ type Runtime struct {
 	systemPrompt string
 	// bindMu 保护不支持无副作用 WithTools 的模型在 BindTools 时的并发安全。
 	bindMu sync.Mutex
+}
+
+type legacyBindToolsChatModel interface {
+	einomodel.BaseChatModel
+	BindTools(tools []*schema.ToolInfo) error
 }
 
 // NewRuntime 创建 Eino 基础流式 runtime。
@@ -291,7 +299,7 @@ func (r *Runtime) bindToolModel(tools []aidomain.Tool) (einomodel.BaseChatModel,
 		return bound, func() {}, err
 	}
 	// 只支持 BindTools 的模型需要串行绑定，避免并发请求互相污染。
-	if chatModel, ok := r.model.(einomodel.ChatModel); ok {
+	if chatModel, ok := r.model.(legacyBindToolsChatModel); ok {
 		r.bindMu.Lock()
 		if err := chatModel.BindTools(toolInfos); err != nil {
 			r.bindMu.Unlock()
@@ -464,7 +472,10 @@ func (r *Runtime) executeToolCalls(
 		}
 
 		// ToolMessage 会作为下一轮模型输入，让模型基于工具输出继续生成回答。
-		messages = append(messages, schema.ToolMessage(result.Output, callID, schema.WithToolName(toolName)))
+		messages = append(
+			messages,
+			schema.ToolMessage(compressToolMessageOutput(result), callID, schema.WithToolName(toolName)),
+		)
 	}
 	return messages, nil
 }
@@ -535,6 +546,82 @@ func summarizeToolOutput(content string) string {
 		return string(runes)
 	}
 	return string(runes[:120])
+}
+
+func compressToolMessageOutput(result aidomain.ToolResult) string {
+	output := strings.TrimSpace(result.Output)
+	budget := aiMemoryToolOutputTokenBudget()
+	if output == "" || budget <= 0 {
+		return output
+	}
+	originalTokenEstimate := estimateToolOutputTokens(output)
+	if originalTokenEstimate <= budget {
+		return output
+	}
+
+	summary := strings.TrimSpace(result.Summary)
+	if summary == "" {
+		summary = summarizeToolOutput(output)
+	}
+	maxPreviewRunes := budget * 4
+	if maxPreviewRunes < 160 {
+		maxPreviewRunes = 160
+	}
+	preview := truncateToolOutputPreview(output, maxPreviewRunes)
+	for {
+		payload := map[string]any{
+			"summary":                 summary,
+			"truncated":               true,
+			"preview":                 preview,
+			"original_token_estimate": originalTokenEstimate,
+		}
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			return output
+		}
+		if estimateToolOutputTokens(string(raw)) <= budget || utf8.RuneCountInString(preview) <= 80 {
+			return string(raw)
+		}
+		nextLimit := utf8.RuneCountInString(preview) - maxToolOutputInt(utf8.RuneCountInString(preview)/4, 40)
+		preview = truncateToolOutputPreview(preview, nextLimit)
+	}
+}
+
+func truncateToolOutputPreview(input string, limit int) string {
+	input = strings.TrimSpace(input)
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(input)
+	if len(runes) <= limit {
+		return input
+	}
+	if limit <= 3 {
+		return string(runes[:limit])
+	}
+	return string(runes[:limit-3]) + "..."
+}
+
+func estimateToolOutputTokens(content string) int {
+	runes := utf8.RuneCountInString(strings.TrimSpace(content))
+	if runes == 0 {
+		return 0
+	}
+	return (runes + 3) / 4
+}
+
+func aiMemoryToolOutputTokenBudget() int {
+	if global.Config == nil || global.Config.AI.Memory.ToolOutputTokenBudget <= 0 {
+		return 800
+	}
+	return global.Config.AI.Memory.ToolOutputTokenBudget
+}
+
+func maxToolOutputInt(left int, right int) int {
+	if left > right {
+		return left
+	}
+	return right
 }
 
 // deriveTitle 根据用户输入生成会话开始事件标题。

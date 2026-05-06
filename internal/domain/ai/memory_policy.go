@@ -20,6 +20,17 @@ const (
 	MemorySourceFullToolOutput        MemorySourceKind = "full_tool_output"
 )
 
+// MemoryTTLHintKind 表示 LLM 可提议的受控 TTL 语义类型。
+type MemoryTTLHintKind string
+
+const (
+	MemoryTTLHintDefault     MemoryTTLHintKind = "default"
+	MemoryTTLHintPersistent  MemoryTTLHintKind = "persistent"
+	MemoryTTLHintDuration    MemoryTTLHintKind = "duration"
+	MemoryTTLHintUntilDate   MemoryTTLHintKind = "until_date"
+	MemoryTTLHintSessionOnly MemoryTTLHintKind = "session_only"
+)
+
 const (
 	MemoryReasonAllowSelfScope        = "allow_self_scope"
 	MemoryReasonAllowOrgScope         = "allow_org_scope"
@@ -117,6 +128,8 @@ type MemoryFactCandidate struct {
 	FactKey       string
 	FactValueJSON string
 	Summary       string
+	Confidence    float64
+	TTLHint       *MemoryTTLHint
 	SourceKind    MemorySourceKind
 	SourceID      string
 	LowValue      bool
@@ -133,10 +146,22 @@ type MemoryDocumentCandidate struct {
 	Title         string
 	Summary       string
 	ContentText   string
+	Confidence    float64
+	TTLHint       *MemoryTTLHint
 	SourceKind    MemorySourceKind
 	SourceID      string
 	LowValue      bool
 	TruthConflict bool
+}
+
+// MemoryTTLHint 描述 LLM 提议的时间语义，最终 expires_at 仍由 policy 计算。
+type MemoryTTLHint struct {
+	Kind       MemoryTTLHintKind
+	Value      int
+	Unit       string
+	UntilDate  string
+	Reason     string
+	Confidence float64
 }
 
 // MemoryFactVersion 描述事实覆盖比较所需的最小信息。
