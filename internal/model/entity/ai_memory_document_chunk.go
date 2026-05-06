@@ -21,7 +21,7 @@ type AIMemoryDocumentChunk struct {
 	// MemoryType 标记长期记忆类型。
 	MemoryType string `json:"memory_type" gorm:"type:varchar(32);not null;index:idx_ai_memory_document_chunks_scope_key_memory_type,priority:2;comment:'长期记忆类型'"`
 	// Topic 是轻量主题标签。
-	Topic string `json:"topic" gorm:"type:varchar(128);not null;default:'';index:idx_ai_memory_document_chunks_topic,comment:'主题'"`
+	Topic string `json:"topic" gorm:"type:varchar(128);not null;default:'';index:idx_ai_memory_document_chunks_topic;comment:'主题'"`
 	// ChunkIndex 表示 chunk 在文档内的顺序。
 	ChunkIndex int `json:"chunk_index" gorm:"not null;index:idx_ai_memory_document_chunks_document_index,priority:2;comment:'chunk顺序'"`
 	// ContentText 是参与 embedding 的 chunk 正文。
