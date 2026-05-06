@@ -4,7 +4,7 @@
 
 仅在以下目录工作时应用本规则：
 
-- `d:/workspace_go/personal_assistant`
+- `d:/workspace_go/test/go/personal_assistant`
 
 ## Skill 联动
 
@@ -98,6 +98,49 @@
    - `internal/service` 只允许通过 `AuthorizationService` 做业务授权；业务 Service 禁止直接操作 `Enforcer`。
    - `role-menu / role-api / role-capability / menu-api` 变更统一写 DB + outbox，不允许在业务 Service 内直接全量刷新 Casbin。
    - `user-org-role / 成员状态` 变更允许同步收口当前主体投影，但仍必须补发异步修复事件。
+14. AI 子域渐进式 DDD 规则：
+   - 项目整体口径是 `MVC 主体 + AI 子域渐进式 DDD`，默认目标不是全量 DDD 重构，也不是整体目录全面改名。
+   - AI 子域优先保留现有 MVC 外壳：
+     - `internal/controller/system` 继续作为 AI HTTP 入口。
+     - `internal/router/system` 继续作为 AI 路由入口。
+     - `internal/service/system` 继续承担 AI 应用编排。
+     - `internal/repository/*` 继续承担 AI 持久化访问。
+   - 仅当 AI 能力需要稳定协议或可替换实现时，才渐进式补充：
+     - `internal/domain/ai`：放稳定协议、事件、tool/runtime 抽象、领域语义；禁止依赖 Gin、GORM、Eino、Redis 等技术实现。
+     - `internal/infrastructure/ai`：放 Eino / Local runtime、第三方模型 SDK、外部 Agent 框架适配、checkpoint / tool adapter 等技术实现。
+     - `internal/service/system`：放 AI 用例编排、上下文组装、tool 注册与授权收口、trace/projector 协调；禁止直接承载底层框架细节。
+   - AI 方向新增能力时，先判断本次改动属于：
+     - 协议层：落 `domain/ai`
+     - 应用编排层：落 `service/system`
+     - 基础设施适配层：落 `infrastructure/ai`
+     - 持久化层：落 `repository/*`
+   - 禁止把 AI 子域的演进误表述为“已经完成全量 DDD 重构”；对外口径统一为“传统 MVC 架构基础上，针对 AI 核心模块做渐进式 DDD 分层改造”。
+   - 禁止把 runtime、tool、trace、prompt 拼装、恢复控制等复杂度继续无边界堆进单个 `service` 文件；当某类 AI 逻辑已具备稳定抽象时，应优先拆到 `domain/ai` 或 `infrastructure/ai`。
+   - A2UI、interrupt、approval、runtimecontrol 等能力允许按阶段收缩、停用或重建；但无论阶段如何变化，目录边界和依赖方向必须保持稳定。
+
+## 计划落盘规则
+
+- 只要任务属于新增、重构、修复、联调、排障、迁移、删除、配置调整这类执行型工作，先写计划，不直接改代码。
+- 计划文件固定写到 `plan/<module>/pending-<task>.md`。
+- 结构名固定使用英文：根目录为 `plan/`，跨模块目录为 `plan/cross-module/`，状态前缀为 `pending-` 和 `approved-`。
+- `<module>` 和 `<task>` 按语义决定中英文：稳定技术名词优先英文，如 `auth`、`permission`；更自然的业务表达可保留中文，如 `组织`、`菜单权限收口`。
+- 纯问答、纯解释、纯代码审查、纯只读排查，不强制生成计划文件。
+- 计划目录规则以 `plan/README.md` 为准。
+
+## 计划命名规则
+
+- 文件名格式固定为 `pending-<task>.md` 或 `approved-<task>.md`。
+- `<task>` 必须直接体现本次执行目标，可用英文技术短语，也可用中文业务短语，但都不能空泛。
+- 合格示例：`pending-login-auth-refactor.md`、`pending-菜单权限收口.md`、`pending-组织权限联调.md`。
+- 后续若用户直接说“先出计划”，默认先写入对应模块目录下的 `pending-<task>.md`，无需额外指定路径。
+
+## 审查后执行规则
+
+- 生成待审计划后，只允许查代码、读文档、跑非修改型检查；未获明确确认前，不允许实施改动。
+- 用户明确确认后，先将计划文件改名为 `approved-<task>.md`，再按计划执行。
+- 执行前需要在对话中回报计划路径和摘要，供用户审查。
+- 若执行中发现范围明显变化，禁止静默扩项，必须重新生成新的 `pending-<task>.md` 给用户复审。
+- 涉及路由、服务、配置、权限或跨模块联调的执行任务，同样必须先经过待审计划流程。
 
 ## 提问引用规则
 

@@ -22,6 +22,7 @@ import (
 	"personal_assistant/internal/service/system"
 )
 
+// Init 负责初始化当前模块所需的运行时资源。
 func Init() {
 	// 尝试加载 .env 文件，
 	// 如果不存在也不报错（生产环境可能直接用环境变量）
@@ -30,6 +31,14 @@ func Init() {
 	core.InitConfig("configs")
 	// 初始化日志
 	global.Log = core.InitLogger()
+
+	// 初始化 Qdrant 客户端（依赖配置；失败会导致 RAG/向量能力不可用）
+	qdrantClient, err := core.InitQdrant(context.Background())
+	if err != nil {
+		global.Log.Error("init qdrant failed", zap.Error(err))
+		os.Exit(1)
+	}
+	global.QdrantClient = qdrantClient
 
 	// 敏感数据编解码器（依赖配置）
 	if err := core.InitSensitiveDataCodec(); err != nil {
@@ -53,6 +62,10 @@ func Init() {
 
 	// 连接redis
 	global.Redis = core.ConnectRedis()
+	// 初始化项目级 SSE 基础设施（依赖 Redis）
+	core.InitSSEInfrastructure()
+	// 初始化 AI runtime（依赖配置与 SSE 策略；失败会回退本地 runtime）
+	core.InitAI()
 	// 初始化Casbin
 	core.InitCasbin()
 	// 初始化存储驱动（本地/七牛，七牛自动包装熔断器）

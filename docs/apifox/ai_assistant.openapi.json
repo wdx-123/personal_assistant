@@ -1,0 +1,1801 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "z_cur/UI AI 助手模块 OpenAPI",
+    "version": "1.2.0",
+    "description": "覆盖当前 `personal-assistant-frontend` AI 助手模块使用的接口，可直接导入 Apifox。\n当前 V1 协议已经收敛为“单条聊天 SSE 流 + 工具轨迹 + 最终正文”。\n统一约束：\n1. CRUD 接口走 JSON BizResponse；`stream` 接口返回 `text/event-stream`。\n2. `stream` 是唯一聊天 SSE 流，不恢复第二条推理流。\n3. `tool_call_started / tool_call_finished` 承载工具调用轨迹；前端会把 `trace_items` 折叠进同一条 assistant 消息显示。\n4. `assistant_token` 与 `message_completed.content` 只承载最终正文。\n5. `trace_items` 用于历史恢复和流式过程对齐，不额外暴露 `trace_items_json` 原始字符串。"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:9000",
+      "description": "本地开发环境。导入 Apifox 后请按实际服务地址修改。"
+    }
+  ],
+  "tags": [
+    {
+      "name": "AI助手",
+      "description": "会话 CRUD、单条聊天 SSE 流与消息历史恢复接口。"
+    }
+  ],
+  "security": [
+    {
+      "BearerAuth": []
+    },
+    {
+      "AccessTokenHeader": []
+    }
+  ],
+  "paths": {
+    "/ai/conversations": {
+      "get": {
+        "tags": [
+          "AI助手"
+        ],
+        "summary": "获取 AI 会话列表",
+        "description": "仅返回当前登录用户可见的会话。\n`preview / updated_at / timestamp / group / is_generating` 都是前端列表直接依赖字段。\n建议按最近活跃时间倒序返回。",
+        "operationId": "ListAssistantConversations",
+        "responses": {
+          "200": {
+            "description": "成功与业务失败通常返回 HTTP 200；JWT 异常由中间件提前返回旧版认证错误壳。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizAssistantConversationListResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "success": {
+                    "summary": "查询成功",
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "获取成功",
+                      "data": [
+                        {
+                          "id": "conv_20260406_001",
+                          "title": "任务汇报与项目摘要",
+                          "preview": "帮我整理一版任务汇报并说明助手页面定位。",
+                          "updated_at": "2026-04-06T10:40:00+08:00",
+                          "timestamp": 1775433600000,
+                          "group": "今天",
+                          "is_generating": false
+                        }
+                      ],
+                      "timestamp": 1775433600123
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号已登录但未处于 active 状态时，ActiveUserMW 返回 HTTP 401 BizResponse。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "unauthorized": {
+                    "summary": "账号已禁用",
+                    "value": {
+                      "code": 4010,
+                      "success": false,
+                      "message": "账号已禁用，请联系管理员",
+                      "data": null,
+                      "timestamp": 1775432100123
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "AI助手"
+        ],
+        "summary": "创建 AI 会话",
+        "description": "若请求体未传标题，可先创建占位会话，再在首条用户消息完成后回填标题和预览。\n初始 `is_generating=false`，直到真正开始 `stream`。",
+        "operationId": "CreateAssistantConversation",
+        "requestBody": {
+          "required": true,
+          "description": "创建会话请求。`title` 可选。",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAssistantConversationRequest"
+              },
+              "example": {
+                "title": "任务汇报与项目摘要"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功与业务失败通常返回 HTTP 200；JWT 异常由中间件提前返回旧版认证错误壳。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizAssistantConversationResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "success": {
+                    "summary": "创建成功",
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": {
+                        "id": "conv_20260406_001",
+                        "title": "任务汇报与项目摘要",
+                        "preview": "",
+                        "updated_at": "2026-04-06T10:39:00+08:00",
+                        "timestamp": 1775433540000,
+                        "group": "今天",
+                        "is_generating": false
+                      },
+                      "timestamp": 1775433540123
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号已登录但未处于 active 状态时，ActiveUserMW 返回 HTTP 401 BizResponse。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "unauthorized": {
+                    "summary": "账号已禁用",
+                    "value": {
+                      "code": 4010,
+                      "success": false,
+                      "message": "账号已禁用，请联系管理员",
+                      "data": null,
+                      "timestamp": 1775432100123
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai/conversations/{id}/messages": {
+      "get": {
+        "tags": [
+          "AI助手"
+        ],
+        "summary": "获取会话消息列表",
+        "description": "历史消息必须能完整重建 UI。\n后端返回时保留 `content / trace_items / scope`；`scope` 仅在复杂范围时返回。\n前端会把 `trace_items` 折叠成普通文本，并与 `content` 合并为同一条 assistant 消息显示。\n消息按创建时间升序返回；相同时间戳下按 `user -> assistant -> system` 稳定排序。",
+        "operationId": "GetAssistantConversationMessages",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "conv_20260406_001"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功与业务失败通常返回 HTTP 200；JWT 异常由中间件提前返回旧版认证错误壳。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizAssistantMessageListResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "success": {
+                    "summary": "查询成功",
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "获取成功",
+                      "data": [
+                        {
+                          "id": "msg_user_001",
+                          "conversation_id": "conv_20260406_001",
+                          "role": "user",
+                          "content": "帮我整理一版任务汇报并说明助手页面定位。",
+                          "created_at": "2026-04-06T10:40:01+08:00",
+                          "status": "success",
+                          "trace_items": []
+                        },
+                        {
+                          "id": "msg_ai_001",
+                          "conversation_id": "conv_20260406_001",
+                          "role": "assistant",
+                          "content": "当前任务主线已进入收口阶段，主要阻塞集中在少数成员补齐和回归验证。\n\n- 任务完成率：81%\n- 覆盖成员：17 / 21\n- 阻塞项：3\n\n补充正式项目文档后，可以确认两点：\n\n- 助手继续挂在控制台 Workbench 中，不额外拆独立站点。\n- 后端接入继续采用单条 SSE 聊天流 + interrupt decision 控制接口。",
+                          "created_at": "2026-04-06T10:40:15+08:00",
+                          "status": "success",
+                          "trace_items": [
+                            {
+                              "key": "tool_task_snapshot",
+                              "title": "读取任务执行快照",
+                              "description": "读取完成率、成员覆盖情况和当前阻塞项。",
+                              "status": "success",
+                              "duration_ms": 148,
+                              "content": "已拿到最新任务快照：完成率 81%，覆盖成员 17 / 21，阻塞项 3 个。"
+                            },
+                            {
+                              "key": "tool_doc_snapshot",
+                              "title": "读取正式项目文档",
+                              "description": "读取 README、架构设计方案和 AI UI 改造说明。",
+                              "status": "success",
+                              "duration_ms": 88,
+                              "content": "已命中 README、架构设计方案与 AI UI 改造说明。"
+                            }
+                          ]
+                        }
+                      ],
+                      "timestamp": 1775433615123
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号已登录但未处于 active 状态时，ActiveUserMW 返回 HTTP 401 BizResponse。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "unauthorized": {
+                    "summary": "账号已禁用",
+                    "value": {
+                      "code": 4010,
+                      "success": false,
+                      "message": "账号已禁用，请联系管理员",
+                      "data": null,
+                      "timestamp": 1775432100123
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai/conversations/{id}": {
+      "delete": {
+        "tags": [
+          "AI助手"
+        ],
+        "summary": "删除会话",
+        "description": "只能删除当前用户自己的会话。\n删除时应同步清理消息历史、审计记录与未完成的 interrupt 状态，或做软删除并在查询侧过滤。",
+        "operationId": "DeleteAssistantConversation",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "conv_20260406_001"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功与业务失败通常返回 HTTP 200；JWT 异常由中间件提前返回旧版认证错误壳。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizNullResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "success": {
+                    "summary": "删除成功",
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "操作成功",
+                      "data": null,
+                      "timestamp": 1775433620123
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号已登录但未处于 active 状态时，ActiveUserMW 返回 HTTP 401 BizResponse。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "unauthorized": {
+                    "summary": "账号已禁用",
+                    "value": {
+                      "code": 4010,
+                      "success": false,
+                      "message": "账号已禁用，请联系管理员",
+                      "data": null,
+                      "timestamp": 1775432100123
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai/conversations/{id}/stream": {
+      "post": {
+        "tags": [
+          "AI助手"
+        ],
+        "summary": "发送用户消息并开启唯一聊天 SSE 流",
+        "description": "`stream` 是单轮问答的唯一事件流。\n常见事件顺序为：`conversation_started -> tool_call_started/tool_call_finished* -> assistant_token* -> message_completed -> done`；工具失败会通过 `tool_call_finished.status=failed` 下发，致命失败时输出 `error -> done`。\n`tool_call_*` 事件用于维护结构化 `trace_items`，前端会把这些轨迹折叠进同一条 assistant 消息显示。\n`assistant_token` 和 `message_completed.content` 只用于最终正文。\nV1 不恢复第二条推理流，也不额外暴露 `trace_items_json` 原始字符串。\n事件 payload 结构见 `AssistantEventPayloadCatalog`。",
+        "operationId": "StreamAssistantConversationMessage",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "conv_20260406_001"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "聊天流请求体。",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StreamAssistantMessageRequest"
+              },
+              "example": {
+                "conversation_id": "conv_20260406_001",
+                "content": "帮我整理一版任务汇报并说明助手页面定位。",
+                "context_user_name": "李雷",
+                "context_org_name": "算法训练营"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功时返回 `text/event-stream`；若在进入 SSE 前被业务校验或 JWT 中间件拦截，则返回 JSON 错误壳。",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                },
+                "examples": {
+                  "sameStreamResume": {
+                    "summary": "原流等待确认并在同一连接内继续输出",
+                    "value": "event: conversation_started\ndata: {\"title\":\"介绍一下这个项目\"}\n\nevent: tool_call_started\ndata: {\"key\":\"tool_call_1\",\"tool_name\":\"get_project_snapshot\",\"title\":\"调用工具 get_project_snapshot\",\"description\":\"正在执行工具调用。\"}\n\nevent: tool_call_finished\ndata: {\"key\":\"tool_call_1\",\"tool_name\":\"get_project_snapshot\",\"description\":\"工具调用完成。\",\"duration_ms\":148,\"status\":\"success\",\"content\":\"已拿到项目当前快照和关键状态。\"}\n\nevent: assistant_token\ndata: {\"token\":\"这个项目目前处于 AI 助手基础阶段，重点提供流式对话能力。\"}\n\nevent: assistant_token\ndata: {\"token\":\"\\n\\n当前已经打通会话、历史消息和流式输出闭环。\"}\n\nevent: message_completed\ndata: {\"content\":\"这个项目目前处于 AI 助手基础阶段，重点提供流式对话能力。\\n\\n当前已经打通会话、历史消息和流式输出闭环。\"}\n\nevent: done\ndata: {}\n"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "invalidConversation": {
+                    "summary": "会话不存在或无访问权限",
+                    "value": {
+                      "code": 4004,
+                      "success": false,
+                      "message": "会话不存在或无访问权限",
+                      "data": null,
+                      "timestamp": 1775432100123
+                    }
+                  },
+                  "invalidToken": {
+                    "summary": "Access Token 无效",
+                    "value": {
+                      "code": 11003,
+                      "data": {
+                        "message": "Invalid access token",
+                        "reload": true
+                      },
+                      "error": "Invalid access token"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号已登录但未处于 active 状态时，ActiveUserMW 返回 HTTP 401 BizResponse。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "unauthorized": {
+                    "summary": "账号已禁用",
+                    "value": {
+                      "code": 4010,
+                      "success": false,
+                      "message": "账号已禁用，请联系管理员",
+                      "data": null,
+                      "timestamp": 1775432100123
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ai/conversations/{id}/interrupts/{interrupt_id}/decision": {
+      "post": {
+        "tags": [
+          "AI助手"
+        ],
+        "summary": "提交 interrupt 决策",
+        "description": "该接口只提交控制命令，不返回第二条 SSE 流。\n服务端收到决策后，应在对应 `stream` 的原连接内继续输出后续事件。\n必须校验 `conversation_id + interrupt_id` 与当前用户、当前运行实例的归属关系。",
+        "operationId": "SubmitAssistantInterruptDecision",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "conv_20260406_001"
+          },
+          {
+            "name": "interrupt_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "example": "intr_20260406_doc_001"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "description": "interrupt 决策请求体。",
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssistantToolDecisionRequest"
+              },
+              "example": {
+                "conversation_id": "conv_20260406_001",
+                "interrupt_id": "intr_20260406_doc_001",
+                "decision": "confirm",
+                "reason": "需要正式文档依据"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功与业务失败通常返回 HTTP 200；后续 assistant 事件继续从已打开的 `stream` 返回。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/BizAssistantInterruptDecisionResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/BizErrorResponse"
+                    },
+                    {
+                      "$ref": "#/components/schemas/LegacyTokenErrorResponse"
+                    }
+                  ]
+                },
+                "examples": {
+                  "success": {
+                    "summary": "提交成功",
+                    "value": {
+                      "code": 0,
+                      "success": true,
+                      "message": "决策已受理",
+                      "data": {
+                        "accepted": true,
+                        "conversation_id": "conv_20260406_001",
+                        "interrupt_id": "intr_20260406_doc_001",
+                        "decision": "confirm"
+                      },
+                      "timestamp": 1775433628123
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "账号已登录但未处于 active 状态时，ActiveUserMW 返回 HTTP 401 BizResponse。",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BizUnauthorizedResponse"
+                },
+                "examples": {
+                  "unauthorized": {
+                    "summary": "账号已禁用",
+                    "value": {
+                      "code": 4010,
+                      "success": false,
+                      "message": "账号已禁用，请联系管理员",
+                      "data": null,
+                      "timestamp": 1775432100123
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "BearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "推荐写法：`Authorization: Bearer <access_token>`。"
+      },
+      "AccessTokenHeader": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "x-access-token",
+        "description": "兼容后端 JWT 中间件仍支持的旧 header 方案。"
+      }
+    },
+    "schemas": {
+      "AuthErrorData": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "reload": {
+            "type": "boolean"
+          }
+        }
+      },
+      "LegacyTokenErrorResponse": {
+        "type": "object",
+        "required": [
+          "code",
+          "data",
+          "error"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 11003
+          },
+          "data": {
+            "$ref": "#/components/schemas/AuthErrorData"
+          },
+          "error": {
+            "type": "string",
+            "example": "Invalid access token"
+          }
+        }
+      },
+      "BizErrorResponse": {
+        "type": "object",
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 4001
+          },
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "参数错误"
+          },
+          "data": {
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1775432100123
+          }
+        }
+      },
+      "BizUnauthorizedResponse": {
+        "type": "object",
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 4010
+          },
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "账号已禁用，请联系管理员"
+          },
+          "data": {
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1775432100123
+          }
+        }
+      },
+      "AssistantConversationGroup": {
+        "type": "string",
+        "enum": [
+          "今天",
+          "最近",
+          "更早"
+        ]
+      },
+      "AssistantMessageRole": {
+        "type": "string",
+        "enum": [
+          "user",
+          "assistant",
+          "system"
+        ]
+      },
+      "AssistantMessageStatus": {
+        "type": "string",
+        "enum": [
+          "loading",
+          "success",
+          "error",
+          "stopped"
+        ]
+      },
+      "AssistantTraceStatus": {
+        "type": "string",
+        "enum": [
+          "running",
+          "success",
+          "failed",
+          "waiting"
+        ]
+      },
+      "AssistantTraceItemKind": {
+        "type": "string",
+        "enum": [
+          "reasoning",
+          "action"
+        ]
+      },
+      "AssistantTraceActionType": {
+        "type": "string",
+        "enum": [
+          "confirm",
+          "skip",
+          "view_detail"
+        ]
+      },
+      "AssistantA2UIBlockType": {
+        "type": "string",
+        "enum": [
+          "thinking_summary_block",
+          "tool_intent_block",
+          "waiting_user_block"
+        ]
+      },
+      "AssistantA2UIUsageHint": {
+        "type": "string",
+        "enum": [
+          "caption",
+          "body",
+          "title",
+          "eyebrow",
+          "label"
+        ]
+      },
+      "AssistantA2UITone": {
+        "type": "string",
+        "enum": [
+          "primary",
+          "success",
+          "warning",
+          "danger",
+          "muted"
+        ]
+      },
+      "AssistantScopeInfo": {
+        "type": "object",
+        "required": [
+          "user_name",
+          "org_name",
+          "scope_label"
+        ],
+        "properties": {
+          "user_name": {
+            "type": "string"
+          },
+          "org_name": {
+            "type": "string"
+          },
+          "scope_label": {
+            "type": "string"
+          },
+          "task_name": {
+            "type": "string"
+          },
+          "doc_scope_label": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantTraceAction": {
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "action"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "action": {
+            "$ref": "#/components/schemas/AssistantTraceActionType"
+          },
+          "style": {
+            "type": "string",
+            "enum": [
+              "primary",
+              "default",
+              "danger"
+            ]
+          }
+        }
+      },
+      "AssistantTraceItem": {
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "description",
+          "status"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AssistantTraceStatus"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AssistantTraceItemKind"
+          },
+          "order": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "interrupt_id": {
+            "type": "string"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "content": {
+            "type": "string"
+          },
+          "detail_markdown": {
+            "type": "string"
+          },
+          "requires_confirmation": {
+            "type": "boolean"
+          },
+          "confirmation_title": {
+            "type": "string"
+          },
+          "confirmation_description": {
+            "type": "string"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssistantTraceAction"
+            }
+          }
+        }
+      },
+      "AssistantA2UIBinding": {
+        "type": "object",
+        "required": [
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "value_string": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantConversation": {
+        "type": "object",
+        "required": [
+          "id",
+          "title",
+          "preview",
+          "updated_at",
+          "timestamp",
+          "group",
+          "is_generating"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "preview": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "group": {
+            "$ref": "#/components/schemas/AssistantConversationGroup"
+          },
+          "is_generating": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CreateAssistantConversationRequest": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 100
+          }
+        }
+      },
+      "StreamAssistantMessageRequest": {
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "content",
+          "context_user_name",
+          "context_org_name"
+        ],
+        "properties": {
+          "conversation_id": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "context_user_name": {
+            "type": "string"
+          },
+          "context_org_name": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantToolDecisionRequest": {
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "interrupt_id",
+          "decision"
+        ],
+        "properties": {
+          "conversation_id": {
+            "type": "string"
+          },
+          "interrupt_id": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "confirm",
+              "skip"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantInterruptDecisionAccepted": {
+        "type": "object",
+        "required": [
+          "accepted",
+          "conversation_id",
+          "interrupt_id",
+          "decision"
+        ],
+        "properties": {
+          "accepted": {
+            "type": "boolean",
+            "example": true
+          },
+          "conversation_id": {
+            "type": "string"
+          },
+          "interrupt_id": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "confirm",
+              "skip"
+            ]
+          }
+        }
+      },
+      "AssistantA2UITextComponent": {
+        "type": "object",
+        "required": [
+          "id",
+          "type"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "Text"
+            ]
+          },
+          "value": {
+            "type": "string"
+          },
+          "binding_key": {
+            "type": "string"
+          },
+          "usage_hint": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AssistantA2UIUsageHint"
+              }
+            ],
+            "nullable": true
+          },
+          "tone": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AssistantA2UITone"
+              }
+            ],
+            "nullable": true
+          }
+        }
+      },
+      "AssistantA2UIRowComponent": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "children"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "Row"
+            ]
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AssistantA2UIColumnComponent": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "children"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "Column"
+            ]
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AssistantA2UICardComponent": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "children"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "Card"
+            ]
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tone": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AssistantA2UITone"
+              }
+            ],
+            "nullable": true
+          }
+        }
+      },
+      "AssistantA2UIBadgeComponent": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "label"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "Badge"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "tone": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AssistantA2UITone"
+              }
+            ],
+            "nullable": true
+          }
+        }
+      },
+      "AssistantA2UIBulletListComponent": {
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "items"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "BulletList"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AssistantA2UIComponent": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/AssistantA2UITextComponent"
+          },
+          {
+            "$ref": "#/components/schemas/AssistantA2UIRowComponent"
+          },
+          {
+            "$ref": "#/components/schemas/AssistantA2UIColumnComponent"
+          },
+          {
+            "$ref": "#/components/schemas/AssistantA2UICardComponent"
+          },
+          {
+            "$ref": "#/components/schemas/AssistantA2UIBadgeComponent"
+          },
+          {
+            "$ref": "#/components/schemas/AssistantA2UIBulletListComponent"
+          }
+        ]
+      },
+      "AssistantA2UISurface": {
+        "type": "object",
+        "required": [
+          "id",
+          "root",
+          "components"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "root": {
+            "type": "string"
+          },
+          "components": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssistantA2UIComponent"
+            }
+          },
+          "bindings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssistantA2UIBinding"
+            }
+          }
+        }
+      },
+      "AssistantA2UIBlock": {
+        "type": "object",
+        "required": [
+          "key",
+          "type",
+          "surface"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "type": {
+            "$ref": "#/components/schemas/AssistantA2UIBlockType"
+          },
+          "surface": {
+            "$ref": "#/components/schemas/AssistantA2UISurface"
+          }
+        }
+      },
+      "AssistantMessage": {
+        "type": "object",
+        "required": [
+          "id",
+          "conversation_id",
+          "role",
+          "content",
+          "created_at",
+          "status",
+          "trace_items"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "conversation_id": {
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/AssistantMessageRole"
+          },
+          "content": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AssistantMessageStatus"
+          },
+          "trace_items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssistantTraceItem"
+            }
+          },
+          "scope": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AssistantScopeInfo"
+              }
+            ],
+            "nullable": true
+          },
+          "error_text": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantStreamEventType": {
+        "type": "string",
+        "enum": [
+          "conversation_started",
+          "tool_call_started",
+          "tool_call_finished",
+          "assistant_token",
+          "message_completed",
+          "error",
+          "done"
+        ]
+      },
+      "AssistantConversationStartedPayload": {
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantThinkingStartedPayload": {
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantThinkingDeltaPayload": {
+        "type": "object",
+        "required": [
+          "delta"
+        ],
+        "properties": {
+          "delta": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantThinkingCompletedPayload": {
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantDetailStepPayload": {
+        "type": "object",
+        "required": [
+          "key",
+          "title"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/AssistantTraceItemKind"
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AssistantTraceStatus"
+          },
+          "order": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "AssistantTokenPayload": {
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "properties": {
+          "token": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantToolCallStartedPayload": {
+        "type": "object",
+        "required": [
+          "key",
+          "title",
+          "description"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "tool_name": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantToolCallFinishedPayload": {
+        "type": "object",
+        "required": [
+          "key",
+          "description",
+          "duration_ms",
+          "status"
+        ],
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "tool_name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AssistantTraceStatus"
+          },
+          "content": {
+            "type": "string"
+          },
+          "detail_markdown": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantToolCallWaitingConfirmationPayload": {
+        "type": "object",
+        "required": [
+          "interrupt_id",
+          "key",
+          "title",
+          "description",
+          "confirmation_title",
+          "confirmation_description",
+          "actions"
+        ],
+        "properties": {
+          "interrupt_id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "detail_markdown": {
+            "type": "string"
+          },
+          "confirmation_title": {
+            "type": "string"
+          },
+          "confirmation_description": {
+            "type": "string"
+          },
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssistantTraceAction"
+            }
+          }
+        }
+      },
+      "AssistantToolCallConfirmationResultPayload": {
+        "type": "object",
+        "required": [
+          "interrupt_id",
+          "key",
+          "decision",
+          "status",
+          "description"
+        ],
+        "properties": {
+          "interrupt_id": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string"
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "confirm",
+              "skip"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "skipped"
+            ]
+          },
+          "description": {
+            "type": "string"
+          },
+          "detail_markdown": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantStructuredBlockPayload": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/AssistantScopeInfo"
+          },
+          "ui_block": {
+            "$ref": "#/components/schemas/AssistantA2UIBlock"
+          }
+        }
+      },
+      "AssistantMessageCompletedPayload": {
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "properties": {
+          "content": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantErrorPayload": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "AssistantDonePayload": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "AssistantEventPayloadCatalog": {
+        "type": "object",
+        "properties": {
+          "conversation_started": {
+            "$ref": "#/components/schemas/AssistantConversationStartedPayload"
+          },
+          "tool_call_started": {
+            "$ref": "#/components/schemas/AssistantToolCallStartedPayload"
+          },
+          "tool_call_finished": {
+            "$ref": "#/components/schemas/AssistantToolCallFinishedPayload"
+          },
+          "assistant_token": {
+            "$ref": "#/components/schemas/AssistantTokenPayload"
+          },
+          "message_completed": {
+            "$ref": "#/components/schemas/AssistantMessageCompletedPayload"
+          },
+          "error": {
+            "$ref": "#/components/schemas/AssistantErrorPayload"
+          },
+          "done": {
+            "$ref": "#/components/schemas/AssistantDonePayload"
+          }
+        }
+      },
+      "BizAssistantConversationResponse": {
+        "type": "object",
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0,
+            "description": "新版业务码。0 表示成功。"
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AssistantConversation"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1775432100123
+          }
+        }
+      },
+      "BizAssistantConversationListResponse": {
+        "type": "object",
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0,
+            "description": "新版业务码。0 表示成功。"
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssistantConversation"
+            }
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1775432100123
+          }
+        }
+      },
+      "BizAssistantMessageListResponse": {
+        "type": "object",
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0,
+            "description": "新版业务码。0 表示成功。"
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "获取成功"
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AssistantMessage"
+            }
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1775432100123
+          }
+        }
+      },
+      "BizAssistantInterruptDecisionResponse": {
+        "type": "object",
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0,
+            "description": "新版业务码。0 表示成功。"
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "决策已受理"
+          },
+          "data": {
+            "$ref": "#/components/schemas/AssistantInterruptDecisionAccepted"
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1775432100123
+          }
+        }
+      },
+      "BizNullResponse": {
+        "type": "object",
+        "required": [
+          "code",
+          "success",
+          "message",
+          "data",
+          "timestamp"
+        ],
+        "properties": {
+          "code": {
+            "type": "integer",
+            "example": 0,
+            "description": "新版业务码。0 表示成功。"
+          },
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "操作成功"
+          },
+          "data": {
+            "nullable": true
+          },
+          "timestamp": {
+            "type": "integer",
+            "format": "int64",
+            "example": 1775432100123
+          }
+        }
+      }
+    }
+  }
+}

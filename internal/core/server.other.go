@@ -15,7 +15,7 @@ func initServer(address string, router *gin.Engine) server {
 	// 实现优雅重启 “重启”
 	s := endless.NewServer(address, router) // 使用 endless 包创建一个新的 HTTP 服务器实例
 	s.ReadHeaderTimeout = 10 * time.Minute  // 设置请求头的读取超时时间为 10 分钟
-	s.WriteTimeout = 10 * time.Minute       // 设置响应写入的超时时间为 10 分钟
+	s.WriteTimeout = 0                      // SSE 通过单次写 deadline 控制，不使用全局写超时
 	s.MaxHeaderBytes = 1 << 20              // 设置最大请求头的大小（1MB）
 
 	return s // 返回创建的服务器实例

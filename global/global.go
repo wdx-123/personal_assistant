@@ -1,6 +1,8 @@
 package global
 
 import (
+	aidomain "personal_assistant/internal/domain/ai"
+	streaminfra "personal_assistant/internal/infrastructure/sse"
 	"personal_assistant/internal/model/config"
 	obsmetrics "personal_assistant/pkg/observability/metrics"
 	obstrace "personal_assistant/pkg/observability/trace"
@@ -10,6 +12,7 @@ import (
 	"github.com/casbin/casbin/v2"
 	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
+	"github.com/qdrant/go-client/qdrant"
 	"github.com/songzhibin97/gkit/cache/local_cache"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -20,6 +23,7 @@ var (
 	Log            *zap.Logger       // 全局日志实例
 	DB             *gorm.DB          // 全局数据库连接实例
 	Redis          *redis.Client     // 全局Redis客户端实例
+	QdrantClient   *qdrant.Client    // 全局Qdrant客户端实例
 	BlackCache     local_cache.Cache // 全局黑名单缓存实例
 	CasbinEnforcer *casbin.Enforcer  // 全局Casbin执行器实例
 	Router         *gin.Engine       // 全局路由实例（用于API同步等功能）
@@ -33,4 +37,10 @@ var (
 	// 观测基础设施后端
 	ObservabilityMetrics obsmetrics.MetricsBackend // 观测指标后端
 	ObservabilityTraces  obstrace.TraceBackend     // 全链路追踪后端
+
+	// SSE 实时推送基础设施
+	StreamInfra *streaminfra.Infrastructure
+
+	// AI 运行时，由 core.InitAI 初始化，业务层只依赖 domain/ai.Runtime。
+	AIRuntime aidomain.Runtime
 )
