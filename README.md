@@ -1,8 +1,8 @@
 # Personal Assistant
 
-> 一个基于 Go + Gin 的个人助手后端系统，围绕用户组织、权限投影、OJ 数据同步、图片资源治理、AI 会话记忆和可观测性做工程化整合。
+> 一个基于 Go + Gin 的算法后端系统，围绕用户组织、权限投影、OJ 数据同步、图片资源治理、AI 会话记忆和可观测性做工程化整合。
 
-这个项目不是单一的 CRUD 后台。它的核心价值在于把认证授权、组织协作、异步任务、外部 OJ 数据、AI 流式对话、记忆召回、事件一致性和运行期观测放到同一个后端体系里，并用清晰的分层边界约束复杂度。
+它的核心价值在于把认证授权、组织协作、异步任务、外部 OJ 数据、AI 流式对话、记忆召回、事件一致性和运行期观测放到同一个后端体系里，并用清晰的分层边界约束复杂度。
 
 整体架构口径是：**传统 MVC 主体 + AI 子域渐进式 DDD**。项目主体仍按 Controller / Service / Repository / Router / Core 组织；AI 子域在复杂度较高的位置补充 `internal/domain/ai` 和 `internal/infrastructure/ai`，用于隔离稳定协议与具体运行时实现。
 
@@ -10,10 +10,10 @@
 
 | 模块 | 能力 | 关键实现 |
 | --- | --- | --- |
-| 用户与认证 | 注册、登录、登出、刷新 Token、账号状态管理 | Access Token + Refresh Token；Refresh Token 使用 HttpOnly Cookie；活跃态校验支持 Redis 缓存与 DB 回源 |
-| 组织与权限 | 组织、成员、角色、菜单、API、能力点管理 | 权限真相保存在 DB 关系表；Casbin 作为权限投影；用户当前组织通过 `current_org_id` 参与授权上下文 |
-| OJ 数据 | LeetCode / Luogu / Lanqiao 账号绑定、数据同步、排行榜、曲线统计 | 外部 crawler client、Redis Stream、Outbox、缓存投影、读模型聚合 |
-| OJ 任务 | 任务创建、版本派生、立即执行、重试、执行明细查询 | 任务调度、快照落库、执行用户明细、Redis 分布式锁防重复执行 |
+| 用户与认证                              | 注册、登录、登出、刷新 Token、账号状态管理 | Access Token + Refresh Token；Refresh Token 使用 HttpOnly Cookie；活跃态校验支持 Redis 缓存与 DB 回源 |
+| 组织与权限                              | 组织、成员、角色、菜单、API、能力点管理 | 权限真相保存在 DB 关系表；Casbin 作为权限投影；用户当前组织通过 `current_org_id` 参与授权上下文 |
+| OJ 数据    | LeetCode / Luogu / Lanqiao 账号绑定、数据同步、排行榜、曲线统计 | 外部 crawler client、Redis Stream、Outbox、缓存投影、读模型聚合 |
+| OJ 任务    | 任务创建、版本派生、立即执行、重试、执行明细查询 | 任务调度、快照落库、执行用户明细、Redis 分布式锁防重复执行 |
 | AI 助手 | 会话管理、SSE 流式输出、Eino / local runtime 切换、AI tool 协议 | `domain/ai.Runtime` 定义运行时协议；Service 负责上下文组装、tool 授权和落库收尾 |
 | AI 记忆 | 会话摘要、事实记忆、长期文档、RAG 召回 | MySQL 保存事实和摘要；Qdrant 保存向量 chunk；写回链路由 extractor + policy 控制 |
 | 图片资源 | 上传、删除、列表、本地 / 七牛存储 | 上传限流、七牛熔断、软删除、孤儿文件清理 |
