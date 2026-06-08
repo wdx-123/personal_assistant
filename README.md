@@ -1,4 +1,4 @@
-# Personal Assistant
+# CodeSphere
 
 > 一个基于 Go + Gin 的算法后端系统，围绕用户组织、权限投影、OJ 数据同步、图片资源治理、AI 会话记忆和可观测性做工程化整合。
 
