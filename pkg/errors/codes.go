@@ -10,6 +10,7 @@ type BizCode int
 // - 2xxxx: 用户模块
 // - 3xxxx: 组织与权限模块（组织/角色/菜单/API）
 // - 4xxxx: OJ模块
+// - 5xxxx: AI模块
 
 const (
 	// ==================== 成功 ====================
@@ -93,6 +94,17 @@ const (
 	CodeOJTaskExecutionNotFound   BizCode = 40107 // OJ任务执行记录不存在
 	CodeOJTaskPendingConfirmation BizCode = 40108 // OJ任务存在未确认的新题
 	CodeOJTaskQuestionAmbiguous   BizCode = 40109 // OJ任务题目存在多个候选
+
+	// ==================== AI模块 5xxxx ====================
+
+	CodeAIConversationNotFound BizCode = 50001 // AI会话不存在
+	CodeAIInterruptNotFound    BizCode = 50002 // AI中断不存在
+	CodeAIInterruptConflict    BizCode = 50003 // AI中断状态冲突
+	CodeAIConversationBusy     BizCode = 50004 // AI会话正在运行
+	CodeAIInterruptUnavailable BizCode = 50005 // AI中断无法在当前实例恢复
+	CodeAIStreamingUnsupported BizCode = 50006 // AI流式输出不可用
+	CodeAIRequestRejected      BizCode = 50007 // AI请求被拒绝
+	CodeAIMessageNotFound      BizCode = 50008 // AI消息不存在
 )
 
 // codeMessages 错误码与默认消息的映射
@@ -171,6 +183,16 @@ var codeMessages = map[BizCode]string{
 	CodeOJTaskExecutionNotFound:   "OJ任务执行记录不存在",
 	CodeOJTaskPendingConfirmation: "存在未确认的新题目，请确认后再创建任务",
 	CodeOJTaskQuestionAmbiguous:   "任务题目存在多个候选，请先确认具体题目",
+
+	// AI模块
+	CodeAIConversationNotFound: "AI会话不存在",
+	CodeAIInterruptNotFound:    "AI中断不存在",
+	CodeAIInterruptConflict:    "AI中断状态不允许该操作",
+	CodeAIConversationBusy:     "该会话仍在生成中，请稍后再试",
+	CodeAIInterruptUnavailable: "当前运行实例不可恢复，请重新发起本轮对话",
+	CodeAIStreamingUnsupported: "当前环境不支持流式输出",
+	CodeAIRequestRejected:      "当前请求不符合 AI 流式约束",
+	CodeAIMessageNotFound:      "AI消息不存在",
 }
 
 // Message 获取错误码对应的默认消息

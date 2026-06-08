@@ -1,6 +1,10 @@
 package config
 
-import "github.com/spf13/viper"
+import (
+	"os"
+
+	"github.com/spf13/viper"
+)
 
 // Config 应用全局配置结构体，包含所有核心模块配置
 type Config struct {
@@ -20,10 +24,26 @@ type Config struct {
 	Crawler       Crawler       `json:"crawler" yaml:"crawler"`
 	Task          Task          `json:"task" yaml:"task"`                   // 定时任务配置
 	Messaging     Messaging     `json:"messaging" yaml:"messaging"`         // 消息队列配置
+	SSE           SSE           `json:"sse" yaml:"sse"`                     // SSE 实时推送配置
+	AI            AI            `json:"ai" yaml:"ai"`                       // AI Runtime / Eino 配置
+	Qdrant        Qdrant        `json:"qdrant" yaml:"qdrant"`               // Qdrant 向量数据库配置
 	RateLimit     RateLimit     `json:"rate_limit" yaml:"rate_limit"`       // 限流配置
 	Observability Observability `json:"observability" yaml:"observability"` // 观测基础设施配置
 }
 
+// NewConfig 负责创建并返回当前对象所需的实例。
+// 参数：
+//   - 无。
+//
+// 返回值：
+//   - *Config：当前函数返回的目标对象；失败时可能为 nil。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func NewConfig() *Config {
 	// Redis配置初始化
 	_redis := &Redis{
@@ -283,6 +303,81 @@ func NewConfig() *Config {
 		),
 	}
 
+	_sse := &SSE{
+		HeartbeatIntervalSeconds: viper.GetInt("sse.heartbeat_interval_seconds"),
+		WriteTimeoutSeconds:      viper.GetInt("sse.write_timeout_seconds"),
+		QueueCapacity:            viper.GetInt("sse.queue_capacity"),
+		MaxConnectionsPerSubject: viper.GetInt("sse.max_connections_per_subject"),
+		ReplayLimit:              viper.GetInt("sse.replay_limit"),
+		AllowedOrigins:           viper.GetStringSlice("sse.allowed_origins"),
+		DrainTimeoutSeconds:      viper.GetInt("sse.drain_timeout_seconds"),
+		PubSubChannelPrefix:      viper.GetString("sse.pubsub_channel_prefix"),
+		ReplayStreamPrefix:       viper.GetString("sse.replay_stream_prefix"),
+		AIRuntimeMode:            viper.GetString("sse.ai_runtime_mode"),
+	}
+
+	_ai := &AI{
+		Provider:            viper.GetString("ai.provider"),
+		APIKey:              viper.GetString("ai.api_key"),
+		BaseURL:             viper.GetString("ai.base_url"),
+		Model:               viper.GetString("ai.model"),
+		ByAzure:             viper.GetBool("ai.by_azure"),
+		APIVersion:          viper.GetString("ai.api_version"),
+		SystemPrompt:        viper.GetString("ai.system_prompt"),
+		Temperature:         viper.GetFloat64("ai.temperature"),
+		MaxCompletionTokens: viper.GetInt("ai.max_completion_tokens"),
+		Memory: AIMemory{
+			Enabled:                  viper.GetBool("ai.memory.enabled"),
+			RecallTopK:               viper.GetInt("ai.memory.recall_top_k"),
+			RecallMaxChars:           viper.GetInt("ai.memory.recall_max_chars"),
+			RecallMinScore:           viper.GetFloat64("ai.memory.recall_min_score"),
+			RAGMaxChars:              viper.GetInt("ai.memory.rag_max_chars"),
+			RecentRawTurns:           viper.GetInt("ai.memory.recent_raw_turns"),
+			RecentRawTokenBudget:     viper.GetInt("ai.memory.recent_raw_token_budget"),
+			CompressThresholdTokens:  viper.GetInt("ai.memory.compress_threshold_tokens"),
+			SummaryRefreshEveryTurns: viper.GetInt("ai.memory.summary_refresh_every_turns"),
+			WritebackAsync:           viper.GetBool("ai.memory.writeback_async"),
+			EnableEntityMemory:       viper.GetBool("ai.memory.enable_entity_memory"),
+			EnableLongTermMemory:     viper.GetBool("ai.memory.enable_long_term_memory"),
+			EnableOrgMemory:          viper.GetBool("ai.memory.enable_org_memory"),
+			EnableOpsMemory:          viper.GetBool("ai.memory.enable_ops_memory"),
+			MinImportance:            viper.GetFloat64("ai.memory.min_importance"),
+			ExtractorMode:            viper.GetString("ai.memory.extractor_mode"),
+			ExtractTimeoutSeconds:    viper.GetInt("ai.memory.extract_timeout_seconds"),
+			ExtractMaxChars:          viper.GetInt("ai.memory.extract_max_chars"),
+			ToolOutputTokenBudget:    viper.GetInt("ai.memory.tool_output_token_budget"),
+			EmbedModel:               viper.GetString("ai.memory.embed_model"),
+			EmbedEndpoint:            viper.GetString("ai.memory.embed_endpoint"),
+			EmbedDimension:           viper.GetInt("ai.memory.embed_dimension"),
+			ChunkMaxChars:            viper.GetInt("ai.memory.chunk_max_chars"),
+			ChunkOverlapChars:        viper.GetInt("ai.memory.chunk_overlap_chars"),
+			IndexBatchSize:           viper.GetInt("ai.memory.index_batch_size"),
+			IndexTimeoutSeconds:      viper.GetInt("ai.memory.index_timeout_seconds"),
+		},
+	}
+
+	legacyCollectionName := viper.GetString("qdrant.collection_name")
+	knowledgeCollectionName := viper.GetString("qdrant.knowledge_collection_name")
+	if !hasExplicitConfigValue("qdrant.knowledge_collection_name", "QDRANT_KNOWLEDGE_COLLECTION_NAME") {
+		knowledgeCollectionName = firstNonEmptyString(legacyCollectionName, knowledgeCollectionName)
+	}
+
+	_qdrant := &Qdrant{
+		Enabled:                 viper.GetBool("qdrant.enabled"),
+		Endpoint:                viper.GetString("qdrant.endpoint"),
+		GRPCHost:                viper.GetString("qdrant.grpc_host"),
+		GRPCPort:                viper.GetInt("qdrant.grpc_port"),
+		APIKey:                  viper.GetString("qdrant.api_key"),
+		CollectionName:          knowledgeCollectionName,
+		KnowledgeCollectionName: knowledgeCollectionName,
+		MemoryCollectionName:    viper.GetString("qdrant.memory_collection_name"),
+		VectorSize:              viper.GetInt("qdrant.vector_size"),
+		Distance:                viper.GetString("qdrant.distance"),
+		InitCollection:          viper.GetBool("qdrant.init_collection"),
+		TimeoutSeconds:          viper.GetInt("qdrant.timeout_seconds"),
+		UseTLS:                  viper.GetBool("qdrant.use_tls"),
+	}
+
 	_observability := &Observability{
 		Enabled:     viper.GetBool("observability.enabled"),
 		ServiceName: viper.GetString("observability.service_name"),
@@ -354,14 +449,51 @@ func NewConfig() *Config {
 		Crawler:       *_crawler,
 		Task:          *_task,
 		Messaging:     *_messaging,
+		SSE:           *_sse,
+		AI:            *_ai,
+		Qdrant:        *_qdrant,
 		RateLimit:     *_rateLimit,
 		Observability: *_observability,
 	}
 }
 
+// getCrawlerAPIPrefix 负责执行当前函数对应的核心逻辑。
+// 参数：
+//   - key：当前函数需要消费的输入参数。
+//
+// 返回值：
+//   - string：当前函数生成或返回的字符串结果。
+//
+// 核心流程：
+//  1. 根据当前输入整理本函数需要的上下文、默认值或依赖。
+//  2. 执行该函数对应的核心职责，并把结果传递给下一层或调用方。
+//
+// 注意事项：
+//   - 具体细节需结合函数体与调用方一起理解；当前注释基于函数命名和上下文整理。
 func getCrawlerAPIPrefix(key string) string {
 	if !viper.IsSet(key) {
 		return "/v2"
 	}
 	return viper.GetString(key)
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func hasExplicitConfigValue(key string, envKeys ...string) bool {
+	if viper.InConfig(key) {
+		return true
+	}
+	for _, envKey := range envKeys {
+		if _, ok := os.LookupEnv(envKey); ok {
+			return true
+		}
+	}
+	return false
 }

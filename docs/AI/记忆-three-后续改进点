@@ -1,0 +1,26 @@
+整体评价：这次改动是一个**合格的 v1 写回骨架**。它把第 3 步从“设计阶段”推进到了“可运行的生产链路雏形”：成功轮次触发、规则抽取、policy 治理、MySQL 写入、测试覆盖都已经接上。
+
+**优点**
+- 分层比较干净：`domain/ai` 定义抽取协议，`infrastructure/ai/memory` 放规则抽取器，`service/system` 负责编排写回，没有把 GORM/Gin/Eino 混进 domain。见 [memory_writeback.go](/D:/workspace_go/test/go/personal_assistant/internal/domain/ai/memory_writeback.go:5)、[extractor.go](/D:/workspace_go/test/go/personal_assistant/internal/infrastructure/ai/memory/extractor.go:18)。
+- hook 时机合理：只在 `finishStream` 成功且 `execErr == nil` 后触发，失败、取消、超时不会污染长期记忆。见 [aiSvc.go](/D:/workspace_go/test/go/personal_assistant/internal/service/system/aiSvc.go:365)。
+- 写回失败不影响主回答：异步模式带 timeout，错误只记日志，这是辅助记忆链路应有的降级语义。见 [aiMemoryHook.go](/D:/workspace_go/test/go/personal_assistant/internal/service/system/aiMemoryHook.go:36)。
+- 复用了已有治理规则：facts/documents 写入前都走 `aiMemoryPolicy`，没有绕过治理直接落库。见 [aiMemoryWriteback.go](/D:/workspace_go/test/go/personal_assistant/internal/service/system/aiMemoryWriteback.go:144)。
+- v1 抽取策略保守，降低脏数据风险：只抽明确表达的个人偏好/目标，以及知识型长回答 document。见 [extractor.go](/D:/workspace_go/test/go/personal_assistant/internal/infrastructure/ai/memory/extractor.go:102)。
+- 测试覆盖了关键路径，并且 `go test ./...` 已通过。
+
+**缺点 / 风险**
+- summary 现在只是“旧摘要 + 最近一轮”的截断拼接，不是真正语义压缩；当旧摘要接近上限时，新一轮内容可能被截掉，因为当前截断保留的是前半段。见 [extractor.go](/D:/workspace_go/test/go/personal_assistant/internal/infrastructure/ai/memory/extractor.go:78)。
+- 异步写回是 goroutine，不是 durable outbox；进程退出、重启或 panic 时，本轮记忆可能丢失。对 v1 可以接受，但不是可靠写回。
+- `buildWritebackSnapshot` 当前读取整段会话消息再按 ID 找两条，长会话下成本会升高。见 [aiMemoryWriteback.go](/D:/workspace_go/test/go/personal_assistant/internal/service/system/aiMemoryWriteback.go:68)。
+- 规则抽取器能力有限，容易少写，也可能误抓表达。例如复杂偏好、多事实、多语言混合、否定句、撤销记忆都还处理不了。
+- `MinImportance`、extractor 阈值、writeback timeout 没完全配置化；`aiMemoryWritebackTimeout = 10s` 仍是代码常量。见 [aiMemoryHook.go](/D:/workspace_go/test/go/personal_assistant/internal/service/system/aiMemoryHook.go:14)。
+- policy 决策被拒绝时没有记录 reason，后续排查“为什么没写入记忆”会比较困难。
+- summary 在 org 会话下会使用 org scope，但当前 v1 的长期自动写入策略又限定 self memory；这里需要在第 4 步恢复前明确“会话 summary 是否可 org scope 共享”。
+
+**后续改进点**
+1. 优先修 summary 策略：改成保留最新轮次，或引入真正 compressor，避免新信息被旧摘要挤掉。
+2. 增加 `GetMessageByID/ListMessagesByIDs`，writeback 只读本轮 user/assistant 消息，避免长会话全量扫描。
+3. 给 writeback 增加观测：记录 extracted/skipped/written 数量和 policy reason，便于调试。
+4. 把 timeout、document 最小长度、summary 字符上限、importance 阈值接到配置。
+5. 后续如果要求可靠写回，把 async goroutine 改成 outbox 事件，再由 worker 消费。
+6. 第 4 步上下文恢复前，先明确 summary 的权限语义：个人会话 summary 用 self scope；组织会话 summary 是否仍只服务本人，还是作为 org 共享记忆。

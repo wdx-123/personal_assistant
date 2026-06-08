@@ -9,4 +9,5 @@ var (
 	ErrOJAccountNotBound = errors.New("oj account not bound")
 	ErrInvalidCredential = errors.New("invalid credential")
 	ErrOJSyncDisabled    = errors.New("oj sync disabled")
+	ErrAISessionMissing  = errors.New("ai session missing on current node")
 )

@@ -2,6 +2,5 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="$PROJECT_DIR$" vcs="Git" />
-    <mapping directory="$PROJECT_DIR$/爬虫-第三方集成/crawler_center_scrapy" vcs="Git" />
   </component>
 </project>

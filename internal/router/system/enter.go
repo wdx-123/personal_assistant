@@ -12,6 +12,7 @@ type RouterGroup struct {
 	// 业务模块
 	UserRouter   // 用户管理路由
 	OrgRouter    // 组织管理路由
+	AIRouter     // AI 助手路由
 	OJRouter     // OJ判题模块路由
 	OJTaskRouter // OJ任务模块路由
 
