@@ -10,8 +10,8 @@
 
 | 模块 | 能力 | 关键实现 |
 | --- | --- | --- |
-| 用户与认证                     | 注册、登录、登出、刷新 Token、账号状态管理 | Access Token + Refresh Token；Refresh Token 使用 HttpOnly Cookie；活跃态校验支持 Redis 缓存与 DB 回源 |
-| 组织与权限    | 组织、成员、角色、菜单、API、能力点管理 | 权限真相保存在 DB 关系表；Casbin 作为权限投影；用户当前组织通过 `current_org_id` 参与授权上下文 |
+| 用户与认证                              | 注册、登录、登出、刷新 Token、账号状态管理 | Access Token + Refresh Token；Refresh Token 使用 HttpOnly Cookie；活跃态校验支持 Redis 缓存与 DB 回源 |
+| 组织与权限                              | 组织、成员、角色、菜单、API、能力点管理 | 权限真相保存在 DB 关系表；Casbin 作为权限投影；用户当前组织通过 `current_org_id` 参与授权上下文 |
 | OJ 数据    | LeetCode / Luogu / Lanqiao 账号绑定、数据同步、排行榜、曲线统计 | 外部 crawler client、Redis Stream、Outbox、缓存投影、读模型聚合 |
 | OJ 任务    | 任务创建、版本派生、立即执行、重试、执行明细查询 | 任务调度、快照落库、执行用户明细、Redis 分布式锁防重复执行 |
 | AI 助手 | 会话管理、SSE 流式输出、Eino / local runtime 切换、AI tool 协议 | `domain/ai.Runtime` 定义运行时协议；Service 负责上下文组装、tool 授权和落库收尾 |
